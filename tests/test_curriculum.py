@@ -273,3 +273,23 @@ def test_snapshots_of_another_room_rejected(flagged, tmp_path):
     with pytest.raises(CurriculumError, match="another model"):
         env.reset(seed=0, options={"segment": 1})
     env.close()
+
+
+# ---- flags in the target order -----------------------------------------------------------
+def test_flags_join_the_target_order(asset_dir, tmp_path, repo_root):
+    raw = yaml.safe_load((repo_root / "examples/switch_door.yaml").read_text())
+    raw["parts"] += [{"name": "fb", "type": "checkpoint", "order": 2, "pos": [0.6, -0.5]},  # behind the door
+                     {"name": "fa", "type": "checkpoint", "order": 1, "pos": [-0.6, -0.5]}]
+    room = tmp_path / "flagged_door.yaml"
+    room.write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(room=room)
+    env.reset(seed=0, options={"layout": env.sample_layout(None)})
+    assert [t.name for t in env.targets] == ["fa", "switch_a", "fb", "goal"]
+    assert env.current_target().name == "fa"
+    env.close()
+
+
+def test_flag_room_targets(flagged):
+    env, _ = flagged
+    env.reset(seed=0)
+    assert [t.name for t in env.targets] == ["f1", "f2", "goal"]

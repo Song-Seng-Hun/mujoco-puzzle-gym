@@ -262,6 +262,7 @@ class PuzzleEnv(gym.Env):
         self.plan = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2])
         self.targets = [self.parts[n] for n in self.plan["targets"]] if self.plan["ok"] else \
             [p for p in self.parts.values() if p.role in ("switch", "goal")]
+        self.targets = curriculum.with_flags(self, self.targets, layout["spawn"][:2])   # R21
         self._fields: dict[tuple, np.ndarray] = {}
         self.stage = self._stage()
         self._mark_target()

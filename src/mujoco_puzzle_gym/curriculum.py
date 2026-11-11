@@ -85,6 +85,30 @@ def segments(parts: dict[str, Any]) -> list[dict[str, Any]]:
     return [{"name": f"{s or 'start'}->{e}", "start": s, "end": e} for s, e in zip(starts, ends)]
 
 
+def with_flags(env, targets: list, start_xy) -> list:
+    """`targets` (the solution order) with the checkpoint flags put in, in order:
+    each flag goes at the earliest place (after the previous flag) where it is
+    reachable from `start_xy` with the targets before it done, and before the
+    final target (the goal); a flag never reachable goes just before the goal.
+    So `progress`, `target_pos` and the scripted solver lead through the flags."""
+    from .logic import free_mask
+
+    out = list(targets)
+    lo = 0
+    for f in flags(env.parts):
+        last = max(lo, len(out) - 1)
+        pos = last
+        for p in range(lo, last):
+            on = {t.name for t in out[:p]}
+            reach = env.grid.flood(free_mask(env.grid, env.walls, env.parts, on), start_xy)
+            if (f.target_mask(env.grid) & reach).any():
+                pos = p
+                break
+        out.insert(pos, f)
+        lo = pos + 1
+    return out
+
+
 def snapshot_dir(env) -> Path:
     d = (env.task.get("curriculum") or {}).get("snapshots")
     return Path(d) if d else SNAP_DIR / env.room.name / "checkpoints"
