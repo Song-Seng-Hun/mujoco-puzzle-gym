@@ -5,7 +5,8 @@ Branch: feat/community (main 9420f09에서). PR 하나에 spec.md, plan.md, 코�
 
 ## Decisions (spec Open questions)
 1. 제한값은 제안값(부품 64개, 한 변 10 m, 글자 지도 40×40)을 그대로 쓴다. 지금 예제 방 최대치는 부품 6개(coin_room, doors), 한 변 5.12 m(broken/room_far_switch), 지도 26×14(two_rooms_map)다. 모두 제한의 절반 아래다.
-2. task 해시는 `task.resolved.yaml` 파일 전체의 SHA256이다. 정보용이고, 다르면 경고만 한다. 정책을 쓸 수 있는지는 해시가 아니라 관측 차원과 행동 차원으로 판단한다. 둘이 다르면 거절한다. 관측·행동 키만 골라 해시하면 어느 키가 관측에 영향을 주는지 목록을 따로 관리해야 하고, 그 목록이 틀리면 조용히 틀린 결과가 나온다.
+2. task 해시는 `task.resolved.yaml` 파일 전체의 SHA256이다. `policy.json`에 어느 task로 학습했는지 남기는 기록이고, 평가 때 비교하지 않는다. 정책을 쓸 수 있는지는 관측 차원과 행동 차원으로 판단하고, 다르면 거절한다. 차원은 같은데 관측 항목 이름이나 크기가 다르면 경고한다. 관측·행동 키만 골라 해시하면 어느 키가 관측에 영향을 주는지 목록을 따로 관리해야 하고, 그 목록이 틀리면 조용히 틀린 결과가 나온다.
+   - 구현 중 변경(2026-11-11): 처음엔 "해시가 다르면 경고"였다. 그런데 평가 때 받는 것은 사용자의 task.yaml이고, run이 저장한 resolved 파일과는 늘 해시가 달라 경고가 매번 뜬다. 그래서 해시 비교를 빼고 관측 항목 비교로 바꿨다.
 
 ## Order and files
 
@@ -75,7 +76,7 @@ Branch: feat/community (main 9420f09에서). PR 하나에 spec.md, plan.md, 코�
 - `cli.py`
   - `mpg export-onnx runs/<id> [--out 폴더]`: 기본 출력 폴더는 `runs/<id>/onnx/`
   - `mpg eval --onnx <file> --task <task.yaml> [--episodes] [--workers]`: `run`은 선택 인자가 된다. `--onnx`와 `run`은 둘 중 하나만 받는다.
-  - 관측 차원이나 행동 차원이 다르면 거절한다. task 해시가 다르면 경고만 한다.
+  - 관측 차원이나 행동 차원이 다르면 거절한다. 관측 항목 이름이나 크기가 다르면 경고만 한다.
 - `tests/test_onnx.py`
   - 짧게 학습(max-steps 몇백)한 PPO와 SAC를 내보낸다.
   - 무작위 관측 100개에 대해 SB3 `predict`와 ONNX 예측의 차이가 1e-5 안인지 확인한다.

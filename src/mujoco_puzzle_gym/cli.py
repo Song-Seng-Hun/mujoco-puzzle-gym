@@ -189,8 +189,20 @@ def _run_errors():
 
 
 def _eval(args: argparse.Namespace) -> dict[str, Any]:
-    from .evaluate import evaluate
+    from .evaluate import evaluate, evaluate_onnx
 
+    if args.onnx:
+        if args.run or not args.task:
+            raise CommandError("--onnx takes --task task.yaml and no run folder")
+        if args.full or args.segments or args.policy != "trained" or args.stochastic:
+            raise CommandError("--onnx runs the deterministic policy from the start; "
+                               "--full, --segments, --policy and --stochastic are for run folders")
+        try:
+            return evaluate_onnx(args.onnx, args.task, episodes=args.episodes, workers=args.workers)
+        except _run_errors() as exc:
+            raise CommandError(str(exc)) from exc
+    if not args.run:
+        raise CommandError("give a run folder (runs/<id>) or --onnx policy.onnx --task task.yaml")
     try:
         return evaluate(args.run, episodes=args.episodes, policy=args.policy,
                         deterministic=not args.stochastic, workers=args.workers,
@@ -200,7 +212,11 @@ def _eval(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _configure_eval(p: argparse.ArgumentParser) -> None:
-    p.add_argument("run", help="runs/<id>")
+    p.add_argument("run", nargs="?", default=None, help="runs/<id> (or use --onnx)")
+    p.add_argument("--onnx", default=None,
+                   help="evaluate an exported policy.onnx (+ policy.json next to it) instead of "
+                        "a run folder; needs --task; no pickle is read")
+    p.add_argument("--task", default=None, help="task.yaml for --onnx")
     p.add_argument("--episodes", type=int, default=100, help="held-out layouts (eval seeds)")
     p.add_argument("--policy", choices=["trained", "random"], default="trained",
                    help="'random' = uniform random baseline on the same seeds")
@@ -213,6 +229,25 @@ def _configure_eval(p: argparse.ArgumentParser) -> None:
                         "with --full also chain_gap_rate (R22)")
     p.add_argument("--trust", action="store_true",
                    help="open run folders and snapshots outside ./runs/ (pickle can run code)")
+
+
+def _export_onnx(args: argparse.Namespace) -> dict[str, Any]:
+    from .onnx_policy import export
+
+    try:
+        return export(args.run, out_dir=args.out)
+    except ImportError as exc:
+        raise CommandError(f"{exc}; install the export extra: "
+                           "uv pip install 'mujoco-puzzle-gym[export]'") from exc
+    except _run_errors() as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _configure_export_onnx(p: argparse.ArgumentParser) -> None:
+    p.add_argument("run", help="runs/<id> (ppo, a2c or sac; vector observations)")
+    p.add_argument("--out", default=None, help="output folder (default: runs/<id>/onnx/)")
+    p.add_argument("--trust", action="store_true",
+                   help="open a run folder outside ./runs/ (pickle can run code)")
 
 
 def _diagnose(args: argparse.Namespace) -> dict[str, Any]:
@@ -287,6 +322,8 @@ COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None
     "diagnose": ("Classify why a run fails (env bug, body, exploration, reward hacking) + failure MP4.",
                  _diagnose, _configure_diagnose),
     "eval": ("Success rate and mean time on held-out layouts.", _eval, _configure_eval),
+    "export-onnx": ("Write policy.onnx + policy.json from a run, to share without pickle.",
+                    _export_onnx, _configure_export_onnx),
     "render": ("Offscreen MP4 of a success episode.", _render, _configure_render),
     "demo": ("Render the bundled trained policy solving the example room to demo.mp4.", _demo, _configure_demo),
 }

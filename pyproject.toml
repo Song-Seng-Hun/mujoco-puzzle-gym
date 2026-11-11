@@ -18,6 +18,9 @@ dependencies = [
     "torch>=2.15.0",
 ]
 
+[project.optional-dependencies]
+export = ["onnx>=1.17"]           # `mpg export-onnx` (torch's ONNX exporter needs it)
+
 [project.scripts]
 mpg = "mujoco_puzzle_gym.cli:main"
 
@@ -27,6 +30,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "onnx>=1.17",
     "pytest>=9.2.0",
 ]
 
