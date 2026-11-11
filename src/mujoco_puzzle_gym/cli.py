@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from typing import Any, Callable
 
@@ -53,8 +54,9 @@ def _bench(args: argparse.Namespace) -> dict[str, Any]:
     except ValueError as exc:
         raise CommandError(f"--procs must be comma-separated integers: {args.procs!r}") from exc
     try:
-        return bench.run(seconds=args.seconds, procs=procs)
-    except FileNotFoundError as exc:
+        return bench.run(seconds=args.seconds, procs=procs,
+                         room=None if args.no_env else (args.room or bench.DEFAULT_ROOM))
+    except (FileNotFoundError, ValueError) as exc:
         raise CommandError(str(exc)) from exc
 
 
@@ -62,13 +64,53 @@ def _configure_bench(p: argparse.ArgumentParser) -> None:
     p.add_argument("--seconds", type=float, default=5.0, help="wall time per measurement")
     p.add_argument("--procs", default="4,8,16",
                    help="comma-separated process counts for the parallel runs ('' = none)")
+    p.add_argument("--room", default=None,
+                   help="room for the PuzzleEnv measurement (default: examples/switch_door.yaml)")
+    p.add_argument("--no-env", action="store_true", help="walker only, skip the PuzzleEnv runs")
+
+
+def _build(args: argparse.Namespace) -> dict[str, Any]:
+    from .room import RoomError, build
+
+    try:
+        return build(args.room, out_dir=args.out)
+    except (RoomError, FileNotFoundError) as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _configure_build(p: argparse.ArgumentParser) -> None:
+    p.add_argument("room", help="room.yaml")
+    p.add_argument("--out", default=None, help="output directory (default: build/<room name>/)")
+
+
+def _check(args: argparse.Namespace) -> dict[str, Any]:
+    from .check import check
+    from .room import RoomError
+    from .task import TaskError
+
+    need = args.need if args.need is not None else math.ceil(0.9 * args.seeds)
+    try:
+        return check(args.room, task=args.task, seeds=args.seeds, need=need)
+    except (RoomError, TaskError, FileNotFoundError) as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _configure_check(p: argparse.ArgumentParser) -> None:
+    p.add_argument("room", help="room.yaml")
+    p.add_argument("--task", default=None, help="task.yaml for env settings (default: built-in)")
+    p.add_argument("--seeds", type=int, default=20, help="random layouts for the scripted solver")
+    p.add_argument("--need", type=int, default=None,
+                   help="successes required (default: 90%% of --seeds, 18 of 20)")
 
 
 COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None]]] = {
     "version": ("Print the package version.", _version, lambda p: None),
     "fetch-assets": ("Download and SHA256-verify the pinned robot and policy files.",
                      _fetch_assets, _configure_fetch),
-    "bench": ("Measure walker speed: physics and high-level steps/s, single and parallel.",
+    "build": ("Build body + room MJCF and a top-view PNG from room.yaml.", _build, _configure_build),
+    "check": ("Check a room: solution order, physics stability, scripted solver success.",
+              _check, _configure_check),
+    "bench": ("Measure walker and PuzzleEnv speed: steps/s, single and parallel.",
               _bench, _configure_bench),
 }
 

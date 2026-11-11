@@ -33,4 +33,6 @@ dev = [
 [tool.pytest.ini_options]
 markers = [
     "network: downloads pinned upstream assets when the cache is empty",
+    "slow: long simulation runs (full 20-seed checks); run with `pytest -m slow` or `-m ''`",
 ]
+addopts = "-m 'not slow'"

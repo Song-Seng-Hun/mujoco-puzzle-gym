@@ -1,18 +1,25 @@
-"""Speed benchmark (R13, walker-only for now).
+"""Speed benchmark (R13).
 
-Runs the default body on a flat floor with a constant walk command and counts
-steps. One high-level env step (10 Hz) = 5 body steps (50 Hz) = 20 physics
-steps (5 ms), so high-level steps/s is estimated as body steps/s / 5; puzzle
-logic and the training algorithm are not included yet.
+Two measurements:
+- walker: the default body alone on a flat floor with a constant walk command.
+  One high-level env step (10 Hz) = 5 body steps (50 Hz) = 20 physics steps
+  (5 ms), so high-level steps/s is estimated as body steps/s / 5.
+- env: the real `PuzzleEnv` on a room (default: examples/switch_door.yaml) with
+  uniform random actions, auto-reset on episode end; single process and N
+  worker processes through gymnasium's AsyncVectorEnv. This includes walls,
+  doors, part logic, obs and rewards and inter-process transfer, but not the
+  learner's own compute (PPO updates share the same CPU).
 """
 
 from __future__ import annotations
 
+import functools
 import multiprocessing as mp
 import os
 import platform
 import subprocess
 import time
+from pathlib import Path
 from typing import Any
 
 import mujoco
@@ -21,6 +28,8 @@ from .bodies import flat_floor_spec, make_body
 
 HIGH_LEVEL_HZ = 10.0
 BENCH_CMD = (0.3, 0.0, 0.0)
+DEFAULT_ROOM = Path(__file__).resolve().parents[2] / "examples" / "switch_door.yaml"
+TWO_HOURS = 7200
 
 
 def _make():
@@ -95,7 +104,66 @@ def machine() -> dict[str, Any]:
     return info
 
 
-def run(seconds: float = 5.0, procs: list[int] | None = None) -> dict[str, Any]:
+def _make_env(room: str):
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    from .env import PuzzleEnv
+    return PuzzleEnv(room=room)
+
+
+def env_single(room: str, seconds: float) -> dict[str, Any]:
+    import numpy as np
+
+    env = _make_env(room)
+    rng = np.random.default_rng(0)
+    env.reset(seed=0)
+    steps = episodes = 0
+    t0 = time.perf_counter()
+    end = t0 + seconds
+    while True:
+        _, _, term, trunc, _ = env.step(rng.uniform(-1, 1, 3).astype(np.float32))
+        steps += 1
+        if term or trunc:
+            episodes += 1
+            env.reset()
+        if steps % 10 == 0 and time.perf_counter() >= end:
+            break
+    wall = time.perf_counter() - t0
+    return {"steps_per_s": round(steps / wall, 1), "episodes_ended": episodes}
+
+
+def env_parallel(room: str, n: int, seconds: float) -> dict[str, Any]:
+    import numpy as np
+    from gymnasium.vector import AsyncVectorEnv
+
+    venv = AsyncVectorEnv([functools.partial(_make_env, room) for _ in range(n)], context="spawn")
+    try:
+        venv.reset(seed=0)
+        rng = np.random.default_rng(0)
+        for _ in range(5):        # warm-up
+            venv.step(rng.uniform(-1, 1, (n, 3)).astype(np.float32))
+        vec_steps = 0
+        t0 = time.perf_counter()
+        end = t0 + seconds
+        while time.perf_counter() < end:
+            venv.step(rng.uniform(-1, 1, (n, 3)).astype(np.float32))
+            vec_steps += 1
+        wall = time.perf_counter() - t0
+    finally:
+        venv.close()
+    return {"procs": n, "steps_per_s": round(vec_steps * n / wall, 1)}
+
+
+def run_env(room: str | Path, seconds: float, procs: list[int]) -> dict[str, Any]:
+    room = str(Path(room).resolve())
+    single = env_single(room, seconds)
+    parallel = [env_parallel(room, n, seconds) for n in procs]
+    best = max([single["steps_per_s"]] + [p["steps_per_s"] for p in parallel])
+    return {"room": room, "actions": "uniform random", "single": single, "parallel": parallel,
+            "best_steps_per_s": best, "steps_in_2h": int(best * TWO_HOURS)}
+
+
+def run(seconds: float = 5.0, procs: list[int] | None = None,
+        room: str | Path | None = DEFAULT_ROOM) -> dict[str, Any]:
     body, model, data = _make()
     control_dt = body.control_dt
     physics_per_body_step = round(control_dt / model.opt.timestep)
@@ -119,5 +187,7 @@ def run(seconds: float = 5.0, procs: list[int] | None = None) -> dict[str, Any]:
     best = max([result["single"]["high_level_steps_per_s"]]
                + [p["high_level_steps_per_s"] for p in result["parallel"]])
     result["best_high_level_steps_per_s"] = best
-    result["high_level_steps_in_2h"] = int(best * 7200)
+    result["high_level_steps_in_2h"] = int(best * TWO_HOURS)
+    if room is not None:
+        result["env"] = run_env(room, seconds, procs or [])
     return result

@@ -7,3 +7,9 @@ from mujoco_puzzle_gym import assets
 def asset_dir():
     """The verified asset cache; downloads it (network) only when missing."""
     return assets.fetch()["cache_dir"]
+
+
+@pytest.fixture(scope="session")
+def repo_root():
+    from pathlib import Path
+    return Path(__file__).resolve().parents[1]
