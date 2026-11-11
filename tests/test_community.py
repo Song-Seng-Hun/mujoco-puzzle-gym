@@ -148,3 +148,34 @@ def test_files_too_big_and_symlink(tmp_path):
 def test_repo_community_folder_is_clean():
     files = [str(p.relative_to(ROOT)) for p in (ROOT / "community").rglob("*") if p.is_file()]
     assert files and _files_tool().problems(files, root=ROOT) == []
+
+
+def test_yaml_aliases_rejected(tmp_path):
+    p = tmp_path / "room.yaml"
+    p.write_text("a: &x [1, 2]\nb: [*x, *x]\n" + yaml.safe_dump(BASE))
+    assert "aliases" in problems(p)
+
+
+def test_non_string_stage_rejected(tmp_path):
+    assert "must be a file name" in problems(write(tmp_path, {**BASE, "stages": [["a"]]}))
+
+
+@pytest.mark.parametrize("name", ["../../x", "/tmp/x", "..", "a\\\\b"])
+def test_room_name_with_path_parts_rejected(tmp_path, name):
+    r = check(write(tmp_path, {**BASE, "name": name}), static_only=True)
+    assert r["ok"] is False and "plain name" in r["values"]["reason"]
+
+
+def test_files_names_and_author(tmp_path):
+    tool = _files_tool()
+    d = tmp_path / "community/rooms/alice"
+    d.mkdir(parents=True)
+    (d / "r.yaml").write_text("name: r\n")
+    spaced = "community/rooms/alice/r.yaml community/rooms/alice/README.md"
+    assert tool.problems([spaced], root=tmp_path)
+    assert "letters, digits" in " ".join(tool.problems(["community/rooms/alice/my room.yaml"],
+                                                       root=tmp_path))
+    assert "not a file" in " ".join(tool.problems(["community/rooms/alice/gone.yaml"], root=tmp_path))
+    ok = ["community/rooms/alice/r.yaml"]
+    assert tool.problems(ok, root=tmp_path, author="Alice") == []
+    assert "author's folder" in " ".join(tool.problems(ok, root=tmp_path, author="mallory"))

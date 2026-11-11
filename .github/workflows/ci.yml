@@ -76,15 +76,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Changed files under community/
+      - name: Shared files (types, sizes, author's folder)
         id: changed
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          git diff --name-only --diff-filter=ACMRT "$BASE_SHA"...HEAD -- community/ > changed.txt
-          cat changed.txt
-          echo "any=$([ -s changed.txt ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-      - name: Accepted file types and sizes
-        if: steps.changed.outputs.any == 'true'
-        run: python3 tools/check_community_files.py $(cat changed.txt)
+          python3 tools/check_community_files.py --base "$BASE_SHA" --author "$AUTHOR" --rooms-out rooms.txt
+          echo "any=$([ -s rooms.txt ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Install OSMesa (software rendering)
         if: steps.changed.outputs.any == 'true'
         run: sudo apt-get update && sudo apt-get install -y libosmesa6 libgl1
@@ -105,16 +103,16 @@ jobs:
         if: steps.changed.outputs.any == 'true'
         run: |
           fail=0
-          for room in $(grep '\.yaml$' changed.txt); do
+          while IFS= read -r room; do
             echo "== $room"
-            if timeout 600 uv run mpg check --community --seeds 20 --json "$room" > result.json; then
+            if timeout 600 uv run mpg check --community --seeds 20 --json "$room" < /dev/null > result.json; then
               echo "ok"
             else
               echo "::error file=$room::mpg check --community failed (exit $?)"
               fail=1
             fi
             python3 -c "import json; r = json.load(open('result.json')); print({k: r.get(k) for k in ('ok', 'failed', 'error', 'community')})" || true
-          done
+          done < rooms.txt
           exit $fail
 
   slow:

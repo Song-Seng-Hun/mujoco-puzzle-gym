@@ -28,11 +28,23 @@ MAX_MAP = 40             # cells per side
 BUILTIN_PREFIX = "mujoco_puzzle_gym."
 
 
+class _NoAliasLoader(yaml.SafeLoader):
+    """SafeLoader without anchors and aliases: a 64 KB file of nested aliases
+    expands to billions of nodes once something walks it."""
+
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent):
+            raise yaml.composer.ComposerError(
+                None, None, "YAML aliases (*name) are not allowed in shared rooms",
+                self.peek_event().start_mark)
+        return super().compose_node(parent, index)
+
+
 def check_raw(path: str | Path) -> list[str]:
     """Problems visible in the YAML alone, before the room (and its stage files) load."""
     path = Path(path)
     try:
-        raw = yaml.safe_load(path.read_text())
+        raw = yaml.load(path.read_text(), Loader=_NoAliasLoader)
     except (OSError, yaml.YAMLError) as exc:
         return [f"cannot read room file {path}: {exc}"]
     if not isinstance(raw, dict):
@@ -43,9 +55,17 @@ def check_raw(path: str | Path) -> list[str]:
     folder = path.resolve().parent
     stages = raw.get("stages") or []
     for k, rel in enumerate(stages if isinstance(stages, list) else []):
-        p = (folder / str(rel)).resolve()
+        if not isinstance(rel, str):
+            out.append(f"stages[{k}] must be a file name")
+            continue
+        p = (folder / rel).resolve()
         if not p.is_relative_to(folder):
             out.append(f"stages[{k}] {rel!r} points outside the room's folder")
+            continue
+        try:
+            yaml.load(p.read_text(), Loader=_NoAliasLoader)
+        except (OSError, yaml.YAMLError) as exc:
+            out.append(f"stages[{k}] {rel!r}: {exc}")
     return out
 
 
