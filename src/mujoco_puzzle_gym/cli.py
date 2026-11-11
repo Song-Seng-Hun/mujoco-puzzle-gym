@@ -56,7 +56,8 @@ def _bench(args: argparse.Namespace) -> dict[str, Any]:
         raise CommandError(f"--procs must be comma-separated integers: {args.procs!r}") from exc
     try:
         return bench.run(seconds=args.seconds, procs=procs,
-                         room=None if args.no_env else (args.room or bench.DEFAULT_ROOM))
+                         room=None if args.no_env else (args.room or bench.DEFAULT_ROOM),
+                         camera=not args.no_camera)
     except (FileNotFoundError, ValueError) as exc:
         raise CommandError(str(exc)) from exc
 
@@ -68,6 +69,8 @@ def _configure_bench(p: argparse.ArgumentParser) -> None:
     p.add_argument("--room", default=None,
                    help="room for the PuzzleEnv measurement (default: examples/switch_door.yaml)")
     p.add_argument("--no-env", action="store_true", help="walker only, skip the PuzzleEnv runs")
+    p.add_argument("--no-camera", action="store_true",
+                   help="skip the PuzzleEnv runs with a 64x64 head camera (R39)")
 
 
 def _build(args: argparse.Namespace) -> dict[str, Any]:
