@@ -80,6 +80,17 @@ def test_overlapping_parts_fail_static_phase(asset_dir, tmp_path):
     env.close()
 
 
+def test_door_is_exempt_only_from_its_own_wall(asset_dir, tmp_path):
+    """A door in its wall gap passes; a door lying across another wall fails (R20)."""
+    raw = switch_door()
+    raw["parts"].append({"name": "door_x", "type": "door", "pos": [0.3, 0.6], "width": 0.4, "axis": "x"})
+    env = PuzzleEnv(room=write_room(tmp_path, raw))
+    res = check_overlap(env)
+    assert not res["ok"] and res["reason"].startswith("part 'door_x' overlaps a wall"), res
+    assert "door_b" not in res["reason"]
+    env.close()
+
+
 # ---- demo: parsing -------------------------------------------------------------------------
 @pytest.mark.parametrize("demo, needle", [
     (["jump goal"], "unknown sub-goal 'jump'"),

@@ -1,0 +1,4 @@
+# Sticky floor tile (R16 via R10): high sliding and rolling friction. Set: pos, size.
+type: floor_tile
+size: [0.4, 0.4]
+friction: [2.0, 0.02, 0.01]

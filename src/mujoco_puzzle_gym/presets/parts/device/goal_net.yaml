@@ -1,0 +1,6 @@
+# Goal net for balls (R38): `<name>.scored` pulse, `<name>.count` balls in.
+# Set: pos, facing (deg, the mouth direction), accepts (ball colours).
+type: goal_net
+width: 0.36
+depth: 0.2
+height: 0.12

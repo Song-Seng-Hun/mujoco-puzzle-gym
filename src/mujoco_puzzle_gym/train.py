@@ -5,7 +5,8 @@ writes one JSON line per finished episode (return, length, success, fall,
 switches, NaN/contradiction flags, per-term reward sums), then to the chosen
 `Trainer`. A run directory `runs/<id>/` gets:
 
-    task.resolved.yaml   the task with every default filled in
+    task.resolved.yaml   the task with every default filled in, and `room_parts`:
+                         the room's parts with preset values and overrides (R3)
     checkpoint.*         what the trainer saved (SB3: checkpoint.zip)
     episodes.jsonl       one line per training episode
     curves.png           return, success / fall / switch rates, per-term rewards
@@ -36,6 +37,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnvW
 from . import curriculum as cur_mod
 from .obs import obs_kind
 from .registry import get_algo
+from .room import Room
 from .task import TaskError, load_task, write_resolved
 
 EPISODES_NAME = "episodes.jsonl"
@@ -286,7 +288,7 @@ def train(task_path: str | Path, minutes: float, algo: str | None = None,
     if run_dir.exists():
         raise TaskError(f"run directory {run_dir} already exists")
     run_dir.mkdir(parents=True)
-    write_resolved(task, run_dir)
+    write_resolved({**task, "room_parts": Room.load(task["room"]).resolved_parts()}, run_dir)
 
     vec = make_vec_env(task, int(task["n_envs"]))
     if cur is not None:

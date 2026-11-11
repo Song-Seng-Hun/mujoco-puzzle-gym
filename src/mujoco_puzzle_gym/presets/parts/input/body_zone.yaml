@@ -1,0 +1,5 @@
+# Zone sensor, 1 while the walking body is in the box (R5). Set: pos, size.
+type: zone
+trigger: body
+size: [0.4, 0.4]
+height: 0.5

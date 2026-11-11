@@ -1,0 +1,5 @@
+# Trapdoor (R9): a floor tile that hangs open while its inputs are on; the
+# planner keeps off it then. Set: pos, size, hinge_side, in.
+type: trapdoor
+size: [0.3, 0.3]
+hinge_side: "-x"

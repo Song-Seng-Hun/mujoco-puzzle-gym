@@ -1,0 +1,3 @@
+# Gate: 1 while all inputs are on (R7). Set: in: [channel, ...].
+type: gate
+op: and

@@ -1,0 +1,5 @@
+# Slippery floor tile (R16 via R10): friction 0.2, the lowest the walking body
+# still walks on. Set: pos, size.
+type: floor_tile
+size: [0.4, 0.4]
+friction: [0.2, 0.005, 0.0001]

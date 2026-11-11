@@ -1,0 +1,6 @@
+# Sliding door that stays open once opened (R9 `mode: oneshot`). Set: pos,
+# width, axis, in.
+type: door
+mode: oneshot
+width: 0.5
+axis: y

@@ -1,0 +1,6 @@
+# Floor button, on from the first press on (R4 `oneshot`). The M1 `switch` is this
+# preset with `trigger: body` (R2). Set: pos, size.
+type: button
+kind: oneshot
+trigger: body
+size: [0.25, 0.25]

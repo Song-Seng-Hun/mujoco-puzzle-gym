@@ -76,8 +76,9 @@ def check_overlap(env: PuzzleEnv) -> dict[str, Any]:
     """Static: solid part geoms in a wall or in another part at the nominal layout.
 
     Only colliding geoms count (floor pads, flags and goal areas have none),
-    floor parts are skipped, and gates (doors) are not tested against walls:
-    they sit in a wall gap and slide into the wall."""
+    floor parts are skipped, and a gate (door) panel is not tested against its
+    own wall (`own_wall`): it sits in that wall's gap and slides into it. It is
+    tested against every other wall."""
     m = env.model
     env.reset(options={"layout": env.sample_layout(None)})
     d = env.data
@@ -107,12 +108,37 @@ def check_overlap(env: PuzzleEnv) -> dict[str, Any]:
         for g2 in geoms[i + 1:]:
             if owner[g2] != a:
                 probe(g1, g2, tuple(sorted((a, owner[g2]))))
-        if env.parts[a].role != "gate":
-            for w in walls:
+        for w in walls:
+            if not (env.parts[a].role == "gate" and own_wall(m, d, g1, w)):
                 probe(g1, w, (a, ""))
     why = [f"parts {a!r} and {b!r} overlap by {-v * 100:.1f} cm" if b else
            f"part {a!r} overlaps a wall by {-v * 100:.1f} cm" for (a, b), v in hits.items()]
     return {"ok": not why, **({"reason": "; ".join(why)} if why else {})}
+
+
+def _box_line(m, d, g: int):
+    """(centre xy, unit long-axis xy, half thickness) of a box geom seen from above."""
+    rot = d.geom_xmat[g].reshape(3, 3)
+    size = m.geom_size[g]
+    k = 0 if size[0] >= size[1] else 1
+    axis = rot[:2, k]
+    n = float(np.linalg.norm(axis))
+    return d.geom_xpos[g][:2], axis / (n if n > 1e-9 else 1.0), float(size[1 - k])
+
+
+def own_wall(m, d, panel: int, wall: int) -> bool:
+    """Whether box geom `wall` is the wall a gate's box geom `panel` closes a gap of:
+    the two lie along one line (parallel within 5 deg, the panel centre on the
+    wall's centre line). Non-box geoms have no own wall."""
+    box = mujoco.mjtGeom.mjGEOM_BOX
+    if m.geom_type[panel] != box or m.geom_type[wall] != box:
+        return False
+    pc, pa, pt = _box_line(m, d, panel)
+    wc, wa, wt = _box_line(m, d, wall)
+    if abs(float(pa @ wa)) < np.cos(np.radians(5.0)):
+        return False
+    off = pc - wc
+    return abs(float(off @ np.array([-wa[1], wa[0]]))) <= wt + pt
 
 
 def check_order(env: PuzzleEnv) -> dict[str, Any]:

@@ -1,0 +1,6 @@
+# Sliding door in a wall gap (R9): open while its inputs are on. Set: pos,
+# width, axis (direction the panel lies along), in: [channel, ...].
+type: door
+mode: follow
+width: 0.5
+axis: y

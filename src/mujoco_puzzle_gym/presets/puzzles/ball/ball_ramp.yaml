@@ -23,7 +23,7 @@ spawn: {pos: [-0.95, -0.1], yaw: 0.0, random: [0.05, 0.1, 0.5]}
 parts:
   - {name: ball, type: ball, pos: [-0.6, 0.18], random: [0.03, 0.05]}
   - {name: net, type: goal_net, pos: [0.5, 0.18], width: 0.34, depth: 0.2, facing: 180}
-  - {name: door, type: door, pos: [0.75, -0.15], width: 0.5, axis: y, in: [net]}
+  - {name: door, type: door, pos: [0.75, -0.14], width: 0.48, axis: y, in: [net]}   # clear of the bottom wall
   - {name: goal, type: goal, pos: [0.95, -0.15], radius: 0.1}
 demo:                             # scripted solver (R20)
   - push ball to net

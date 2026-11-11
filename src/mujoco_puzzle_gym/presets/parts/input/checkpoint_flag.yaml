@@ -1,0 +1,6 @@
+# Checkpoint flag (R6): on for good when the body reaches it in its turn; the
+# env saves a snapshot there. Set: pos, order (1, 2, ...).
+type: checkpoint
+order: 1
+radius: 0.15
+skip: ignore

@@ -1,0 +1,5 @@
+# Coin (R36): picked when the body centre comes within `radius`. Coins of one
+# `group` count together (`<group>.count`, `<group>.total`). Set: pos, group.
+type: coin
+radius: 0.08
+group: coins
