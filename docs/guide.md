@@ -89,6 +89,23 @@ n_envs: 12
 plugins: []                              # 직접 만든 부품·관측·보상 모듈
 ```
 
+## 단계별 학습과 구간 평가
+
+체크포인트 깃발(`type: checkpoint`, `order: 1, 2, …`)이 있는 방은 구간으로 나뉩니다. 깃발이 2개면 `start->f1`, `f1->f2`, `f2->goal` 세 구간입니다. 첫 구간은 보통 에피소드처럼 시작하고, 나머지는 `mpg check`가 남긴 깃발 저장본(`runs/check/<방>/checkpoints/<깃발>.pkl`)에서 시작합니다. 그래서 먼저 `mpg check`를 돌립니다.
+
+```bash
+mpg check room.yaml
+mpg train task.yaml --minutes 60 --curriculum forward --advance-at 0.8 --replay 0.2
+mpg eval runs/<id> --full --segments
+```
+
+- `--curriculum forward`: 첫 구간만 학습하다가, 그 구간의 최근 성공률(`window` 에피소드)이 `--advance-at`에 닿으면 다음 구간을 엽니다. 에피소드의 `--replay` 비율은 이미 연 앞 구간에서 시작합니다. 구간 에피소드는 구간 끝 깃발에 닿으면 성공으로 끝납니다.
+- `--curriculum reverse`: 마지막 구간에서 골까지부터 시작해 시작점을 앞으로 당깁니다. `none`(기본)은 처음부터 골까지입니다.
+- 같은 값은 task.yaml에 `curriculum: {mode: forward, advance_at: 0.8, replay: 0.2, window: 50, snapshots: null}`로 적을 수 있습니다. `snapshots`는 저장본 폴더입니다(비우면 `runs/check/<방>/checkpoints`).
+- 진행은 `runs/<id>/curriculum.json`에 시각, 열린 구간, 구간별 성공률로 남습니다.
+- 깃발은 풀이 순서에 들어가므로 보상 `progress`와 관측 `target_pos`가 깃발을 차례로 거쳐 갑니다. 관측 항목 `checkpoints`는 다음 깃발(one-hot, 마지막 칸은 골)과 깃발별 도달 여부입니다.
+- `mpg eval --full`은 저장본 없이 처음부터 골까지의 성공률(`full_success_rate`)을, `--segments`는 구간별 성공률(`segment_success_rates`)을 냅니다. 둘을 함께 쓰면 "구간은 모두 성공했지만 이어 달리면 실패한 비율"(`chain_gap_rate`)도 냅니다.
+
 ## 새 부품, 관측, 보상, 알고리즘 넣기
 
 퍼즐 장치는 `Part`를 상속한 파이썬 클래스입니다. 장면에 자기 몸체를 더하고(`build`), 몸 스텝마다 상태를 읽고(`update`), 상태 값을 냅니다(`state`, `satisfied`). 역할(`switch`, `gate`, `goal`, `prop`)을 정하면 점검과 환경이 그 부품을 풀이 순서에 넣어 다룹니다.
