@@ -45,6 +45,10 @@ to <net or pin>`. After the last one the solver goes on with the grid answer
 (the solution order), so a demo may stop before the goal. Without `demo:` the
 solver uses the grid answer only. `grab` and `place` come with cubes (PR E3).
 
+Markers and gaze (R26, R27): marked parts get ArUco markers (markers/);
+`gaze: {fov, max_dist, max_tilt, dwell}` sets the gaze sensor (gaze.py), and a
+part reading `<part>.seen` adds the hidden `_gaze` part writing it.
+
 Errors: `RoomError.stage` names the `mpg check` static stage a load error
 belongs to (`values`: a value out of its range, R3; `channels`: a channel no
 part writes, two writers, a stateless loop or a link to a missing part, R1;
@@ -63,6 +67,8 @@ import numpy as np
 import yaml
 
 from . import floor as floor_mod
+from . import gaze as gaze_mod
+from . import markers
 from .bodies import BodyAdapter, flat_floor_spec
 from .floor import FloorMap, Rect, StaticTile
 from .layout import Grid, Segment
@@ -175,6 +181,7 @@ class Room:
     map: RoomMap | None = None          # letter map (R37)
     on_fall: str = "fail"               # fall into a hole: fail | reset (R37, R16)
     demo: list[tuple] = field(default_factory=list)   # scripted solver sub-goals (R20)
+    gaze: gaze_mod.GazeConfig = field(default_factory=gaze_mod.GazeConfig)   # R27
 
     # ---- loading ----------------------------------------------------------
     @classmethod
@@ -256,6 +263,10 @@ class Room:
             if raw.get("stages"):
                 raise RoomError("a `stages:` room cannot list stages itself")
             return room
+        try:
+            room.gaze = gaze_mod.parse_config(raw.get("gaze"))
+        except ValueError as exc:
+            raise RoomError(str(exc), "values") from None
         room._add_stages(raw.get("stages") or [])
         parts = room.make_parts()          # validates parts and links
         room.demo = parse_demo(raw.get("demo"), parts)
@@ -307,6 +318,7 @@ class Room:
                 raise RoomError(f"part {name!r}: {exc.args[0]}") from None
             try:
                 parts[name] = cls(name, {k: v for k, v in cfg.items() if k not in ("name", "type")})
+                parts[name].marker = markers.parse(parts[name], parts[name].cfg.get("marker"))
             except (ValueError, TypeError) as exc:
                 raise RoomError(str(exc), "values") from None
             parts[name].zone = self.part_zones[i] if i < len(self.part_zones) else 0
@@ -350,6 +362,14 @@ class Room:
                 raise RoomError(f"links[{i}]: {src!r} writes no channel (`out: []`)")
             if parts[src].outputs[0] not in parts[dst].inputs:
                 parts[dst].inputs.append(parts[src].outputs[0])
+        try:
+            markers.assign_ids(parts)
+        except ValueError as exc:
+            raise RoomError(str(exc), "values") from None
+        try:
+            gaze_mod.add_watch(parts, self.gaze)
+        except ValueError as exc:
+            raise RoomError(str(exc), "channels") from None
         try:
             parts.bus = wire(parts)
         except SignalError as exc:
@@ -468,6 +488,7 @@ class Room:
             spec.geom("floor").priority = 1
         for part in parts.values():
             pb = part.build(spec)
+            markers.attach(spec, part)
             if self.map is not None and pb is not None and not getattr(part, "floor_part", False):
                 top = self.map.height_at(part.base_xy)[0]     # stand parts on raised cells
                 if top:

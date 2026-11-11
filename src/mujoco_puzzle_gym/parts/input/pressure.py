@@ -15,6 +15,7 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 
+from ... import markers
 from ...schema import Field
 from ..base import TRIGGERS, Part
 
@@ -25,6 +26,9 @@ ON_RGBA = (0.2, 0.8, 0.3, 1.0)
 
 class PressurePlate(Part):
     role = "sensor"
+    marked = True
+    marker_anchor = "/plate"
+    marker_faces = markers.FACES_FLAT
     stage = "input"
     emits = True
     state_keys = ("on", "mass")
@@ -34,6 +38,9 @@ class PressurePlate(Part):
               doc="mass needed to turn on"),
         Field("trigger", "enum", "object", choices=tuple(TRIGGERS)),
     )
+
+    def marker_face_size(self, face):
+        return float(min(self.cfg["size"]))
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)

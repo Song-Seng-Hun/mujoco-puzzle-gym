@@ -144,7 +144,7 @@ class PuzzleEnv(gym.Env):
         self.observation_space = self._obs_space(self._obs())
 
     def _make_world(self) -> World:
-        world = World(dt=self.body.control_dt)
+        world = World(dt=self.body.control_dt, body=self.body)
         world.kinds[int(self.model.body_rootid[self.body.root_body_id(self.model)])] = "body"
         for p in self.parts.values():
             if p.kind:

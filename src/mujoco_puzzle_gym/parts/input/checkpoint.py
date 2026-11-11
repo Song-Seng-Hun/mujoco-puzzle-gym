@@ -16,6 +16,7 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 
+from ... import markers
 from ...schema import Field
 from ..base import Part
 
@@ -26,6 +27,9 @@ POLE_H = 0.3
 
 class Checkpoint(Part):
     role = "checkpoint"
+    marked = True
+    marker_anchor = "/disk"
+    marker_faces = markers.FACES_FLAT
     stage = "input"
     emits = True
     stateful = True
@@ -36,6 +40,9 @@ class Checkpoint(Part):
         Field("skip", "enum", "ignore", choices=("ignore", "fail"),
               doc="reaching this flag before its turn: ignore it, or fail the episode"),
     )
+
+    def marker_face_size(self, face):
+        return markers.disk_square(float(self.cfg["radius"]))
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)

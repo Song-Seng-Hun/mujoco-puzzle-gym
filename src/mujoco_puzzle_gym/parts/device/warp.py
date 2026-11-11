@@ -29,6 +29,7 @@ from typing import Any
 import mujoco
 import numpy as np
 
+from ... import markers
 from ...expr import ExprError, compile_expr
 from ...schema import Field, SchemaError
 from ..base import TRIGGERS, Part
@@ -38,6 +39,7 @@ DESTS = ("reset", "next_stage")
 ROUTE_RGBA = ((0.55, 0.3, 0.85, 1.0), (0.2, 0.75, 0.85, 1.0), (0.95, 0.55, 0.15, 1.0),
               (0.85, 0.25, 0.45, 1.0))
 NONE_RGBA = (0.4, 0.4, 0.4, 1.0)
+RING = 0.6           # ring radius / half the pad's short side
 
 
 def parse_dest(owner: str, d: Any) -> Any:
@@ -57,6 +59,9 @@ def parse_dest(owner: str, d: Any) -> Any:
 
 class Warp(Part):
     role = "warp"
+    marked = True
+    marker_anchor = "/ring"
+    marker_faces = markers.FACES_FLAT
     stage = "device"
     suffixes = (".route",)
     state_keys = ("uses", "inside")
@@ -72,6 +77,9 @@ class Warp(Part):
         Field("max_height", "float", 0.2, unit="m", min=0.01, max=1.0,
               doc="objects count when their centre is lower than this"),
     )
+
+    def marker_face_size(self, face):
+        return markers.disk_square(float(min(self.cfg["size"])) / 2 * RING)
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)
@@ -136,7 +144,7 @@ class Warp(Part):
                       size=[*self.half, 0.003], pos=[0, 0, 0.003], rgba=ROUTE_RGBA[0],
                       contype=0, conaffinity=0)
         body.add_geom(name=self.body_name + "/ring", type=mujoco.mjtGeom.mjGEOM_CYLINDER,
-                      size=[min(self.half) * 0.6, 0.004], pos=[0, 0, 0.004], rgba=(1, 1, 1, 0.6),
+                      size=[min(self.half) * RING, 0.004], pos=[0, 0, 0.004], rgba=(1, 1, 1, 0.6),
                       contype=0, conaffinity=0)
         return body
 

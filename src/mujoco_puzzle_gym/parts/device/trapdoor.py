@@ -21,6 +21,7 @@ import math
 import mujoco
 import numpy as np
 
+from ... import markers
 from ...floor import TILE_THICKNESS
 from ...schema import Field
 from ..floor.tile import FloorPart
@@ -33,11 +34,17 @@ OPEN_ANGLE = math.pi / 2
 
 class Trapdoor(FloorPart, Opening):
     role = "prop"
+    marked = True
+    marker_anchor = "/tile"
+    marker_faces = markers.FACES_FLAT
     state_keys = ("q", "goal", "latched")
     fields = (
         Field("hinge_side", "enum", "-x", choices=tuple(SIDES), doc="edge the tile hangs from"),
         Field("speed", "float", 180.0, unit="deg/s", min=10.0, max=2000.0, doc="opening speed"),
     )
+
+    def marker_face_size(self, face):
+        return float(min(self.cfg["size"]))
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)
