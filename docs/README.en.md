@@ -16,101 +16,43 @@ A framework in which AI agents build puzzle rooms inside a MuJoCo physics simula
 
 ## What is this?
 
-Most public robot learning environments have fixed scenes. The kitchen, desk or maze is built in advance, and a new task means editing the environment code. Training a real walking robot body on multi-step puzzles where device states change (step on a switch, a door opens, a button behind it turns on another device) takes a lot of hand work.
+- **Puzzles are built like programs.** A room is one `room.yaml`: walls, part positions, how far each episode shakes them, and the signal links between parts. A new device is one Python class.
+- **It checks a room can be solved first.** Before you spend time training, it checks in seconds that a solution order exists, that the physics is stable, and that a scripted solver that knows the answer solves it.
+- **It trains, and tells you why training fails.** On failure it names the cause (environment bug, falling, not enough exploration, reward hacking) with evidence and a fix direction. Every command prints JSON, so an AI agent can run this loop without a person.
 
-mujoco-puzzle-gym is built so that an agent can do this work.
+The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) by Pollen Robotics. Its published walking policy is used as is, and only "where to walk and how fast" is learned on top.
 
-- **Puzzles are built like programs.** A room is one `room.yaml`: walls, part positions, randomisation ranges and the signal links between parts. A new device is one `Part` class plus a registration call. No library code changes.
-- **Check that a room can be solved first.** Before spending hours on training, it checks in seconds that a solution order exists, that the physics stays stable while the body stands still, and that a scripted solver that knows the answer actually solves it.
-- **Train, and learn why training failed.** When training does not work, it names one of four causes (environment bug, the body falls, not enough exploration, reward hacking) with evidence numbers, a failure video and a direction for the fix.
-- **Every command prints JSON.** An agent can read the results and choose its next step without a person.
+## Install
 
-The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl), a small biped robot by Pollen Robotics. Its published walking policy is used as is, and only "which way to walk and how fast" is learned on top of it. The body sits behind an adapter, so another body can take its place.
-
-## How it works
-
-```mermaid
-flowchart LR
-    A["Build room<br/>room.yaml"] --> B["Check<br/>mpg check"]
-    B -->|not solvable| A
-    B --> C["Train<br/>mpg train"]
-    C --> D["Diagnose<br/>mpg diagnose"]
-    D -->|cause and fix| A
-    D -->|ok| E["Eval and video<br/>mpg eval · render"]
-```
-
-1. **Build**: an agent (or a person) writes `room.yaml` and the training settings `task.yaml`. `mpg build` makes the MJCF and a top-view image to look at.
-2. **Check**: `mpg check` runs three stages. (a) Given the signal links and walls, is there a solution order that reaches the goal? (b) Does the body stay up with no NaN for 10 s at zero command? (c) Does a scripted solver that knows the answer solve at least 18 of 20 random layouts?
-3. **Train**: `mpg train` trains for a set time and leaves a checkpoint, learning curves and an episode log in `runs/<id>/`.
-4. **Diagnose**: `mpg diagnose` reads the training log and fresh rollouts and classifies the cause. Fix it and train again.
-5. **Eval and video**: `mpg eval` measures the success rate on layouts not used in training, and `mpg render` makes a success video.
-
-## Features
-
-- **Rooms in YAML**: room size and walls, part layout, per-part randomisation ranges, start pose, and signal links between parts (`links`).
-- **Extensible parts, observations, rewards and algorithms**: all go through the same registration functions (`register_part`, `register_obs`, `register_reward`, `register_algo`). The built-in parts are registered the same way.
-- **Three-stage check**: solution order, physics stability, scripted-solver success rate.
-- **Training**: PPO (default), SAC and A2C from Stable-Baselines3. Your own algorithm plugs in through the `Trainer` interface. Parallel environments, checkpoints, per-term reward logs, learning curves.
-- **Diagnosis**: four causes (environment bug, body failure, exploration, reward hacking) with evidence numbers, a failure video and a fix direction.
-- **Eval and video**: success rate and mean time on held-out seeds, comparison with a random policy, offscreen MP4.
-- **Body adapter**: the puzzle code knows nothing about the body. The adapter takes a motion command, moves the body and returns the body state.
-- **Pinned assets**: the robot model and walking policy come from fixed commits of the official repositories and are checked by SHA256.
-
-## Quick start
-
-You need [uv](https://docs.astral.sh/uv/) and Python 3.12. Tested on macOS (Apple Silicon).
+On macOS or Linux, one line does it. It installs everything needed (uv, Python 3.12, dependencies, the robot model and walking policy, about 22 MB) and checks the example room to confirm the setup.
 
 ```bash
-git clone https://github.com/Song-Seng-Hun/mujoco-puzzle-gym.git
-cd mujoco-puzzle-gym
-uv sync
+git clone https://github.com/Song-Seng-Hun/mujoco-puzzle-gym.git && cd mujoco-puzzle-gym && ./install.sh
 ```
 
-Download the robot model and walking policy (43 files, about 22 MB). The files are checked by hash, and their source and license are printed.
+Tested on macOS (Apple Silicon). Windows has not been tested yet.
+
+## Try it
+
+Make a video of the trained duck solving the example room (`demo.mp4`).
 
 ```bash
-uv run mpg fetch-assets
+uv run mpg demo
 ```
 
-Check that the example room can be solved. It takes a few seconds.
-
-```bash
-uv run mpg check examples/switch_door.yaml
-```
-
-Train a policy in the example room, evaluate it and render a video. On a 12-core machine, 15 minutes of training solved 99% of unseen layouts (log: [training-log.md](training-log.md)).
+Train your own. On a 12-core machine, 15 minutes solved 99% of unseen layouts ([training log](training-log.md)).
 
 ```bash
 uv run mpg train examples/task_ppo.yaml --minutes 15 --id first
 ```
 
 ```bash
-uv run mpg eval runs/first --episodes 100
-```
-
-```bash
 uv run mpg render runs/first
 ```
 
-## Commands
+## Make your own puzzle room
 
-Every command accepts `--json` and exits non-zero on failure.
-
-| Command | What it does |
-|---|---|
-| `mpg fetch-assets` | Download the robot model and walking policy from pinned commits and verify hashes |
-| `mpg build <room.yaml>` | Make the body + room MJCF and a top-view PNG |
-| `mpg check <room.yaml>` | Check solution order, physics stability and scripted-solver success |
-| `mpg train <task.yaml> --minutes N` | Train for a set time; results in `runs/<id>/` |
-| `mpg diagnose runs/<id>` | Classify the failure cause, with evidence numbers and a failure video |
-| `mpg eval runs/<id>` | Success rate and mean time on held-out layouts (`--policy random` for a baseline) |
-| `mpg render runs/<id>` | MP4 of a success episode |
-| `mpg bench` | Measure simulation speed of the walking body and the environment |
-| `mpg version` | Print the version |
-
-## Building a puzzle room
-
-The example room [`examples/switch_door.yaml`](../examples/switch_door.yaml). Stepping on the switch opens the door in the divider; reaching the goal behind it is success.
+Copy the example room [`examples/switch_door.yaml`](../examples/switch_door.yaml), change it, check that it can be solved, then train. In this room, stepping on the switch opens the door, and reaching the goal is success.
 
 ```yaml
 name: switch_door
@@ -128,58 +70,11 @@ links:
   - {from: switch_a, to: door_b}  # door_b opens when switch_a is on
 ```
 
-- `random` is the range by which the layout is shaken each episode. Evaluation uses layouts from seeds not used in training.
-- A door can require several switches together with `require: all | any`. A switch stays on once stepped on by default; with `latch: false` it is on only while pressed.
-- Deliberately broken rooms and settings are in [`examples/broken/`](../examples/broken/). They test whether check and diagnose name the cause correctly.
-
-## Training settings
-
-[`examples/task_ppo.yaml`](../examples/task_ppo.yaml) sets the room, observations, rewards and algorithm. Missing keys take defaults, and the full resolved settings are saved as `runs/<id>/task.resolved.yaml`.
-
-```yaml
-room: switch_door.yaml
-env: {hz: 10, episode_seconds: 40}       # the high-level policy decides 10 times a second
-obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
-reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
-termination: {success: true, fall: true}
-algo: ppo
-algo_kwargs: {learning_rate: 0.0003, n_steps: 256, batch_size: 1024, gamma: 0.99}
-net: [128, 128]
-n_envs: 12
-plugins: []                              # your own part / observation / reward modules
+```bash
+uv run mpg check my_room.yaml
 ```
 
-## Adding parts, observations, rewards and algorithms
-
-A puzzle device is a Python class that inherits `Part`. It adds its own body to the scene (`build`), reads its state every body step (`update`) and reports a state value (`state`, `satisfied`). Once it declares a role (`switch`, `gate`, `goal`, `prop`), the check and the environment put it into the solution order.
-
-```python
-# my_parts.py
-from mujoco_puzzle_gym.parts.base import Part
-from mujoco_puzzle_gym.registry import register_part, register_reward
-
-@register_part("timed_switch")
-class TimedSwitch(Part):
-    role = "switch"
-    ...
-
-@register_reward("upright")
-def upright(env):                 # the term value before its weight is applied
-    return -float(env.body_state.gravity[2])
-```
-
-Put `plugins: [my_parts]` in `task.yaml` and the module is imported first, in the main process and in every parallel training worker. A training algorithm implements `algos.base.Trainer` and is registered with `register_algo`, or published through the package entry point `mujoco_puzzle_gym.algos`.
-
-## Body adapter
-
-The puzzle code does not know which body is walking. `BodyAdapter` is the boundary.
-
-- `spawn`: add the body to the scene.
-- `reset`: put the body in its standing pose and clear the controller state.
-- `step`: follow a motion command (forward speed, lateral speed, turn rate) for one control period.
-- `state`: return position, orientation, velocities and whether the body has fallen.
-
-The Microduck adapter runs the official walking policy `velstand.onnx` at 50 Hz with the motor model (BAM) from the official repository. Body names (joints, sites) are handled only inside `bodies/`. To add another body, implement these four methods and its command limits.
+All commands, training settings, adding parts and rewards, and swapping the body are in the [guide](guide.en.md).
 
 ## Status and limits
 
@@ -204,6 +99,7 @@ The planning, design documents, code, tests and training experiments in this rep
 
 ## More
 
-- [training-log.md](training-log.md): training log and diagnosis results on broken settings
-- [bench.md](bench.md): simulation speed measurements
-- [specs/](specs/): intent, requirements and implementation plan documents
+- [Guide](guide.en.md): the loop, commands, training settings, extending, body adapter
+- [Training log](training-log.md): training results and diagnoses of broken settings
+- [Speed measurements](bench.md)
+- [Design documents](specs/)

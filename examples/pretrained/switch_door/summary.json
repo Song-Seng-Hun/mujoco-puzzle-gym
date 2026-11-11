@@ -1,0 +1,60 @@
+{
+  "run_id": "a1-base15",
+  "task": "examples/task_ppo.yaml",
+  "algo": "ppo",
+  "checkpoint": "checkpoint.zip",
+  "minutes_budget": 15.0,
+  "train_seconds": 900.0,
+  "wall_seconds": 903.8,
+  "env_steps": 2956692,
+  "env_steps_logged": 2956692,
+  "steps_per_s": 3285.2,
+  "n_envs": 12,
+  "train_seeds": [
+    0,
+    11
+  ],
+  "episodes": 31201,
+  "first_window": {
+    "episodes": 500,
+    "mean_return": 18.589,
+    "std_return": 12.241,
+    "success_rate": 0.522,
+    "fall_rate": 0.002,
+    "switch_rate": 0.806,
+    "nan_episodes": 0,
+    "contradiction_episodes": 0,
+    "mean_length": 298.6,
+    "mean_terms": {
+      "progress": 11.767,
+      "stage": 1.612,
+      "success": 5.22,
+      "fall": -0.01
+    },
+    "mean_seconds": 29.86
+  },
+  "last_window": {
+    "episodes": 500,
+    "mean_return": 30.129,
+    "std_return": 3.427,
+    "success_rate": 0.992,
+    "fall_rate": 0.0,
+    "switch_rate": 0.992,
+    "nan_episodes": 0,
+    "contradiction_episodes": 0,
+    "mean_length": 85.5,
+    "mean_terms": {
+      "progress": 18.225,
+      "stage": 1.984,
+      "success": 9.92,
+      "fall": 0.0
+    },
+    "mean_seconds": 8.55
+  },
+  "files": {
+    "task": "task.resolved.yaml",
+    "episodes": "episodes.jsonl",
+    "curves": "curves.png",
+    "checkpoint": "checkpoint.zip"
+  }
+}

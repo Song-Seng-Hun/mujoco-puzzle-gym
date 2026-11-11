@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import sys
+from pathlib import Path
 from typing import Any, Callable
 
 from . import __version__
@@ -187,6 +188,25 @@ def _configure_render(p: argparse.ArgumentParser) -> None:
     p.add_argument("--tries", type=int, default=20, help="eval seeds to try for a success")
 
 
+DEMO_RUN = Path(__file__).resolve().parents[2] / "examples" / "pretrained" / "switch_door"
+
+
+def _demo(args: argparse.Namespace) -> dict[str, Any]:
+    from .evaluate import render
+
+    if not (DEMO_RUN / "summary.json").exists():
+        raise CommandError(f"bundled demo policy missing at {DEMO_RUN} (run from a git checkout)")
+    try:
+        return render(DEMO_RUN, out=args.out, seed=args.seed)
+    except _run_errors() as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _configure_demo(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--out", default="demo.mp4", help="MP4 path (default: ./demo.mp4)")
+    p.add_argument("--seed", type=int, default=None, help="layout seed (default: first success)")
+
+
 COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None]]] = {
     "version": ("Print the package version.", _version, lambda p: None),
     "fetch-assets": ("Download and SHA256-verify the pinned robot and policy files.",
@@ -201,6 +221,7 @@ COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None
                  _diagnose, _configure_diagnose),
     "eval": ("Success rate and mean time on held-out layouts.", _eval, _configure_eval),
     "render": ("Offscreen MP4 of a success episode.", _render, _configure_render),
+    "demo": ("Render the bundled trained policy solving the example room to demo.mp4.", _demo, _configure_demo),
 }
 
 
