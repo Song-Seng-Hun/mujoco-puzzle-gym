@@ -45,9 +45,9 @@ def test_forward_walk(sim):
     start, end, fell = walk(sim, (0.3, 0.0, 0.0))
     assert not fell
     forward = end.pos[0] - start.pos[0]
-    # spec R3 asks 1.05-1.95 m (0.3 m/s tracked). velstand under-tracks vx:
-    # measured 0.73 m here (~0.16 m/s); upstream's own sim eval reports
-    # 0.4 m/s -> 0.17 m/s (docs/velstand_policy.md @0daab16). Band pending user decision.
+    # spec R3: 0.5-1.1 m. velstand tracks about half of vx: measured 0.73 m here
+    # (~0.16 m/s); upstream's own sim eval reports 0.4 m/s -> 0.17 m/s
+    # (docs/velstand_policy.md @0daab16).
     assert 0.5 < forward < 1.1, forward
     assert abs(end.pos[1] - start.pos[1]) < 0.3
 

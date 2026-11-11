@@ -49,7 +49,7 @@ View (read-only copy): (아직 없음)
 5. 마이크로덕 (R3): `infer_policy.py`(고정 커밋)를 읽고 관측 61차원, 기본 관절 자세, 행동 스케일, BAM 설정을 옮겨 다시 쓴다. 넘어짐 판정은 투영 중력 z와 몸통 높이로. `test_walk.py` 통과까지 subagent가 반복해도 된다.
    - 2026-11-11 구현 메모: `infer_policy.py` 기본값과 학습 설정(`Mjlab-VelStand-Rough-Backlash-MicroDuck`)이 다른 곳은 학습 쪽을 따랐다: 로봇 `robot_allcollisions_backlash.xml`, 엔코더가 백래시를 거쳐 읽힘(관측과 펌웨어 PD), 액추에이터 지연 4 물리스텝(학습 3–6). 이것 없이는 wz=−1.0, vx=−0.4 등에서 제자리에 선다. BAM은 고정 의존성 1.0.3(학습은 BAM git `62bd8ce`, XL330 m6 계수가 다름).
    - 경계 보조: `bodies/__init__.py`의 `make_body()`, `bodies/base.py`의 `flat_floor_spec()`, 어댑터 속성 `timestep`과 `clip_cmd()`. 합친 모델 안의 몸 이름에는 `body/` 접두사가 붙는다(`MjSpec.attach`).
-   - **R3 거리 기준 불일치 (사용자 결정 대기)**: velstand는 vx를 절반 정도만 따른다. 측정: 명령 0.3 → 5초 0.73 m(약 0.16 m/s), 0.4 → 약 0.23 m/s. 상위 저장소 자체 평가도 0.4 → 0.17 m/s(`docs/velstand_policy.md`). spec의 1.05–1.95 m는 이 정책으로 닿을 수 없어 `test_walk.py`는 임시로 0.5–1.1 m를 확인한다.
+   - **R3 거리 기준 (2026-11-11 사용자 승인으로 spec을 0.5–1.1 m로 변경)**: velstand는 vx를 절반 정도만 따른다. 측정: 명령 0.3 → 5초 0.73 m(약 0.16 m/s), 0.4 → 약 0.23 m/s. 상위 저장소 자체 평가도 0.4 → 0.17 m/s(`docs/velstand_policy.md`). 처음 spec의 1.05–1.95 m는 이 정책으로 닿을 수 없어 0.5–1.1 m로 바꿨다.
 6. 첫 속도 측정 (R13 일부): 걷기만 돌려 초당 물리 스텝을 잰다. 위층 1스텝 = 걷기 5스텝이므로 위층 스텝/초를 추정해 `docs/bench.md`에 적는다. 이 숫자로 2시간 안에 몇 스텝을 학습할 수 있는지 먼저 계산해 데스크에 보고한다.
 
 **PR B — 부품, 방, 점검, 환경**
@@ -88,7 +88,7 @@ View (read-only copy): (아직 없음)
 |---|---|
 | R1 | `pytest tests/test_assets.py` 통과; `mpg fetch-assets --json` → `"verified": true`, 두 번째 실행 `"downloaded": 0` |
 | R2 | `pytest tests/test_boundary.py` 통과 |
-| R3 | `pytest tests/test_walk.py` 통과 (vx=0.3 5초 → spec은 1.05–1.95 m, 지금 테스트는 0.5–1.1 m이며 사용자 결정 대기; 넘어짐 없음; 명령 0 → 0.1 m 미만) |
+| R3 | `pytest tests/test_walk.py` 통과 (vx=0.3 5초 → 0.5–1.1 m, 넘어짐 없음; 명령 0 → 0.1 m 미만) |
 | R4 | `pytest tests/test_parts.py` 통과 |
 | R5 | `mpg build examples/switch_door.yaml --json` → `ok: true` + MJCF·PNG 경로; 잘못된 링크 → `ok: false` + 이유 |
 | R6 | `mpg check examples/switch_door.yaml --json` 세 항목 통과; 실패 예제 2개가 각각 (a), (c)에서 실패 |
