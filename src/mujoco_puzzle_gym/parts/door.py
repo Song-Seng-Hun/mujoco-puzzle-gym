@@ -12,6 +12,7 @@ import mujoco
 import numpy as np
 
 from ..layout import Segment
+from ..schema import Field
 from .base import Part
 
 OPEN_FRACTION = 0.9   # state above this counts as open
@@ -19,16 +20,22 @@ OPEN_FRACTION = 0.9   # state above this counts as open
 
 class Door(Part):
     role = "gate"
+    fields = (
+        Field("width", "float", 0.5, unit="m", min=0.1, max=2.0, doc="opening the panel spans"),
+        Field("axis", "enum", "y", choices=("x", "y"), doc="direction the panel lies along"),
+        Field("thickness", "float", 0.04, unit="m", min=0.01, max=0.2),
+        Field("height", "float", 0.25, unit="m", min=0.05, max=1.0),
+        Field("open_dir", "enum", 1, choices=(1, -1), doc="slide toward +axis (1) or -axis (-1)"),
+    )
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)
-        self.width = float(cfg.get("width", 0.5))
-        self.axis = cfg.get("axis", "y")
-        if self.axis not in ("x", "y"):
-            raise ValueError(f"door {name!r}: `axis` must be 'x' or 'y'")
-        self.thickness = float(cfg.get("thickness", 0.04))
-        self.height = float(cfg.get("height", 0.25))
-        self.direction = 1.0 if float(cfg.get("open_dir", 1)) >= 0 else -1.0
+        cfg = self.cfg
+        self.width = float(cfg["width"])
+        self.axis = cfg["axis"]
+        self.thickness = float(cfg["thickness"])
+        self.height = float(cfg["height"])
+        self.direction = float(cfg["open_dir"])
         self.travel = self.width + 0.02
         self.q = 0.0
 

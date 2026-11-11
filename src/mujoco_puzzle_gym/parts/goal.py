@@ -5,15 +5,19 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 
+from ..schema import Field
 from .base import Part
 
 
 class Goal(Part):
     role = "goal"
+    fields = (
+        Field("radius", "float", 0.15, unit="m", min=0.03, max=1.0, doc="reach distance"),
+    )
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)
-        self.radius = float(cfg.get("radius", 0.15))
+        self.radius = float(self.cfg["radius"])
         self.reached = False
 
     def build(self, spec):

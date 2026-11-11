@@ -7,6 +7,7 @@ import numpy as np
 
 from ..bodies import BodyState
 from ..layout import Grid
+from ..schema import Field
 from .base import Part
 
 OFF_RGBA = (0.95, 0.75, 0.1, 1.0)
@@ -15,13 +16,18 @@ ON_RGBA = (0.2, 0.8, 0.3, 1.0)
 
 class Switch(Part):
     role = "switch"
+    fields = (
+        Field("size", "vec", [0.25, 0.25], length=2, unit="m", min=0.05, max=2.0,
+              doc="plate size [x, y]"),
+        Field("latch", "bool", True, doc="stay on after the body leaves (false: momentary)"),
+    )
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)
-        self.half = np.asarray(cfg.get("size", [0.25, 0.25]), dtype=float) / 2
+        self.half = np.asarray(self.cfg["size"], dtype=float) / 2
         # Latching by default: one body cannot hold a switch and walk through
         # the door it opens. `latch: false` makes it momentary.
-        self.latch = bool(cfg.get("latch", True))
+        self.latch = self.cfg["latch"]
         self.on = False
 
     def build(self, spec):

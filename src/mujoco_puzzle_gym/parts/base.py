@@ -9,6 +9,11 @@ Roles drive the generic logic in `check` and `PuzzleEnv`:
 - "gate":   blocks movement until its linked sources are on. Can be a link target.
 - "goal":   `satisfied()` is True when the body reached it; ends the episode.
 - "prop":   anything else (decoration, obstacles via `blockers`).
+
+Settings (R3): each class lists its values as `fields` (`schema.Field`); the
+class schema is the union over its base classes (`full_schema`). The checked
+values, defaults filled in, are `self.cfg`; an out-of-range value raises
+`SchemaError` (a ValueError) naming the part, the value and the allowed range.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import numpy as np
 
 from ..bodies import BodyState
 from ..layout import Grid, Segment
+from ..schema import Field, Schema, resolve
 
 BODY_PREFIX = "part/"
 
@@ -27,21 +33,32 @@ BODY_PREFIX = "part/"
 class Part:
     type_name: ClassVar[str] = "part"
     role: ClassVar[str] = "prop"
+    #: Values this class adds to its base classes' schema (R3).
+    fields: ClassVar[tuple[Field, ...]] = (
+        Field("pos", "vec", length=2, unit="m", doc="position [x, y] on the floor"),
+        Field("random", "vec", [0.0, 0.0], length=2, unit="m", min=0.0, max=5.0,
+              doc="uniform +- range added to pos on every reset"),
+        Field("require", "enum", "all", choices=("all", "any"),
+              doc="gates: open when all / any of their inputs are on"),
+    )
+
+    @classmethod
+    def full_schema(cls) -> Schema:
+        """Fields of this class and its bases (subclass entries override)."""
+        schema: Schema = {}
+        for klass in reversed(cls.__mro__):
+            for f in vars(klass).get("fields", ()):
+                schema[f.name] = f
+        return schema
 
     def __init__(self, name: str, cfg: dict[str, Any]):
-        if "pos" not in cfg or len(cfg["pos"]) != 2:
-            raise ValueError(f"part {name!r}: `pos: [x, y]` is required")
         self.name = name
-        self.cfg = cfg
+        self.cfg = cfg = resolve(f"part {name!r}", self.full_schema(), cfg)
         self.base_xy = np.asarray(cfg["pos"], dtype=float)
-        self.random = np.asarray(cfg.get("random", [0.0, 0.0]), dtype=float)
-        if self.random.shape != (2,) or (self.random < 0).any():
-            raise ValueError(f"part {name!r}: `random` must be [dx, dy] >= 0")
+        self.random = np.asarray(cfg["random"], dtype=float)
         self.xy = self.base_xy.copy()
         self.sources: list[Part] = []          # filled from room links (gates)
-        self.require = cfg.get("require", "all")
-        if self.require not in ("all", "any"):
-            raise ValueError(f"part {name!r}: `require` must be 'all' or 'any'")
+        self.require = cfg["require"]
         self._bid = -1
 
     @property
