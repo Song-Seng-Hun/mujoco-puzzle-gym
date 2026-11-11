@@ -32,6 +32,7 @@ def test_every_command_emits_json(asset_dir, quick_run, tmp_path):
             "train": [str(Path(ROOM).with_name("task_ppo.yaml")), "--minutes", "1",
                       "--max-steps", "64", "--n-envs", "1", "--runs-dir", str(tmp_path)],
             "eval": [run_dir, "--episodes", "1", "--workers", "1"],
+            "export-onnx": [run_dir, "--out", str(tmp_path / "onnx")],
             "diagnose": [run_dir, "--episodes", "1", "--workers", "1", "--no-video"],
             "render": [run_dir, "--seed", "1000000", "--out", str(tmp_path / "r.mp4")],
             "demo": ["--seed", "1000000", "--out", str(tmp_path / "demo.mp4")]}
