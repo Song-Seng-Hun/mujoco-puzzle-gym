@@ -262,6 +262,11 @@ class Part:
         return all(flags) if self.require == "all" else any(flags)
 
     # ---- planning (grid) ---------------------------------------------------
+    def check_static(self, env) -> list[str]:
+        """Reasons this part makes the room unsolvable, found without simulating
+        (`mpg check` stage `parts`); empty when fine."""
+        return []
+
     def blockers(self, is_open: bool) -> list[Segment]:
         """Segments that block walking; gates return theirs while not open."""
         return []

@@ -2,12 +2,13 @@
 
 from ..registry import register_part
 from .base import Part
-from .device import Door, SwingDoor, Trapdoor, Warp
+from .device import Door, GoalNet, SwingDoor, Trapdoor, Warp
 from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
 from .input import Button, Checkpoint, Laser, PressurePlate, Receptacle, Zone
 from .logic import Counter, Gate, Receiver, Transmitter
+from .object import Ball, Pin
 from .switch import Switch
 
 register_part("switch", Switch, replace=True)
@@ -30,7 +31,11 @@ register_part("floor_tile", FloorTile, replace=True)
 register_part("coin", Coin, replace=True)
 register_part("coin_group", CoinGroup, replace=True)
 register_part("coin_lock", CoinLock, replace=True)
+register_part("ball", Ball, replace=True)
+register_part("pin", Pin, replace=True)
+register_part("goal_net", GoalNet, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
            "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
-           "SwingDoor", "Trapdoor", "Warp", "FloorTile", "Coin", "CoinGroup", "CoinLock"]
+           "SwingDoor", "Trapdoor", "Warp", "FloorTile", "Coin", "CoinGroup", "CoinLock",
+           "Ball", "Pin", "GoalNet"]
