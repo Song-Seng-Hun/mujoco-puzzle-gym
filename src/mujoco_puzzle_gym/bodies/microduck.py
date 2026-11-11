@@ -28,14 +28,15 @@ pinned better-actuator-models 1.0.3, not the git build used for training.
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import mujoco
 import numpy as np
 
 from .. import assets
-from .base import BodyAdapter, BodyState, Capabilities, Pose, rotate_inverse, yaw_from_quat
+from .base import BodyAdapter, BodyState, Capabilities, Pose, SubstepFn, rotate_inverse, yaw_from_quat
 
 # Files in the asset cache (keys of upstream.lock.json).
 ROBOT_XML = "robot/robot_allcollisions_backlash.xml"
@@ -265,7 +266,41 @@ class MicroduckAdapter(BodyAdapter):
             command,                                                     # command (13)
         ]).astype(np.float32)
 
-    def step(self, data: mujoco.MjData, cmd: Sequence[float]) -> None:
+    def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:
+        self.reset(data, pose)
+        if z:
+            data.qpos[self._root_qpos + 2] += z
+            mujoco.mj_forward(data.model, data)
+
+    def root_body_id(self, model: mujoco.MjModel) -> int:
+        return model.body(PREFIX + TRUNK_BODY).id
+
+    def history_state(self) -> dict[str, Any]:
+        c = self._ctrl
+        return {
+            "last_action": self.last_action.copy(),
+            "prev_torque": self._prev_torque.copy(),
+            "targets": [t.copy() for t in self._targets],
+            "q_target": c.q_target.copy(),
+            "actuator_state": copy.deepcopy(c.actuator_state),
+            "control": copy.deepcopy(c.control),
+            "last_ts": c.last_ts,
+        }
+
+    def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
+        if self._data is not data:
+            self._bind(data)
+        c = self._ctrl
+        self.last_action = state["last_action"].copy()
+        self._prev_torque = state["prev_torque"].copy()
+        self._targets = [t.copy() for t in state["targets"]]
+        c.q_target[:] = state["q_target"]
+        c.actuator_state = copy.deepcopy(state["actuator_state"])
+        c.control = copy.deepcopy(state["control"])
+        c.last_ts = state["last_ts"]
+
+    def step(self, data: mujoco.MjData, cmd: Sequence[float],
+             on_substep: SubstepFn | None = None) -> None:
         if self._data is not data:
             raise RuntimeError("call reset(data) before step(data)")
         obs = self.observation(data, self.clip_cmd(cmd))
@@ -287,6 +322,8 @@ class MicroduckAdapter(BodyAdapter):
             act.vin = self.vin
             self._prev_torque = data.ctrl[self._ctrl.act_indexes].copy()
             mujoco.mj_step(model, data)
+            if on_substep is not None:
+                on_substep(model, data)
 
     def state(self, data: mujoco.MjData) -> BodyState:
         q, v = self._root_qpos, self._root_qvel

@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import mujoco
 import numpy as np
 
 Pose = tuple[float, float, float]  # x [m], y [m], yaw [rad] on the floor
+#: Called after every physics step inside `BodyAdapter.step` (R5 `substep` hook).
+SubstepFn = Callable[[mujoco.MjModel, mujoco.MjData], None]
 
 
 @dataclass(frozen=True)
@@ -74,12 +76,36 @@ class BodyAdapter(ABC):
         """Put the body in its standing pose at `pose` and clear controller state."""
 
     @abstractmethod
-    def step(self, data: mujoco.MjData, cmd: Sequence[float]) -> None:
-        """Advance one `control_dt` tracking cmd = (vx, vy, wz), clipped to `cmd_limits`."""
+    def step(self, data: mujoco.MjData, cmd: Sequence[float],
+             on_substep: SubstepFn | None = None) -> None:
+        """Advance one `control_dt` tracking cmd = (vx, vy, wz), clipped to `cmd_limits`.
+
+        `on_substep(model, data)`, when given, runs after every physics step
+        (`mj_step`) inside it; the env passes the parts' `substep` hooks there.
+        """
 
     @abstractmethod
     def state(self, data: mujoco.MjData) -> BodyState:
         """Read the body state from `data`."""
+
+    @abstractmethod
+    def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:
+        """Put the body standing at `pose` (floor height `z`), with zero velocity and
+        the walking controller's history cleared (warps, R14)."""
+
+    @abstractmethod
+    def root_body_id(self, model: mujoco.MjModel) -> int:
+        """Id of the body's root (free-floating) MuJoCo body; sensors use it to tell
+        the walking body from objects (`body_rootid`)."""
+
+    @abstractmethod
+    def history_state(self) -> dict[str, Any]:
+        """Controller memory outside `MjData` (last action, command queue, actuator
+        state) for checkpoint snapshots (R6). Must be safe to keep and reload."""
+
+    @abstractmethod
+    def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
+        """Restore `history_state` output; call after the MjData state is restored."""
 
     def command_from_action(self, action: Sequence[float]) -> np.ndarray:
         """Map a normalised action in [-1, 1]^3 to a command (vx, vy, wz).
