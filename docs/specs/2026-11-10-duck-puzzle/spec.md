@@ -1,5 +1,5 @@
 # Spec: mujoco-puzzle-gym 첫 마일스톤 (발판 → 문 → 골, 마이크로덕)
-Status: approved 2026-11-11 (user: "승인")
+Status: approved 2026-11-11 (user: "승인", R3 check band changed to 0.5–1.1 m)
 View (read-only copy): (아직 없음)
 
 근거: intent.md (approved 2026-11-11). 사실 출처: `pollen-robotics/microduck_rl` (develop, 2026-11-10 push), Hugging Face `pollen-robotics/microduck-policies` (manifest schema 2, 2026-11-06).
@@ -7,7 +7,7 @@ View (read-only copy): (아직 없음)
 ## Requirements
 - R1: `mpg fetch-assets` 한 번으로 공식 저장소 고정 커밋의 MJCF·메시와 Hugging Face 고정 리비전의 `velstand.onnx`를 `~/.cache/mujoco-puzzle-gym/`에 받고, 파일마다 SHA256을 확인하고, 메시 라이선스(CC BY-NC-SA 4.0)와 출처를 출력한다. 두 번째 실행은 내려받지 않고 확인만 한다. Check: `mpg fetch-assets --json` 출력의 `verified: true`, 해시 불일치 파일을 넣은 테스트에서 실패 종료(`tests/test_assets.py`).
 - R2: 몸 어댑터 경계 `BodyAdapter`가 있다. 입력은 이동 명령(vx, vy, wz), 출력은 몸 상태(위치, 방향, 넘어짐 여부). 퍼즐·환경·학습 코드는 `mujoco_puzzle_gym/bodies/` 밖에서 마이크로덕 이름이나 관절을 참조하지 않는다. Check: `tests/test_boundary.py`가 `bodies/` 밖 소스에서 `microduck`, `velstand`, 관절 이름 문자열을 찾으면 실패.
-- R3: `MicroduckAdapter`가 CPU MuJoCo(timestep 5 ms, 4스텝마다 정책 1회 = 50 Hz) + BAM 모터 모델 + `velstand.onnx`로 걷는다. 관측 61차원은 공식 순서(각속도 3, 투영 중력 3, 관절 위치 14, 관절 속도 14, 직전 행동 14, 명령 13)를 따른다. 명령은 vx ±0.4, vy ±0.3, wz ±1.0으로 자른다. Check: `tests/test_walk.py` — 평지에서 vx=0.3을 5초 주면 넘어지지 않고 전진 거리가 1.5 m의 ±30% 안, 명령 0을 5초 주면 이동이 0.1 m 미만.
+- R3: `MicroduckAdapter`가 CPU MuJoCo(timestep 5 ms, 4스텝마다 정책 1회 = 50 Hz) + BAM 모터 모델 + `velstand.onnx`로 걷는다. 관측 61차원은 공식 순서(각속도 3, 투영 중력 3, 관절 위치 14, 관절 속도 14, 직전 행동 14, 명령 13)를 따른다. 명령은 vx ±0.4, vy ±0.3, wz ±1.0으로 자른다. Check: `tests/test_walk.py` — 평지에서 vx=0.3을 5초 주면 넘어지지 않고 전진 거리가 0.5–1.1 m(공식 정책은 명령 속도의 약 절반만 따른다: 공식 docs/velstand_policy.md의 0.4 → 0.17 m/s), 명령 0을 5초 주면 이동이 0.1 m 미만.
 - R4: 퍼즐 부품 3종이 있다. 발판(몸이 올라서면 켜짐), 문(발판이 켜지면 열림, 꺼지면 닫힘, 미닫이), 골(몸 중심이 반경 안에 들어오면 성공). 부품 상태는 매 스텝 읽을 수 있다. Check: `tests/test_parts.py` — 몸을 발판 위에 놓으면 문이 2초 안에 열림, 문이 닫혀 있으면 골로 가는 길이 막힘(문 너머로 순간이동 없이 직선 이동 시 충돌).
 - R5: 방 설정 파일(YAML)에서 장면을 만든다. 방 크기, 벽, 부품 배치, 부품 사이 연결(발판 A → 문 B), 배치 무작위 범위를 적는다. `mpg build room.yaml`이 몸 + 방을 합친 MJCF를 만들고 그림 한 장을 저장한다. Check: `mpg build examples/switch_door.yaml --json`이 `ok: true`와 MJCF·PNG 경로를 내고, 잘못된 연결(없는 문 이름)은 `ok: false`와 이유.
 - R6: `mpg check room.yaml`이 세 가지를 확인하고 결과를 JSON으로 낸다. (a) 풀이 순서 존재: 연결 그래프에서 골까지의 순서를 찾는다. (b) 물리 안정: 명령 0으로 10초 동안 NaN·넘어짐 없음. (c) 실제로 풀림: 특권 상태를 쓰는 스크립트 해답(발판으로 걸어가기 → 골로 걸어가기)이 무작위 배치 20개 중 18개 이상에서 성공. Check: 예제 방은 세 항목 모두 통과, 문이 영원히 닫힌 방은 (a) 실패, 발판이 벽 안에 있는 방은 (c) 실패.
@@ -61,7 +61,7 @@ flowchart LR
 ## Open questions
 - [x] 첫 마일스톤 성공률 목표: 80% (사용자 승인 2026-11-11)
 - [x] 학습 시간 한도: 맥 스튜디오에서 1회 학습 2시간 이내 (사용자 승인 2026-11-11)
-- [ ] 공식 저장소에서 고정할 커밋과 HF 리비전: 구현 첫 단계에서 정해 spec에 적는다. (Claude)
+- [x] 공식 저장소에서 고정할 커밋과 HF 리비전: `pollen-robotics/microduck_rl` 커밋 `0daab160d3fb1c2cbaba16a4a19052f36709dd9e`(develop), HF `pollen-robotics/microduck-policies` 리비전 `283771bcb3690a0a94a288c108365d9b630d21e4` (2026-11-11, `src/mujoco_puzzle_gym/upstream.lock.json`)
 - [ ] 걷기 정책 위에서 10 Hz 위층이 충분히 부드러운지: R3·R13 결과를 보고 5–25 Hz 사이에서 조정할 수 있다. (Claude)
 
 ## Areas of concern

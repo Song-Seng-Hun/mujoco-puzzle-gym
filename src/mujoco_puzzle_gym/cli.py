@@ -31,8 +31,45 @@ def _version(_: argparse.Namespace) -> dict[str, Any]:
     return {"version": __version__}
 
 
+def _fetch_assets(args: argparse.Namespace) -> dict[str, Any]:
+    from . import assets
+
+    try:
+        return assets.fetch(root=args.cache_dir)
+    except (assets.AssetError, OSError) as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _configure_fetch(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--cache-dir", default=None,
+                   help="cache root (default: $MPG_CACHE_DIR or ~/.cache/mujoco-puzzle-gym)")
+
+
+def _bench(args: argparse.Namespace) -> dict[str, Any]:
+    from . import bench
+
+    try:
+        procs = [int(x) for x in args.procs.split(",") if x.strip()] if args.procs else []
+    except ValueError as exc:
+        raise CommandError(f"--procs must be comma-separated integers: {args.procs!r}") from exc
+    try:
+        return bench.run(seconds=args.seconds, procs=procs)
+    except FileNotFoundError as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _configure_bench(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--seconds", type=float, default=5.0, help="wall time per measurement")
+    p.add_argument("--procs", default="4,8,16",
+                   help="comma-separated process counts for the parallel runs ('' = none)")
+
+
 COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None]]] = {
     "version": ("Print the package version.", _version, lambda p: None),
+    "fetch-assets": ("Download and SHA256-verify the pinned robot and policy files.",
+                     _fetch_assets, _configure_fetch),
+    "bench": ("Measure walker speed: physics and high-level steps/s, single and parallel.",
+              _bench, _configure_bench),
 }
 
 
