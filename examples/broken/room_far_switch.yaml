@@ -1,0 +1,16 @@
+# Broken on purpose (with task_far_switch.yaml): a long room whose switch is
+# about 3.5 m from the spawn point, farther than the walker gets in one
+# 12-second episode (max about 0.22 m/s).
+name: far_switch
+size: [5.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [1.5, -1.0], to: [1.5, -0.28]}
+  - {from: [1.5, 0.28], to: [1.5, 1.0]}
+spawn: {pos: [-2.2, -0.6], yaw: 0.0, random: [0.05, 0.05, 0.5]}
+parts:
+  - {name: switch_a, type: switch, pos: [1.1, 0.7], size: [0.3, 0.3]}
+  - {name: door_b, type: door, pos: [1.5, 0.0], width: 0.5, axis: y}
+  - {name: goal, type: goal, pos: [2.05, 0.0], radius: 0.15}
+links:
+  - {from: switch_a, to: door_b}

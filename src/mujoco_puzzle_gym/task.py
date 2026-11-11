@@ -3,7 +3,9 @@ termination, algorithm and network. Missing keys take DEFAULTS; the filled-in
 task is saved as `task.resolved.yaml` next to a run.
 
     room: switch_door.yaml        # relative to the task file
-    env: {hz: 10, episode_seconds: 40}
+    env: {hz: 10, episode_seconds: 40, command_scale: 1.0}   # scale > 1: unclipped
+                                                            # commands (broken tests)
+    plugins: [my_terms]           # modules imported first (here and in every worker)
     obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
     reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
     termination: {success: true, fall: true}
@@ -17,6 +19,7 @@ task is saved as `task.resolved.yaml` next to a run.
 from __future__ import annotations
 
 import copy
+import importlib
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +33,8 @@ HZ_RANGE = (5.0, 25.0)
 DEFAULTS: dict[str, Any] = {
     "room": None,
     "body": "default",
-    "env": {"hz": 10.0, "episode_seconds": 40.0},
+    "env": {"hz": 10.0, "episode_seconds": 40.0, "command_scale": 1.0},
+    "plugins": [],
     "obs": ["gravity", "ang_vel", "lin_vel", "part_pos", "part_state"],
     "reward": {"progress": 10.0, "stage": 2.0, "success": 10.0, "fall": -5.0},
     "termination": {"success": True, "fall": True},
@@ -71,6 +75,7 @@ def load_task(task: str | Path | dict | None = None, room: str | Path | None = N
     if not isinstance(raw, dict):
         raise TaskError("task file must be a mapping")
     out = _merge(DEFAULTS, raw)
+    import_plugins(out["plugins"])
     if room is not None:
         out["room"] = str(Path(room).resolve())
     elif out["room"] is None:
@@ -81,6 +86,21 @@ def load_task(task: str | Path | dict | None = None, room: str | Path | None = N
     return out
 
 
+def import_plugins(modules: list[str]) -> None:
+    """Import user modules that register parts, terms or algorithms (R17).
+
+    Called by `load_task`, so it runs in every process that builds an env from
+    the task, including training worker processes.
+    """
+    if not isinstance(modules, list) or not all(isinstance(m, str) for m in modules):
+        raise TaskError("`plugins` must be a list of module names")
+    for name in modules:
+        try:
+            importlib.import_module(name)
+        except ImportError as exc:
+            raise TaskError(f"cannot import plugin module {name!r}: {exc}") from exc
+
+
 def validate(task: dict[str, Any]) -> None:
     load_builtins()
     hz = float(task["env"]["hz"])
@@ -88,6 +108,8 @@ def validate(task: dict[str, Any]) -> None:
         raise TaskError(f"env.hz must be within {HZ_RANGE}, got {hz}")
     if float(task["env"]["episode_seconds"]) <= 0:
         raise TaskError("env.episode_seconds must be > 0")
+    if float(task["env"]["command_scale"]) <= 0:
+        raise TaskError("env.command_scale must be > 0")
     unknown = [o for o in task["obs"] if o not in OBS]
     if unknown:
         raise TaskError(f"unknown obs terms {unknown}; registered: {sorted(OBS)}")

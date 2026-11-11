@@ -103,6 +103,90 @@ def _configure_check(p: argparse.ArgumentParser) -> None:
                    help="successes required (default: 90%% of --seeds, 18 of 20)")
 
 
+def _train(args: argparse.Namespace) -> dict[str, Any]:
+    from .room import RoomError
+    from .task import TaskError
+    from .train import train
+
+    try:
+        return train(args.task, minutes=args.minutes, algo=args.algo, n_envs=args.n_envs,
+                     runs_dir=args.runs_dir, run_id=args.id, max_steps=args.max_steps)
+    except (TaskError, RoomError, KeyError, FileNotFoundError) as exc:
+        raise CommandError(str(exc.args[0]) if exc.args else str(exc)) from exc
+
+
+def _configure_train(p: argparse.ArgumentParser) -> None:
+    p.add_argument("task", help="task.yaml")
+    p.add_argument("--minutes", type=float, required=True, help="wall-clock training budget")
+    p.add_argument("--algo", default=None,
+                   help="ppo | sac | a2c | an entry point in group mujoco_puzzle_gym.algos "
+                        "(default: task `algo:`)")
+    p.add_argument("--n-envs", type=int, default=None, help="parallel envs (default: task `n_envs:`)")
+    p.add_argument("--runs-dir", default="runs", help="parent of the run directory")
+    p.add_argument("--id", default=None, help="run id (default: <time>-<task>-<algo>)")
+    p.add_argument("--max-steps", type=int, default=None, help="also stop after this many env steps")
+
+
+def _run_errors():
+    from .room import RoomError
+    from .task import TaskError
+
+    return (TaskError, RoomError, KeyError, FileNotFoundError, ValueError)
+
+
+def _eval(args: argparse.Namespace) -> dict[str, Any]:
+    from .evaluate import evaluate
+
+    try:
+        return evaluate(args.run, episodes=args.episodes, policy=args.policy,
+                        deterministic=not args.stochastic, workers=args.workers)
+    except _run_errors() as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _configure_eval(p: argparse.ArgumentParser) -> None:
+    p.add_argument("run", help="runs/<id>")
+    p.add_argument("--episodes", type=int, default=100, help="held-out layouts (eval seeds)")
+    p.add_argument("--policy", choices=["trained", "random"], default="trained",
+                   help="'random' = uniform random baseline on the same seeds")
+    p.add_argument("--stochastic", action="store_true", help="sample actions instead of the mean")
+    p.add_argument("--workers", type=int, default=12, help="parallel processes")
+
+
+def _diagnose(args: argparse.Namespace) -> dict[str, Any]:
+    from .diagnose import diagnose
+
+    try:
+        return diagnose(args.run, episodes=args.episodes, video=not args.no_video,
+                        workers=args.workers)
+    except _run_errors() as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _configure_diagnose(p: argparse.ArgumentParser) -> None:
+    p.add_argument("run", help="runs/<id>")
+    p.add_argument("--episodes", type=int, default=20, help="rollouts of the saved policy")
+    p.add_argument("--no-video", action="store_true", help="skip the failure MP4")
+    p.add_argument("--workers", type=int, default=12, help="parallel processes")
+
+
+def _render(args: argparse.Namespace) -> dict[str, Any]:
+    from .evaluate import render
+
+    try:
+        return render(args.run, out=args.out, seed=args.seed, tries=args.tries)
+    except _run_errors() as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _configure_render(p: argparse.ArgumentParser) -> None:
+    p.add_argument("run", help="runs/<id>")
+    p.add_argument("--out", default=None, help="MP4 path (default: runs/<id>/success.mp4)")
+    p.add_argument("--seed", type=int, default=None,
+                   help="render this env seed whatever happens (default: first eval-seed success)")
+    p.add_argument("--tries", type=int, default=20, help="eval seeds to try for a success")
+
+
 COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None]]] = {
     "version": ("Print the package version.", _version, lambda p: None),
     "fetch-assets": ("Download and SHA256-verify the pinned robot and policy files.",
@@ -112,6 +196,11 @@ COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None
               _check, _configure_check),
     "bench": ("Measure walker and PuzzleEnv speed: steps/s, single and parallel.",
               _bench, _configure_bench),
+    "train": ("Train a policy on task.yaml for --minutes; writes runs/<id>/.", _train, _configure_train),
+    "diagnose": ("Classify why a run fails (env bug, body, exploration, reward hacking) + failure MP4.",
+                 _diagnose, _configure_diagnose),
+    "eval": ("Success rate and mean time on held-out layouts.", _eval, _configure_eval),
+    "render": ("Offscreen MP4 of a success episode.", _render, _configure_render),
 }
 
 

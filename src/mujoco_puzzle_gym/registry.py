@@ -10,6 +10,14 @@ new part or term needs no edit to library code:
         return -float(env.body_state.gravity[2])
 
 Weights and which terms are active come from task.yaml (`obs:`, `reward:`).
+
+Training algorithms (R8) are `algos.base.Trainer` subclasses, found by name in
+this order: built-ins (ppo, sac, a2c), `register_algo` calls (e.g. from a
+task.yaml `plugins:` module), then the Python entry point group
+`mujoco_puzzle_gym.algos`:
+
+    [project.entry-points."mujoco_puzzle_gym.algos"]
+    my_algo = "my_package.trainer:MyTrainer"
 """
 
 from __future__ import annotations
@@ -19,6 +27,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy as np
 
 if TYPE_CHECKING:
+    from .algos.base import Trainer
     from .env import PuzzleEnv
     from .parts.base import Part
 
@@ -28,6 +37,8 @@ RewardFn = Callable[["PuzzleEnv"], float]
 PARTS: dict[str, type["Part"]] = {}
 OBS: dict[str, ObsFn] = {}
 REWARDS: dict[str, RewardFn] = {}
+ALGOS: dict[str, type["Trainer"]] = {}
+ALGO_ENTRY_POINTS = "mujoco_puzzle_gym.algos"
 
 
 def _register(table: dict[str, Any], kind: str, name: str, obj: Any, replace: bool) -> Any:
@@ -73,3 +84,28 @@ def get_part(name: str) -> type["Part"]:
         return PARTS[name]
     except KeyError:
         raise KeyError(f"unknown part type {name!r}; registered: {sorted(PARTS)}") from None
+
+
+def register_algo(name: str, cls: type["Trainer"] | None = None, *, replace: bool = False):
+    """Register a `Trainer` subclass under the name used by `--algo` / task `algo:`."""
+    if cls is None:
+        return lambda c: register_algo(name, c, replace=replace)
+    cls.name = name
+    return _register(ALGOS, "algo", name, cls, replace)
+
+
+def get_algo(name: str) -> type["Trainer"]:
+    """Built-in or registered algorithm, else the entry point of that name."""
+    from importlib.metadata import entry_points
+
+    from .algos import sb3  # noqa: F401  registers ppo, sac, a2c
+
+    if name in ALGOS:
+        return ALGOS[name]
+    found = [ep for ep in entry_points(group=ALGO_ENTRY_POINTS) if ep.name == name]
+    if not found:
+        eps = sorted(ep.name for ep in entry_points(group=ALGO_ENTRY_POINTS))
+        raise KeyError(f"unknown algo {name!r}; registered: {sorted(ALGOS)}, "
+                       f"entry points ({ALGO_ENTRY_POINTS}): {eps}")
+    cls = found[0].load()
+    return register_algo(name, cls, replace=True)

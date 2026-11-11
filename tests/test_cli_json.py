@@ -25,9 +25,16 @@ def run(*args: str) -> subprocess.CompletedProcess:
     )
 
 
-def test_every_command_emits_json(asset_dir):
-    assert set(COMMANDS) == set(FAST_ARGS), "add a fast --json invocation for new commands"
-    for name, extra in FAST_ARGS.items():
+def test_every_command_emits_json(asset_dir, quick_run, tmp_path):
+    run_dir = str(quick_run)
+    fast = {**FAST_ARGS,
+            "train": [str(Path(ROOM).with_name("task_ppo.yaml")), "--minutes", "1",
+                      "--max-steps", "64", "--n-envs", "1", "--runs-dir", str(tmp_path)],
+            "eval": [run_dir, "--episodes", "1", "--workers", "1"],
+            "diagnose": [run_dir, "--episodes", "1", "--workers", "1", "--no-video"],
+            "render": [run_dir, "--seed", "1000000", "--out", str(tmp_path / "r.mp4")]}
+    assert set(COMMANDS) == set(fast), "add a fast --json invocation for new commands"
+    for name, extra in fast.items():
         out = run(name, "--json", *extra)
         assert out.returncode == 0, (name, out.stdout, out.stderr)
         result = json.loads(out.stdout)
