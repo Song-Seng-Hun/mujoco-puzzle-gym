@@ -92,12 +92,15 @@ All commands, training settings, adding parts and rewards, and swapping the body
 ## Progress
 
 - [x] **Milestone 1**: the full loop of building, checking, training, diagnosing and evaluating a switch → door → goal puzzle. The built-in parts are switch, door and goal; other devices can be added as plugins.
-- [ ] **Milestone 2**: a part catalog of buttons, sensors, logic gates, counters, coins, warps, traps, beak grabbing, checkpoints and curriculum training (in progress)
+- [ ] **Milestone 2**: a part catalog (in progress)
+  - [x] Buttons, sensors, logic gates, counters, coins, warps, balls and goal nets, several kinds of door, checkpoints and curriculum training, ArUco markers and a gaze sensor, camera and distance-sensor observations. The 35 part presets and the example rooms are in the [parts and presets guide](parts-guide.en.md).
+  - [ ] Moving devices (platforms, conveyors, springs), traps, robots that move on their own
+  - [ ] Cubes and beak grabbing, tow ropes, more episode randomization
 - [ ] **Milestone 3**: puzzle parts for other bodies, such as arms and wheeled robots
 
 ## Limits
 
-- The high-level policy uses privileged observations that read the puzzle state directly. There is no policy yet that solves puzzles from real sensors (camera, distance sensor) alone.
+- By default the high-level policy uses privileged observations that read the puzzle state directly. Add `rangefinder` (head distance sensor) and `camera` (64×64 head camera) to `obs:` in task.yaml to train on real-sensor observations, and use `critic_obs:` to give privileged observations to the value function only. No policy has been trained yet that solves a puzzle from sensors alone (camera training is about 15× slower than with privileged observations).
 - The high-level policy generalises to unseen layouts, but the training room always has the same order (switch → door → goal) and the reward points toward that order. Whether it can work out the order by itself has not been tested yet.
 - The official walking policy is kept frozen. It cannot walk backward and walks forward at about 0.12–0.22 m/s. Room sizes and time limits have to fit this speed.
 - Simulation only. Transfer to the real robot (sim2real) is out of scope.
