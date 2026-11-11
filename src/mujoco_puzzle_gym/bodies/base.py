@@ -111,6 +111,26 @@ class BodyAdapter(ABC):
     def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
         """Restore `history_state` output; call after the MjData state is restored."""
 
+    # ---- sensors (R39, R27) ------------------------------------------------
+    def view_camera(self, model: mujoco.MjModel) -> int | None:
+        """Id of the body's eye camera in the compiled scene (MuJoCo convention:
+        looks along its -z, +y up), or None if the body has no camera."""
+        return None
+
+    def view_frame(self, model: mujoco.MjModel, data: mujoco.MjData) -> tuple[np.ndarray, np.ndarray]:
+        """World position (3,) and rotation (3, 3) of the eye camera (columns: camera
+        x, y, z axes; the view direction is -z)."""
+        cam = self.view_camera(model)
+        if cam is None:
+            raise NotImplementedError(f"{type(self).__name__} has no eye camera")
+        return data.cam_xpos[cam].copy(), data.cam_xmat[cam].reshape(3, 3).copy()
+
+    def add_rangefinders(self, spec: mujoco.MjSpec, yaws: Sequence[float], prefix: str) -> list[str]:
+        """Add one MuJoCo `rangefinder` sensor per yaw offset [rad, + = left] to `spec`
+        (after `spawn`): rays from the head, level when the body stands, fanned
+        around its heading. Returns the sensor names (`prefix` + index)."""
+        raise NotImplementedError(f"{type(self).__name__} has no rangefinder mount")
+
     def command_from_action(self, action: Sequence[float]) -> np.ndarray:
         """Map a normalised action in [-1, 1]^3 to a command (vx, vy, wz).
 

@@ -47,6 +47,8 @@ PREFIX = "body/"
 TRUNK_BODY = "trunk_base"
 FREEJOINT = "trunk_base_freejoint"
 GYRO_SENSOR = "imu_ang_vel"
+HEAD_SITE = "head_camera"     # MJCF frame site and camera of the head camera (R39)
+LEVEL_SETTLE_STEPS = 25       # body steps standing still before reading the level head pose
 
 # Actuator order of the MJCF == policy action order (infer_policy.py DEFAULT_POSE).
 JOINTS = (
@@ -173,6 +175,7 @@ class MicroduckAdapter(BodyAdapter):
         spec.meshdir = ""
         kt = self.bam_model.kt.value
         force_limit = self.bam_model.actuator.vin * kt / self.bam_model.R.value
+        self._fix_head_camera(spec)
         joints = {j.name: j for j in spec.joints}
         for act in spec.actuators:
             if act.target.startswith("passive_"):
@@ -188,6 +191,74 @@ class MicroduckAdapter(BodyAdapter):
             joint.solref_friction = BAM_STIFF_SOLREF_FRICTION
             joint.solimp_friction = BAM_STIFF_SOLIMP_FRICTION
         return spec
+
+    @staticmethod
+    def _fix_head_camera(spec: mujoco.MjSpec) -> None:
+        """Point the MJCF `head_camera` camera along its frame site's +x (the lens
+        axis; site +z is up). Upstream's camera quat looks backward into the head
+        shell under MuJoCo's camera convention (view along -z, +y up)."""
+        site = next((s for s in spec.sites if s.name == HEAD_SITE), None)
+        cam = next((c for c in spec.cameras if c.name == HEAD_SITE), None)
+        if site is None or cam is None:
+            return
+        rs = np.zeros(9)
+        mujoco.mju_quat2Mat(rs, np.asarray(site.quat, dtype=np.float64))
+        rs = rs.reshape(3, 3)
+        rc = np.column_stack([-rs[:, 1], rs[:, 2], -rs[:, 0]])   # camera x, y, z
+        q = np.zeros(4)
+        mujoco.mju_mat2Quat(q, rc.ravel())
+        cam.pos = site.pos
+        cam.quat = q
+
+    def view_camera(self, model: mujoco.MjModel) -> int | None:
+        cid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, PREFIX + HEAD_SITE)
+        return cid if cid >= 0 else None
+
+    def _level_head_frame(self) -> tuple[np.ndarray, np.ndarray]:
+        """Head-site position and the head body's rotation relative to the heading
+        frame, read once from the body standing still on a flat floor (cached)."""
+        if getattr(self, "_level_cache", None) is None:
+            from .base import flat_floor_spec
+
+            probe = MicroduckAdapter(asset_dir=self.policy_path.parents[1], vin=self.vin,
+                                     vin_drop_gain=self.vin_drop_gain,
+                                     action_lag=self.action_lag, robot_xml=self.robot_xml)
+            model = probe.spawn(flat_floor_spec()).compile()
+            data = mujoco.MjData(model)
+            probe.reset(data)
+            for _ in range(LEVEL_SETTLE_STEPS):
+                probe.step(data, (0.0, 0.0, 0.0))
+            sid = model.site(PREFIX + HEAD_SITE).id
+            bid = int(model.site_bodyid[sid])
+            yaw = probe.state(data).yaw
+            c, s = np.cos(yaw), np.sin(yaw)
+            r_yaw = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+            r_body = r_yaw.T @ data.xmat[bid].reshape(3, 3)          # head in heading frame
+            self._level_cache = (model.site_pos[sid].copy(), r_body)
+        return self._level_cache
+
+    def add_rangefinders(self, spec: mujoco.MjSpec, yaws: Sequence[float], prefix: str) -> list[str]:
+        site = next((s for s in spec.sites if s.name == PREFIX + HEAD_SITE), None)
+        if site is None:
+            raise RuntimeError("spawn the body before adding rangefinders")
+        head = site.parent
+        pos, r_body = self._level_head_frame()
+        names = []
+        for i, a in enumerate(yaws):
+            d_local = r_body.T @ np.array([np.cos(a), np.sin(a), 0.0])   # ray in head frame
+            z = np.array([0.0, 0.0, 1.0])
+            axis = np.cross(z, d_local)
+            ang = float(np.arctan2(np.linalg.norm(axis), d_local @ z))
+            n = np.linalg.norm(axis)
+            axis = axis / n if n > 1e-9 else np.array([1.0, 0.0, 0.0])
+            quat = [np.cos(ang / 2), *(np.sin(ang / 2) * axis)]       # site +z -> ray
+            sname = f"{prefix}{i}"
+            head.add_site(name=sname, pos=pos, quat=quat, group=4)
+            sen = spec.add_sensor(name=sname, type=mujoco.mjtSensor.mjSENS_RANGEFINDER,
+                                  objtype=mujoco.mjtObj.mjOBJ_SITE, objname=sname)
+            sen.intprm[0] = 1 << int(mujoco.mjtRayDataField.mjRAYDATA_DIST)
+            names.append(sname)
+        return names
 
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:
         x, y, yaw = pose

@@ -9,7 +9,8 @@ switches, NaN/contradiction flags, per-term reward sums), then to the chosen
     checkpoint.*         what the trainer saved (SB3: checkpoint.zip)
     episodes.jsonl       one line per training episode
     curves.png           return, success / fall / switch rates, per-term rewards
-    summary.json         budget, steps, speed, first/last-window statistics
+    summary.json         budget, steps, speed, first/last-window statistics,
+                         `obs_kind` (`sensors_only` or `privileged`, R39)
 
 Training seeds: env i of a run with task `seed: s` starts from seed s + i and
 then continues its own RNG stream; `mpg eval` uses seeds from EVAL_SEED_BASE
@@ -30,6 +31,7 @@ from typing import Any
 import numpy as np
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnvWrapper
 
+from .obs import obs_kind
 from .registry import get_algo
 from .task import TaskError, load_task, write_resolved
 
@@ -210,6 +212,8 @@ def train(task_path: str | Path, minutes: float, algo: str | None = None,
     if minutes <= 0:
         raise TaskError("--minutes must be > 0")
     trainer_cls = get_algo(task["algo"])
+    if task.get("critic_obs") is not None and task["algo"] == "sac":
+        raise TaskError("`critic_obs` needs an actor-critic algorithm (ppo, a2c), not 'sac'")
 
     run_id = run_id or _run_id(task_path, task["algo"])
     run_dir = Path(runs_dir) / run_id
@@ -237,6 +241,8 @@ def train(task_path: str | Path, minutes: float, algo: str | None = None,
         "run_dir": str(run_dir.resolve()),
         "task": str(Path(task_path).resolve()),
         "algo": task["algo"],
+        "obs_kind": obs_kind(task),
+        "critic_obs": task.get("critic_obs") is not None,
         "checkpoint": checkpoint.name,
         "minutes_budget": minutes,
         "train_seconds": round(train_seconds, 1),
