@@ -9,8 +9,9 @@ that is not already counted by it:
    obstacle) to the point `BEHIND` metres behind it on the ball -> target line;
 2. align: stand and turn in place until facing along that line;
 3. push: walk forward aiming a little beyond the ball on the (recomputed)
-   ball -> target line. If the ball gets more than `LOST_ANGLE` off the
-   body's way, or too far ahead, it goes back to 1.
+   ball -> target line, at `PUSH_FAST` until the ball is `NEAR` its push
+   target, then at the slower `PUSH_FORWARD`. If the ball gets more than
+   `LOST_ANGLE` off the body's way, or too far ahead, it goes back to 1.
 """
 
 from __future__ import annotations
@@ -23,11 +24,13 @@ BEHIND = 0.08          # gap between the body front and the ball at the approach
 BODY_FRONT = 0.11      # trunk centre to the front of the body's collision geoms [m]
 AT_POINT = 0.05        # approach point reached [m]
 ALIGNED = 0.2          # heading error that ends aligning [rad]
-LOST_ANGLE = 0.6       # ball this far off the body -> target-line heading: approach again [rad]
+LOST_ANGLE = 0.7       # ball this far off the body -> target-line heading: approach again [rad]
 LOST_GAP = 0.25        # ball this far ahead of the body front: approach again [m]
 LEAD = 0.1             # push aim point beyond the ball [m]
 REPLAN = 0.04          # re-plan the approach path when its goal moved this far [m]
-PUSH_FORWARD = -0.5    # action[0] while pushing: slow walking, fewer kicks
+PUSH_FORWARD = -0.5    # action[0] while pushing near the target: slow walking, fewer kicks
+PUSH_FAST = 0.0        # action[0] while pushing with the ball farther than NEAR from its target
+NEAR = 0.3             # ball -> push target distance below which the push slows down [m]
 TURN_GAIN = 2.5
 FACING = 0.4
 
@@ -118,5 +121,5 @@ class Pusher:
             self.phase = "push"
         act = self._steer(b + u * LEAD, slow_turn=True)
         if act[0] > 0:
-            act[0] = PUSH_FORWARD
+            act[0] = PUSH_FAST if float(np.linalg.norm(line)) > NEAR else PUSH_FORWARD
         return act

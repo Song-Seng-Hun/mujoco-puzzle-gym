@@ -101,6 +101,7 @@ def test_bad_demo_rejected(tmp_path, demo, needle):
 def test_demo_parsed(tmp_path):
     path = write_room(tmp_path, switch_door(demo=["press switch_a", "wait 0.5", "goto goal"]))
     assert Room.load(path).demo == [("press", "switch_a"), ("wait", 0.5), ("goto", "goal")]
+    assert Room.load(MINI_SOCCER).demo == [("push", "ball", "net")]
     assert Room.load(SWITCH_DOOR).demo == []
 
 
@@ -135,6 +136,14 @@ def test_demo_goto_waits_behind_closed_door(asset_dir, tmp_path):
     for _ in range(int(3 * env.hz)):
         env.step(solver.act())
     assert np.linalg.norm(env.body_state.pos[:2] - start) < 0.1 and solver.step_i == 0
+    env.close()
+
+
+def test_demo_push_scores(asset_dir):
+    env = PuzzleEnv(room=MINI_SOCCER)
+    res = run_episode(env, 13)                 # the seed the old auto-pusher ran out of time on
+    assert res["success"] and not res["fallen"]
+    assert res["demo_step"] == 1
     env.close()
 
 

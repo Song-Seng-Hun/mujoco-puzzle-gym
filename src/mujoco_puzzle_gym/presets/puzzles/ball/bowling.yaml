@@ -15,3 +15,6 @@ parts:
   - {name: door, type: door, pos: [0.5, 0.0], width: 0.5, axis: y,
      in: [pin_a.down, pin_b.down, pin_c.down], require: any}
   - {name: goal, type: goal, pos: [0.9, 0.0], radius: 0.15, random: [0.1, 0.4]}
+demo:                             # scripted solver (R20)
+  - push ball to pin_a
+  - goto goal
