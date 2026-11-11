@@ -1,0 +1,21 @@
+# Example room (R9, R24 "doors and trapdoors"): three rooms in a row.
+# - A button opens a sliding door in the first divider.
+# - A second button opens a swing door, and the same signal drops a trapdoor
+#   in the middle room: the solver walks round the hole.
+# Built from part presets (R3).
+name: doors
+size: [3.0, 1.8]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [-0.5, -0.9], to: [-0.5, -0.28]}    # divider 1, opening at y = 0
+  - {from: [-0.5, 0.28], to: [-0.5, 0.9]}
+  - {from: [0.5, -0.9], to: [0.5, -0.28]}      # divider 2, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 0.9]}
+spawn: {pos: [-1.2, -0.3], yaw: 0.0, random: [0.08, 0.15, 3.14]}
+parts:
+  - {name: button_a, preset: input/floor_oneshot, pos: [-1.05, 0.5], random: [0.08, 0.08]}
+  - {name: door_a, preset: device/sliding_door, pos: [-0.5, 0.0], in: [button_a]}
+  - {name: button_b, preset: input/floor_oneshot, pos: [0.05, -0.6], random: [0.08, 0.05]}
+  - {name: hole, preset: device/trapdoor, pos: [0.05, 0.45], size: [0.3, 0.3], in: [button_b]}
+  - {name: door_b, preset: device/swing_door, pos: [0.5, 0.0], hinge: 1, open_dir: 1, in: [button_b]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.4]}
