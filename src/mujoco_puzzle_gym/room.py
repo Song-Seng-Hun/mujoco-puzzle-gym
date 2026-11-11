@@ -17,6 +17,12 @@ room.yaml (lengths in metres, angles in radians; the room is centred at the orig
     floor: {friction: [1.0, 0.005, 0.0001]}   # optional: default floor friction (R10)
     stages: [room2.yaml]          # optional: next rooms, side by side in one model (R14)
 
+Presets (R3, catalog.py): a part entry `{name, preset: input/floor_oneshot, ...}`
+takes the preset's type and values and overrides some; a top-level `preset:`
+(name or list, `puzzles/<topic>/<name>`) merges assembly presets under the
+room (parts by name). Overridden values end up in `task.resolved.yaml`
+(`room_parts`, `resolved_parts`).
+
 `random` entries are uniform half-ranges (+-) applied on every env reset.
 A link is a signal channel (R1, R2): it adds the switch's channel to the
 door's `in`, the same as writing `in: [switch_a]` on the door.
@@ -66,6 +72,7 @@ import mujoco
 import numpy as np
 import yaml
 
+from . import catalog
 from . import floor as floor_mod
 from . import gaze as gaze_mod
 from . import markers
@@ -182,6 +189,7 @@ class Room:
     on_fall: str = "fail"               # fall into a hole: fail | reset (R37, R16)
     demo: list[tuple] = field(default_factory=list)   # scripted solver sub-goals (R20)
     gaze: gaze_mod.GazeConfig = field(default_factory=gaze_mod.GazeConfig)   # R27
+    part_presets: dict[str, str] = field(default_factory=dict)   # part name -> preset (R3)
 
     # ---- loading ----------------------------------------------------------
     @classmethod
@@ -197,6 +205,12 @@ class Room:
     def from_dict(cls, raw: dict[str, Any], path: Path | None = None, stage: bool = False) -> "Room":
         if not isinstance(raw, dict):
             raise RoomError("room file must be a mapping")
+        try:
+            raw = catalog.expand_room(raw)
+            expanded = [catalog.expand_part(c) for c in raw.get("parts") or []]
+        except catalog.PresetError as exc:
+            raise RoomError(str(exc), "values") from None
+        raw = {**raw, "parts": [c for c, _ in expanded]} if expanded else raw
         wall = raw.get("wall", {}) or {}
         thick = float(wall.get("thickness", 0.06))
         height = float(wall.get("height", 0.25))
@@ -258,6 +272,7 @@ class Room:
             part_cfgs=[dict(c) for c in cfgs], links=[dict(l) for l in links],
             path=path, raw=raw, floor_friction=friction, part_zones=[0] * len(cfgs),
             map=rmap, on_fall=on_fall,
+            part_presets={c["name"]: n for c, n in expanded if n and isinstance(c, dict) and "name" in c},
         )
         if stage:
             if raw.get("stages"):
@@ -295,6 +310,24 @@ class Room:
                 self.part_cfgs.append(cls.shift_cfg(cfg, dx, 0.0))
                 self.part_zones.append(k)
             self.links += [dict(l) for l in sub.links]
+            self.part_presets.update(sub.part_presets)
+
+    def resolved_parts(self) -> list[dict[str, Any]]:
+        """Every room part as loaded: name, type, preset and its checked values with
+        defaults filled in (`task.resolved.yaml` `room_parts`, R3)."""
+        import json
+
+        parts = self.make_parts()
+        out = []
+        for cfg in self.part_cfgs:
+            p = parts[cfg["name"]]
+            entry = {"name": p.name, "type": p.type_name}
+            if p.name in self.part_presets:
+                entry["preset"] = self.part_presets[p.name]
+            entry.update(p.cfg)
+            out.append(json.loads(json.dumps(entry, default=lambda o: o.tolist()
+                                             if hasattr(o, "tolist") else str(o))))
+        return out
 
     def zone_spawns(self) -> list[tuple[float, float, float]]:
         """Spawn pose of every zone (this room, then each `stages:` room)."""

@@ -1,0 +1,3 @@
+# Gate: 1 while its one input is off (R7). Set: in: [channel].
+type: gate
+op: not

@@ -1,0 +1,3 @@
+# Gate: set/reset latch, in: [set, reset]; reset wins (R7).
+type: gate
+op: latch

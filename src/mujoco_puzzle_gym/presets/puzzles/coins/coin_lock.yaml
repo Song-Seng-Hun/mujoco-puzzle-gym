@@ -6,9 +6,10 @@
 #   - the coins' `pos` (and `random`), and add or remove coins;
 #   - `need`: `all` (every coin of the group) or a number;
 #   - the door's `pos`, `width`, `axis` to fit the room's wall opening.
-# Until room.yaml `preset:` loading lands (plan step 8), copy these entries
-# into a room's `parts:`. Channels: coins.count, coins.total, coins.picked,
-# lock.count, lock.reached.
+# Load it with a room's top-level `preset: puzzles/coins/coin_lock` and change
+# parts by name in the room's `parts:` (e.g. `{name: lock_door, pos: [...]}`);
+# the room adds its size, walls, spawn and goal. Channels: coins.count,
+# coins.total, coins.picked, lock.count, lock.reached.
 parts:
   - {name: coin_1, type: coin, group: coins, pos: [-0.4, 0.4]}
   - {name: coin_2, type: coin, group: coins, pos: [0.0, 0.35]}

@@ -1,0 +1,3 @@
+# Gate: 1 for one body step when its input turns on (R7). Set: in: [channel].
+type: gate
+op: pulse

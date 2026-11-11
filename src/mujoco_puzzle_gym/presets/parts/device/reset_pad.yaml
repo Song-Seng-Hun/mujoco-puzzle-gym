@@ -1,0 +1,5 @@
+# Warp pad that sends the body back to the last checkpoint (or the start)
+# (R14 `to: reset`): a penalty square. Set: pos, size.
+type: warp
+to: reset
+size: [0.25, 0.25]

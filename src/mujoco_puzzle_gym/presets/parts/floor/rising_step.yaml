@@ -1,0 +1,6 @@
+# Floor tile that rises by `on_height` while its inputs are on (R10 "rising
+# step"). 1 cm is the highest step the walking body climbs. Set: pos, size, in.
+type: floor_tile
+size: [0.3, 0.3]
+height: 0.0
+on_height: 0.01

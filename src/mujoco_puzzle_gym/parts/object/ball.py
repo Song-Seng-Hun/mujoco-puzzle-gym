@@ -169,6 +169,9 @@ class Ball(FreeObject):
         return []
 
 
+FOLLOW_THROUGH = 0.3    # [m] pin push aim beyond the pin (plan step 8 bowling tune)
+
+
 class Pin(FreeObject):
     object_kind = "pin"
     role = "switch"
@@ -222,7 +225,12 @@ class Pin(FreeObject):
         return self.down
 
     def push_target(self, env, ball_xy) -> np.ndarray:
-        return self.pos(env.data)[:2]
+        """A point `FOLLOW_THROUGH` beyond the pin on the ball -> pin line: the pusher
+        keeps its fast push through the pin instead of slowing down near it."""
+        pin = self.pos(env.data)[:2]
+        d = pin - np.asarray(ball_xy, dtype=float)
+        n = float(np.linalg.norm(d))
+        return pin + d / n * FOLLOW_THROUGH if n > 1e-6 else pin
 
     def push_accepts(self, ball: Ball) -> bool:
         return True

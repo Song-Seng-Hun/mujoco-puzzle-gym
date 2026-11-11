@@ -1,0 +1,4 @@
+# Transmitter (R8): sends its `in` on `band` after `delay`. Set: in, band.
+type: transmitter
+band: radio
+delay: 0.0

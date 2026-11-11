@@ -1,0 +1,5 @@
+# Counter (R8b): counts turn-ons of `up`; `<name>.reached` at count >= target.
+# Set: up (channel), target; optional down, reset.
+type: counter
+start: 0
+target: 3

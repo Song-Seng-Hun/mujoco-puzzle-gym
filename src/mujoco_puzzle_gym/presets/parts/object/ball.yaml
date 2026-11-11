@@ -1,0 +1,5 @@
+# Ball (R38), the measured defaults: 5 cm, 50 g, elasticity 0.5. Set: pos, color.
+type: ball
+radius: 0.05
+mass: 0.05
+elasticity: 0.5

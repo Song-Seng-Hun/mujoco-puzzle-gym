@@ -1,0 +1,7 @@
+# Socket plate: on when an accepted object sits on it within `tolerance` and
+# `angle_tolerance` of `yaw` (R5 receptacle). Set: pos, accept, yaw.
+type: receptacle
+shape: plate
+size: [0.2, 0.2]
+tolerance: 0.05
+angle_tolerance: 15.0

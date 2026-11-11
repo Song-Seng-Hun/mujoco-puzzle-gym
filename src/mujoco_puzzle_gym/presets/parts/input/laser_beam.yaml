@@ -1,0 +1,5 @@
+# Laser beam from `pos` to `to`, 1 while something cuts it (R5).
+# Set: pos, to (receiver [x, y]), height.
+type: laser
+trigger: any
+height: 0.05

@@ -1,0 +1,17 @@
+# Example room (R7, R24 "button and logic"): two floor buttons feed an AND gate;
+# the door opens only when both are on, then walk to the goal. Built from part
+# presets (`preset:`, R3): each entry takes the preset's type and values and
+# sets its own position.
+name: logic_lock
+size: [2.4, 1.8]                  # interior [m], centred at the origin
+wall: {thickness: 0.06, height: 0.25}
+walls:                            # divider at x = 0.4 with a 0.5 m opening at y = 0
+  - {from: [0.4, -0.9], to: [0.4, -0.28]}
+  - {from: [0.4, 0.28], to: [0.4, 0.9]}
+spawn: {pos: [-0.85, 0.0], yaw: 0.0, random: [0.1, 0.2, 3.14]}
+parts:
+  - {name: button_a, preset: input/floor_oneshot, pos: [-0.35, 0.55], random: [0.1, 0.1]}
+  - {name: button_b, preset: input/floor_oneshot, pos: [-0.35, -0.55], random: [0.1, 0.1]}
+  - {name: both, preset: logic/and, in: [button_a, button_b]}     # writes channel `both`
+  - {name: door, preset: device/sliding_door, pos: [0.4, 0.0], in: [both]}
+  - {name: goal, type: goal, pos: [0.9, 0.0], radius: 0.15, random: [0.1, 0.4]}

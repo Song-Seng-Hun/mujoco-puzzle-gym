@@ -18,7 +18,15 @@ class CommandError(Exception):
     """A failure with a reason the user (or an agent) can act on."""
 
 
+TEXT = "__text__"     # a handler result printed as is without --json (`mpg parts --markdown`)
+
+
 def emit(result: dict[str, Any], as_json: bool) -> int:
+    if TEXT in result:
+        text = result.pop(TEXT)
+        if not as_json:
+            print(text, end="")
+            return 0
     ok = bool(result.get("ok", True))
     result = {"ok": ok, **{k: v for k, v in result.items() if k != "ok"}}
     if as_json:
@@ -109,6 +117,28 @@ def _configure_check(p: argparse.ArgumentParser) -> None:
     p.add_argument("--static", action="store_true",
                    help="static stages only (no simulation): values, channels, demo, body, "
                         "parts, overlap, order")
+
+
+def _parts(args: argparse.Namespace) -> dict[str, Any]:
+    from . import catalog
+    from .task import TaskError, import_plugins
+
+    try:
+        import_plugins(args.plugin or [])
+    except TaskError as exc:
+        raise CommandError(str(exc)) from exc
+    if args.markdown:
+        text = catalog.markdown()
+        return {"markdown": text, TEXT: text}
+    return catalog.catalog()
+
+
+def _configure_parts(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--markdown", action="store_true",
+                   help="value tables of the built-in parts and the preset list "
+                        "(the table part of docs/parts-guide.md)")
+    p.add_argument("--plugin", action="append", default=None,
+                   help="also import this module first (parts it registers are listed)")
 
 
 def _train(args: argparse.Namespace) -> dict[str, Any]:
@@ -237,6 +267,8 @@ COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None
               _check, _configure_check),
     "bench": ("Measure walker and PuzzleEnv speed: steps/s, single and parallel.",
               _bench, _configure_bench),
+    "parts": ("List registered parts with their value schemas, and the presets (R3).",
+              _parts, _configure_parts),
     "train": ("Train a policy on task.yaml for --minutes; writes runs/<id>/.", _train, _configure_train),
     "diagnose": ("Classify why a run fails (env bug, body, exploration, reward hacking) + failure MP4.",
                  _diagnose, _configure_diagnose),
