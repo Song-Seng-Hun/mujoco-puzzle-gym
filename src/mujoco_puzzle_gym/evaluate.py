@@ -83,30 +83,42 @@ def run_episode(env, policy, seed: int, deterministic: bool = True, frames: list
 Job = tuple[int, "dict | None"]      # (env seed, reset options)
 
 
-def _worker(run_dir: str, jobs: list[Job], policy: str, deterministic: bool) -> list[dict]:
+def _worker(run_dir: str | None, jobs: list[Job], policy: str, deterministic: bool,
+            onnx: str | None = None, task: str | None = None) -> list[dict]:
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     from .env import PuzzleEnv
 
-    run = load_run(run_dir)
-    pol = make_policy(run, policy)
-    env = PuzzleEnv(task=run["task"])
+    if onnx:                        # no run folder, no pickle (community spec R5)
+        from .onnx_policy import OnnxPolicy
+
+        pol = OnnxPolicy(onnx)
+        env = PuzzleEnv(task=task)
+    else:
+        run = load_run(run_dir)
+        pol = make_policy(run, policy)
+        env = PuzzleEnv(task=run["task"])
     try:
         return [run_episode(env, pol, s, deterministic, options=o) for s, o in jobs]
     finally:
         env.close()
 
 
-def run_jobs(run_dir: str | Path, jobs: list[Job], policy: str = "trained",
-             deterministic: bool = True, workers: int = DEFAULT_WORKERS) -> list[dict]:
-    """Episodes for (seed, reset options) jobs, in job order, over worker processes."""
+def run_jobs(run_dir: str | Path | None, jobs: list[Job], policy: str = "trained",
+             deterministic: bool = True, workers: int = DEFAULT_WORKERS,
+             onnx: str | Path | None = None, task: str | Path | None = None) -> list[dict]:
+    """Episodes for (seed, reset options) jobs, in job order, over worker processes.
+    With `onnx` (and `task`), the policy is that ONNX file instead of the run's checkpoint."""
     jobs = list(jobs)
     workers = max(1, min(workers, len(jobs)))
+    rd = str(run_dir) if run_dir is not None else None
+    onnx, task = (str(onnx) if onnx else None), (str(task) if task else None)
     if workers == 1:
-        return _worker(str(run_dir), jobs, policy, deterministic)
+        return _worker(rd, jobs, policy, deterministic, onnx, task)
     idx = [list(range(i, len(jobs), workers)) for i in range(workers)]
     with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as pool:
-        parts = list(pool.map(_worker, [str(run_dir)] * workers, [[jobs[j] for j in ix] for ix in idx],
-                              [policy] * workers, [deterministic] * workers))
+        parts = list(pool.map(_worker, [rd] * workers, [[jobs[j] for j in ix] for ix in idx],
+                              [policy] * workers, [deterministic] * workers,
+                              [onnx] * workers, [task] * workers))
     out: list[dict] = [{}] * len(jobs)
     for ix, part in zip(idx, parts):
         for j, ep in zip(ix, part):
@@ -132,21 +144,8 @@ def evaluate(run_dir: str | Path, episodes: int = 100, policy: str = "trained",
     eps = done[:episodes]
     hz = float(run["task"]["env"]["hz"])
     stats = window_stats(eps, hz)
-    wins = [e["seconds"] for e in eps if e["success"]]
-    out = {
-        "run_id": run["summary"]["run_id"],
-        "policy": policy,
-        "deterministic": deterministic,
-        "episodes": episodes,
-        "seeds": [seeds[0], seeds[-1]],
-        "success_rate": stats["success_rate"],
-        "mean_time_s": round(float(np.mean(wins)), 2) if wins else None,
-        "mean_return": stats["mean_return"],
-        "fall_rate": stats["fall_rate"],
-        "switch_rate": stats["switch_rate"],
-        "nan_episodes": stats["nan_episodes"],
-        "failed_seeds": [e["seed"] for e in eps if not e["success"]][:20],
-    }
+    out = {"run_id": run["summary"]["run_id"], "policy": policy,
+           **_report(eps, seeds, hz, deterministic)}
     if full:
         out["full_success_rate"] = stats["success_rate"]
     if segs:
@@ -158,6 +157,45 @@ def evaluate(run_dir: str | Path, episodes: int = 100, policy: str = "trained",
             all_ok = [all(seg_eps[k]["segment_success"] for seg_eps in by_seg) for k in range(episodes)]
             gap = sum(ok and not e["success"] for ok, e in zip(all_ok, eps))
             out["chain_gap_rate"] = round(gap / episodes, 3)
+    return out
+
+
+def _report(eps: list[dict], seeds: list[int], hz: float, deterministic: bool) -> dict[str, Any]:
+    stats = window_stats(eps, hz)
+    wins = [e["seconds"] for e in eps if e["success"]]
+    return {
+        "deterministic": deterministic,
+        "episodes": len(eps),
+        "seeds": [seeds[0], seeds[-1]],
+        "success_rate": stats["success_rate"],
+        "mean_time_s": round(float(np.mean(wins)), 2) if wins else None,
+        "mean_return": stats["mean_return"],
+        "fall_rate": stats["fall_rate"],
+        "switch_rate": stats["switch_rate"],
+        "nan_episodes": stats["nan_episodes"],
+        "failed_seeds": [e["seed"] for e in eps if not e["success"]][:20],
+    }
+
+
+def evaluate_onnx(onnx: str | Path, task: str | Path, episodes: int = 100,
+                  workers: int = DEFAULT_WORKERS) -> dict[str, Any]:
+    """`mpg eval --onnx policy.onnx --task task.yaml`: held-out layouts, no pickle (R5)."""
+    from .env import PuzzleEnv
+    from .onnx_policy import OnnxPolicy, fit_report
+
+    pol = OnnxPolicy(onnx)
+    env = PuzzleEnv(task=task)
+    try:
+        warnings = fit_report(pol.meta, env)
+        hz = float(env.hz)
+    finally:
+        env.close()
+    seeds = list(range(EVAL_SEED_BASE, EVAL_SEED_BASE + episodes))
+    eps = run_jobs(None, [(s, None) for s in seeds], workers=workers, onnx=onnx, task=task)
+    out = {"onnx": str(onnx), "policy_room": pol.meta["room"], "algo": pol.meta["algo"],
+           **_report(eps, seeds, hz, True)}
+    if warnings:
+        out["warnings"] = warnings
     return out
 
 

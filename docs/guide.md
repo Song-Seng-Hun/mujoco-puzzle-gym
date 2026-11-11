@@ -40,15 +40,18 @@ flowchart LR
 |---|---|
 | `mpg fetch-assets` | 로봇 모델과 걷기 정책을 고정 커밋에서 받아 해시로 확인 |
 | `mpg build <room.yaml>` | 몸과 방을 합친 MJCF와 위에서 본 PNG 만들기 |
-| `mpg check <room.yaml>` | 정적 단계(값, 신호, 겹침, 풀이 순서)와 동적 단계(물리 안정성, 스크립트 해답 성공률) 점검. `--static`은 정적 단계만 |
+| `mpg check <room.yaml>` | 정적 단계(값, 신호, 겹침, 풀이 순서)와 동적 단계(물리 안정성, 스크립트 해답 성공률) 점검. `--static`은 정적 단계만, `--community`는 공유 방 제한까지([방과 정책 나누기](community.md)) |
 | `mpg parts` | 등록된 부품, 값 스키마, 프리셋 목록(`--json`), 값 표(`--markdown`) |
 | `mpg train <task.yaml> --minutes N` | 정해진 시간 동안 학습, 결과는 `runs/<id>/` |
 | `mpg diagnose runs/<id>` | 실패 원인 분류, 근거 숫자, 실패 영상 |
-| `mpg eval runs/<id>` | 학습에 쓰지 않은 배치에서 성공률과 평균 시간 (`--policy random`으로 기준선) |
+| `mpg eval runs/<id>` | 학습에 쓰지 않은 배치에서 성공률과 평균 시간 (`--policy random`으로 기준선). `--onnx policy.onnx --task task.yaml`은 내보낸 정책을 pickle 없이 평가 |
+| `mpg export-onnx runs/<id>` | 정책을 `policy.onnx`와 `policy.json`으로 내보내기(나누기용) |
 | `mpg render runs/<id>` | 성공 에피소드 MP4 |
 | `mpg demo` | 저장소에 든 학습된 정책이 예제 방을 푸는 영상(`demo.mp4`) |
 | `mpg bench` | 걷기 몸과 환경의 시뮬레이션 속도 측정 |
 | `mpg version` | 버전 출력 |
+
+`train`, `eval`, `diagnose`, `render`, `export-onnx`는 현재 폴더의 `runs/` 밖에 있는 run 폴더와 체크포인트 저장본을 열지 않습니다. 이 파일들은 pickle이라 열 때 코드를 실행할 수 있습니다. 직접 만든 파일만 `--trust`로 엽니다.
 
 ## 퍼즐 방 짓기
 

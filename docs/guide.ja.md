@@ -40,15 +40,18 @@ flowchart LR
 |---|---|
 | `mpg fetch-assets` | ロボットモデルと歩行ポリシーを固定コミットから取得し、ハッシュで確認 |
 | `mpg build <room.yaml>` | 体と部屋を合わせたMJCFと、上から見たPNGを作る |
-| `mpg check <room.yaml>` | 静的段階(値、信号、重なり、解く順序)と動的段階(物理の安定性、スクリプト解答の成功率)を点検。`--static`なら静的段階だけ |
+| `mpg check <room.yaml>` | 静的段階(値、信号、重なり、解く順序)と動的段階(物理の安定性、スクリプト解答の成功率)を点検。`--static`なら静的段階だけ、`--community`なら共有する部屋の制限まで([部屋とポリシーを共有する](community.ja.md)) |
 | `mpg parts` | 登録された部品、値のスキーマ、プリセットの一覧(`--json`)、値の表(`--markdown`) |
 | `mpg train <task.yaml> --minutes N` | 決めた時間だけ学習、結果は`runs/<id>/` |
 | `mpg diagnose runs/<id>` | 失敗の原因を分類、根拠の数値と失敗動画 |
-| `mpg eval runs/<id>` | 学習に使っていない配置での成功率と平均時間(`--policy random`で基準線) |
+| `mpg eval runs/<id>` | 学習に使っていない配置での成功率と平均時間(`--policy random`で基準線)。`--onnx policy.onnx --task task.yaml`なら書き出したポリシーをpickleなしで評価 |
+| `mpg export-onnx runs/<id>` | ポリシーを`policy.onnx`と`policy.json`に書き出す(共有用) |
 | `mpg render runs/<id>` | 成功エピソードのMP4 |
 | `mpg demo` | リポジトリに同梱の学習済みポリシーがサンプルの部屋を解く動画(`demo.mp4`) |
 | `mpg bench` | 歩く体と環境のシミュレーション速度を測る |
 | `mpg version` | バージョンを表示 |
+
+`train`、`eval`、`diagnose`、`render`、`export-onnx`は、現在のフォルダの`runs/`の外にあるrunフォルダやチェックポイントの保存ファイルを開きません。これらのファイルはpickleなので、開くときにコードを実行できます。自分で作ったファイルだけを`--trust`で開きます。
 
 ## パズル部屋を作る
 

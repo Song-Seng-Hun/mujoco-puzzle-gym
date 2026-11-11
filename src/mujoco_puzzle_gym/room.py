@@ -263,8 +263,13 @@ class Room:
             except (TypeError, ValueError, AssertionError):
                 raise RoomError("floor.friction must be 3 numbers in [0, 5] "
                                 f"(slide, torsion, roll), got {fl['friction']!r}") from None
+        name = raw.get("name") or (path.stem if path else "room")
+        name = str(name) if isinstance(name, (int, float)) else name
+        # the name becomes a folder (runs/check/<name>/checkpoints): no path parts
+        if not isinstance(name, str) or name in (".", "..") or any(c in name for c in "/\\\0"):
+            raise RoomError(f"`name` must be a plain name without / or \\, got {name!r}", "values")
         room = cls(
-            name=str(raw.get("name") or (path.stem if path else "room")),
+            name=name,
             size=size, wall_thickness=thick, wall_height=height, inner_walls=walls,
             spawn_pos=np.asarray(spawn["pos"], dtype=float),
             spawn_yaw=float(spawn.get("yaw", 0.0)),

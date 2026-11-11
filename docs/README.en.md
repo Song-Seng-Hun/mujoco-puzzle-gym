@@ -121,6 +121,7 @@ The planning, design documents, code, tests and training experiments in this rep
 ## More
 
 - [Guide](guide.en.md): the loop, commands, training settings, extending, body adapter
+- [Sharing rooms and policies](community.en.md): submitting your rooms as PRs, sharing policies as ONNX, why we don't open other people's pickles
 - [Parts and attributes](parts.en.md): the parts available now and their attributes
 - [Training log](training-log.md): training results and diagnoses of broken settings
 - [Speed measurements](bench.md)

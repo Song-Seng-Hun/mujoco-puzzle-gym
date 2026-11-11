@@ -120,8 +120,10 @@ def load_snapshots(env) -> dict[str, Any]:
     import mujoco
 
     from .snapshot import SIG
+    from .trust import require_trusted
 
     d = snapshot_dir(env)
+    require_trusted(d, "snapshot folder")
     need = [s["start"] for s in segments(env.parts) if s["start"] is not None]
     missing = [f for f in need if not (d / f"{f}.pkl").exists()]
     if missing:
