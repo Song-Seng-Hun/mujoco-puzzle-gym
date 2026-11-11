@@ -138,6 +138,11 @@ class Part:
         self.pending_snapshot = False          # checkpoint asks the env for a snapshot
         self._bid = -1
 
+    @classmethod
+    def add_room_parts(cls, parts: dict[str, "Part"]) -> None:
+        """Room load hook, once per part class in the room: add helper parts
+        (coin groups, R36). Runs before the channels are wired."""
+
     def needs_body(self, *caps: str) -> None:
         """Add capabilities this part needs whatever room.yaml says (R2b)."""
         self.requires_body = list(dict.fromkeys([*caps, *self.requires_body]))
@@ -245,6 +250,10 @@ class Part:
     def blockers(self, is_open: bool) -> list[Segment]:
         """Segments that block walking; gates return theirs while not open."""
         return []
+
+    def target_key(self) -> Any:
+        """Changes when `target_mask` changes (coin groups, R36); distance fields are cached per key."""
+        return None
 
     def target_mask(self, grid: Grid) -> np.ndarray:
         """Cells where the body centre must be to satisfy this part."""

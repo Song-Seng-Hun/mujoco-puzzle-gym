@@ -55,3 +55,22 @@ def target_pos(env):
 def counters(env):
     """Every counter's count over its target (R8b), room order (1 per counter)."""
     return np.array([p.ratio() for p in env.parts.values() if hasattr(p, "ratio")], dtype=float)
+
+
+#: Remaining coins the `coins` term lists (nearest first).
+COIN_OBS_K = 3
+
+
+@register_obs("coins", replace=True)
+def coins(env):
+    """Coins (R36): per coin group (room order) the fraction picked, then the
+    `COIN_OBS_K` nearest coins not picked yet as (x, y, 1) in the heading frame;
+    empty slots are (0, 0, 0)."""
+    groups = [p for p in env.parts.values() if hasattr(p, "picked_ratio")]
+    left = [c for g in groups for c in g.remaining()]
+    pos = env.body_state.pos[:2]
+    left.sort(key=lambda c: float(np.hypot(*(c.xy - pos))))
+    slots = np.zeros((COIN_OBS_K, 3))
+    for i, c in enumerate(left[:COIN_OBS_K]):
+        slots[i] = [*_to_body_frame(env, c.xy), 1.0]
+    return np.concatenate([[g.picked_ratio() for g in groups], slots.ravel()])

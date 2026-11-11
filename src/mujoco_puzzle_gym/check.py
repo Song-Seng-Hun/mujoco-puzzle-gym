@@ -1,7 +1,8 @@
 """`mpg check room.yaml` (R6): is the room solvable, stable and actually solved?
 
 body:      every part's `requires_body` capabilities are on the body (R2b, static);
-(a) order:     a switch/door order that reaches a goal exists (link graph on the room grid);
+(a) order:     a switch/door order that reaches a goal exists (link graph on the room grid),
+               and every coin is reachable (R36);
 (b) stability: zero command for 10 s at the nominal layout: no NaN, no fall;
 (c) solver:    the scripted privileged solver succeeds on >= `need` of `seeds`
                random layouts (seeds 0..seeds-1); skipped when body or (a) fails.
@@ -17,6 +18,7 @@ import numpy as np
 
 from .env import PuzzleEnv
 from .logic import solution_order
+from .parts.floor.coin import unreachable_coins
 from .solver import ScriptedSolver, run_episode
 
 STABILITY_SECONDS = 10.0
@@ -40,6 +42,8 @@ def check_order(env: PuzzleEnv) -> dict[str, Any]:
     for n, xy in layout["parts"].items():
         env.parts[n].place(env.model, xy)
     res = solution_order(env.grid, env.walls, env.parts, layout["spawn"][:2])
+    if res["ok"] and (coins := unreachable_coins(env, res["order"], layout["spawn"][:2])):
+        res = {**res, "ok": False, "reason": "; ".join(coins)}
     return {"ok": res["ok"], "order": res["order"], **({"reason": res["reason"]} if not res["ok"] else {})}
 
 

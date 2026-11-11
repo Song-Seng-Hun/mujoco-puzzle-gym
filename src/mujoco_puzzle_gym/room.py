@@ -128,6 +128,11 @@ class Room:
                 parts[name] = cls(name, {k: v for k, v in cfg.items() if k not in ("name", "type")})
             except (ValueError, TypeError) as exc:
                 raise RoomError(str(exc)) from None
+        for kind in {type(p): None for p in list(parts.values())}:
+            try:
+                kind.add_room_parts(parts)
+            except (ValueError, TypeError) as exc:
+                raise RoomError(str(exc)) from None
         if not any(p.role == "goal" for p in parts.values()):
             raise RoomError("the room needs at least one part with role goal (e.g. type: goal)")
         flags: dict[int, str] = {}

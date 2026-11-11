@@ -3,6 +3,7 @@
 from ..registry import register_part
 from .base import Part
 from .door import Door
+from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
 from .input import Button, Checkpoint, Laser, PressurePlate, Receptacle, Zone
 from .logic import Counter, Gate, Receiver, Transmitter
@@ -21,6 +22,10 @@ register_part("laser", Laser, replace=True)
 register_part("pressure", PressurePlate, replace=True)
 register_part("receptacle", Receptacle, replace=True)
 register_part("checkpoint", Checkpoint, replace=True)
+register_part("coin", Coin, replace=True)
+register_part("coin_group", CoinGroup, replace=True)
+register_part("coin_lock", CoinLock, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
-           "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint"]
+           "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
+           "Coin", "CoinGroup", "CoinLock"]

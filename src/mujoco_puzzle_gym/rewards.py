@@ -38,3 +38,15 @@ def fall(env):
 def respawn_penalty(env):
     """1 when the body went back to a checkpoint this step; the default weight is -1."""
     return float(env.events.get("respawned", False))
+
+
+@register_reward("coin_pick", replace=True)
+def coin_pick(env):
+    """Coins picked since the last env step (R36); a coin put back by a checkpoint
+    restore pays again when picked again."""
+    n = 0
+    for p in env.parts.values():
+        if hasattr(p, "picked_ratio"):
+            n += p.picks - p.rewarded
+            p.rewarded = p.picks
+    return float(n)
