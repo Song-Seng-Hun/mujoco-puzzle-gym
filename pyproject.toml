@@ -29,3 +29,8 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.2.0",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "network: downloads pinned upstream assets when the cache is empty",
+]

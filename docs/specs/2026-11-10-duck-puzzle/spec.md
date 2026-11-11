@@ -61,7 +61,7 @@ flowchart LR
 ## Open questions
 - [x] 첫 마일스톤 성공률 목표: 80% (사용자 승인 2026-11-11)
 - [x] 학습 시간 한도: 맥 스튜디오에서 1회 학습 2시간 이내 (사용자 승인 2026-11-11)
-- [ ] 공식 저장소에서 고정할 커밋과 HF 리비전: 구현 첫 단계에서 정해 spec에 적는다. (Claude)
+- [x] 공식 저장소에서 고정할 커밋과 HF 리비전: `pollen-robotics/microduck_rl` 커밋 `0daab160d3fb1c2cbaba16a4a19052f36709dd9e`(develop), HF `pollen-robotics/microduck-policies` 리비전 `283771bcb3690a0a94a288c108365d9b630d21e4` (2026-11-11, `src/mujoco_puzzle_gym/upstream.lock.json`)
 - [ ] 걷기 정책 위에서 10 Hz 위층이 충분히 부드러운지: R3·R13 결과를 보고 5–25 Hz 사이에서 조정할 수 있다. (Claude)
 
 ## Areas of concern
