@@ -4,6 +4,16 @@ Eval runs the saved policy on held-out layouts: episode k uses env seed
 EVAL_SEED_BASE + k, a range training never touches (see train.py). Episodes
 run in parallel worker processes, each loading the checkpoint itself.
 
+`--full` and `--segments` (R22) work on rooms with checkpoint flags
+(curriculum.py segments):
+- full: episodes from the start (sampled layout, no snapshot) to the goal; the
+  same episodes plain `mpg eval` runs, reported as `full_success_rate`. (Step
+  12's difficulty steps will make `--full` pick the hardest one.)
+- segments: for every eval seed, one episode per segment from its start (segment
+  0 from the sampled layout, the others from their flag snapshot) to its end;
+  `segment_success_rates` per segment. With both, `chain_gap_rate` is the
+  fraction of seeds whose segments all succeeded while the full run failed.
+
 Render replays eval seeds until one succeeds (or replays `--seed`) and writes
 an MP4 with MuJoCo's offscreen renderer; the backend follows MUJOCO_GL
 (e.g. `MUJOCO_GL=egl` on headless Linux).
@@ -42,8 +52,9 @@ def make_policy(run: dict[str, Any], policy: str = "trained"):
     return load_trainer(run)
 
 
-def run_episode(env, policy, seed: int, deterministic: bool = True, frames: list | None = None):
-    obs, info = env.reset(seed=seed)
+def run_episode(env, policy, seed: int, deterministic: bool = True, frames: list | None = None,
+                options: dict | None = None):
+    obs, info = env.reset(seed=seed, options=options)
     ep = {"seed": seed, "return": 0.0, "length": 0, "switches_on": 0, "nan": False,
           "contradiction": False, "terms": {}}
     if frames is not None:
@@ -64,10 +75,15 @@ def run_episode(env, policy, seed: int, deterministic: bool = True, frames: list
             break
     ep.update(success=bool(info["success"]), fallen=bool(info["fallen"]), truncated=bool(truncated),
               stage=info["stage"], target=info["target"], seconds=ep["length"] / env.hz)
+    if "segment" in info:
+        ep.update(segment=int(info["segment"]), segment_success=bool(info["segment_success"]))
     return ep
 
 
-def _worker(run_dir: str, seeds: list[int], policy: str, deterministic: bool) -> list[dict]:
+Job = tuple[int, "dict | None"]      # (env seed, reset options)
+
+
+def _worker(run_dir: str, jobs: list[Job], policy: str, deterministic: bool) -> list[dict]:
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     from .env import PuzzleEnv
 
@@ -75,33 +91,49 @@ def _worker(run_dir: str, seeds: list[int], policy: str, deterministic: bool) ->
     pol = make_policy(run, policy)
     env = PuzzleEnv(task=run["task"])
     try:
-        return [run_episode(env, pol, s, deterministic) for s in seeds]
+        return [run_episode(env, pol, s, deterministic, options=o) for s, o in jobs]
     finally:
         env.close()
 
 
+def run_jobs(run_dir: str | Path, jobs: list[Job], policy: str = "trained",
+             deterministic: bool = True, workers: int = DEFAULT_WORKERS) -> list[dict]:
+    """Episodes for (seed, reset options) jobs, in job order, over worker processes."""
+    jobs = list(jobs)
+    workers = max(1, min(workers, len(jobs)))
+    if workers == 1:
+        return _worker(str(run_dir), jobs, policy, deterministic)
+    idx = [list(range(i, len(jobs), workers)) for i in range(workers)]
+    with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as pool:
+        parts = list(pool.map(_worker, [str(run_dir)] * workers, [[jobs[j] for j in ix] for ix in idx],
+                              [policy] * workers, [deterministic] * workers))
+    out: list[dict] = [{}] * len(jobs)
+    for ix, part in zip(idx, parts):
+        for j, ep in zip(ix, part):
+            out[j] = ep
+    return out
+
+
 def run_episodes(run_dir: str | Path, seeds: list[int], policy: str = "trained",
                  deterministic: bool = True, workers: int = DEFAULT_WORKERS) -> list[dict]:
-    workers = max(1, min(workers, len(seeds)))
-    if workers == 1:
-        return _worker(str(run_dir), list(seeds), policy, deterministic)
-    chunks = [list(seeds[i::workers]) for i in range(workers)]
-    with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as pool:
-        parts = pool.map(_worker, [str(run_dir)] * workers, chunks, [policy] * workers,
-                         [deterministic] * workers)
-        eps = [e for part in parts for e in part]
+    eps = run_jobs(run_dir, [(s, None) for s in seeds], policy, deterministic, workers)
     return sorted(eps, key=lambda e: e["seed"])
 
 
 def evaluate(run_dir: str | Path, episodes: int = 100, policy: str = "trained",
-             deterministic: bool = True, workers: int = DEFAULT_WORKERS) -> dict[str, Any]:
+             deterministic: bool = True, workers: int = DEFAULT_WORKERS,
+             full: bool = False, segments: bool = False) -> dict[str, Any]:
     run = load_run(run_dir)
     seeds = list(range(EVAL_SEED_BASE, EVAL_SEED_BASE + episodes))
-    eps = run_episodes(run_dir, seeds, policy, deterministic, workers)
+    segs = _segments(run) if segments else []
+    jobs: list[Job] = [(s, None) for s in seeds]
+    jobs += [(s, {"segment": i}) for i in range(len(segs)) for s in seeds]
+    done = run_jobs(run_dir, jobs, policy, deterministic, workers)
+    eps = done[:episodes]
     hz = float(run["task"]["env"]["hz"])
     stats = window_stats(eps, hz)
     wins = [e["seconds"] for e in eps if e["success"]]
-    return {
+    out = {
         "run_id": run["summary"]["run_id"],
         "policy": policy,
         "deterministic": deterministic,
@@ -115,6 +147,37 @@ def evaluate(run_dir: str | Path, episodes: int = 100, policy: str = "trained",
         "nan_episodes": stats["nan_episodes"],
         "failed_seeds": [e["seed"] for e in eps if not e["success"]][:20],
     }
+    if full:
+        out["full_success_rate"] = stats["success_rate"]
+    if segs:
+        by_seg = [done[episodes * (i + 1):episodes * (i + 2)] for i in range(len(segs))]
+        out["segment_success_rates"] = {
+            s["name"]: round(sum(e["segment_success"] for e in seg_eps) / episodes, 3)
+            for s, seg_eps in zip(segs, by_seg)}
+        if full:
+            all_ok = [all(seg_eps[k]["segment_success"] for seg_eps in by_seg) for k in range(episodes)]
+            gap = sum(ok and not e["success"] for ok, e in zip(all_ok, eps))
+            out["chain_gap_rate"] = round(gap / episodes, 3)
+    return out
+
+
+def _segments(run: dict[str, Any]) -> list[dict[str, Any]]:
+    """The run room's segments; checks the flag snapshots load (fails before the workers)."""
+    from .curriculum import CurriculumError, load_snapshots
+    from .env import PuzzleEnv
+
+    env = PuzzleEnv(task=run["task"])
+    try:
+        if len(env.segments) < 2:
+            raise ValueError(f"--segments needs checkpoint flags in the room "
+                             f"({run['task']['room']} has none)")
+        try:
+            load_snapshots(env)
+        except CurriculumError as exc:
+            raise ValueError(str(exc)) from None
+        return env.segments
+    finally:
+        env.close()
 
 
 # ---- video ----------------------------------------------------------------------

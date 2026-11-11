@@ -72,6 +72,19 @@ def counters(env):
     return np.array([p.ratio() for p in env.parts.values() if hasattr(p, "ratio")], dtype=float)
 
 
+@register_obs("checkpoints", replace=True)
+def checkpoints(env):
+    """Checkpoint flags (R21), in `order`: the next flag to reach as a one-hot over
+    the K flags plus a last slot for "all reached, the goal is next" (K + 1), then
+    each flag's reached bit (K). Length 2K + 1; a room without flags gives [1]."""
+    flags = sorted(env.world.checkpoints, key=lambda c: c.order)
+    reached = np.array([float(c.reached) for c in flags])
+    nxt = np.zeros(len(flags) + 1)
+    left = [i for i, c in enumerate(flags) if not c.reached]
+    nxt[left[0] if left else len(flags)] = 1.0
+    return np.concatenate([nxt, reached])
+
+
 #: Remaining coins the `coins` term lists (nearest first).
 COIN_OBS_K = 3
 

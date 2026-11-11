@@ -118,7 +118,8 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
 
     try:
         return train(args.task, minutes=args.minutes, algo=args.algo, n_envs=args.n_envs,
-                     runs_dir=args.runs_dir, run_id=args.id, max_steps=args.max_steps)
+                     runs_dir=args.runs_dir, run_id=args.id, max_steps=args.max_steps,
+                     curriculum=args.curriculum, advance_at=args.advance_at, replay=args.replay)
     except (TaskError, RoomError, KeyError, FileNotFoundError) as exc:
         raise CommandError(str(exc.args[0]) if exc.args else str(exc)) from exc
 
@@ -133,6 +134,13 @@ def _configure_train(p: argparse.ArgumentParser) -> None:
     p.add_argument("--runs-dir", default="runs", help="parent of the run directory")
     p.add_argument("--id", default=None, help="run id (default: <time>-<task>-<algo>)")
     p.add_argument("--max-steps", type=int, default=None, help="also stop after this many env steps")
+    p.add_argument("--curriculum", choices=["forward", "reverse", "none"], default=None,
+                   help="train over checkpoint segments (R21; needs `mpg check` snapshots; "
+                        "default: task `curriculum.mode`, none)")
+    p.add_argument("--advance-at", type=float, default=None,
+                   help="segment success rate that opens the next segment (default 0.8)")
+    p.add_argument("--replay", type=float, default=None,
+                   help="share of episodes started at earlier open segments (default 0.2)")
 
 
 def _run_errors():
@@ -147,7 +155,8 @@ def _eval(args: argparse.Namespace) -> dict[str, Any]:
 
     try:
         return evaluate(args.run, episodes=args.episodes, policy=args.policy,
-                        deterministic=not args.stochastic, workers=args.workers)
+                        deterministic=not args.stochastic, workers=args.workers,
+                        full=args.full, segments=args.segments)
     except _run_errors() as exc:
         raise CommandError(str(exc)) from exc
 
@@ -159,6 +168,11 @@ def _configure_eval(p: argparse.ArgumentParser) -> None:
                    help="'random' = uniform random baseline on the same seeds")
     p.add_argument("--stochastic", action="store_true", help="sample actions instead of the mean")
     p.add_argument("--workers", type=int, default=12, help="parallel processes")
+    p.add_argument("--full", action="store_true",
+                   help="report full_success_rate: start to goal, no snapshots (R22)")
+    p.add_argument("--segments", action="store_true",
+                   help="also run every checkpoint segment from its snapshot: segment_success_rates; "
+                        "with --full also chain_gap_rate (R22)")
 
 
 def _diagnose(args: argparse.Namespace) -> dict[str, Any]:
