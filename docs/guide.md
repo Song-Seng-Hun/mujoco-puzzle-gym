@@ -72,7 +72,7 @@ links:
 
 - 발판 `switch`는 M1 이름 그대로 쓰는 바닥 버튼입니다. 버튼 프리셋 `input/floor_oneshot`(몸으로 한 번 밟으면 계속 켜짐)과 같고, `latch: false`면 밟고 있는 동안만 켜지는 `momentary`입니다.
 - 새 방은 프리셋으로 짜는 편이 쉽습니다. `{name: b, preset: input/floor_oneshot, pos: [x, y]}`처럼 쓰고 바꿀 값만 덧붙입니다. 예제 방 목록과 프리셋 사용법은 [부품과 프리셋 안내](parts-guide.md)에 있습니다. 예제는 [`examples/rooms/`](../examples/rooms/)(버튼과 논리 게이트, 문 세 가지, 깃발 4개, 코인, 공, 글자 지도)와 공 조립 프리셋(`mini_soccer`, `ball_ramp`, `bowling`, `color_sort`)입니다.
-- `random`은 에피소드마다 배치를 흔드는 범위입니다. 평가는 학습에 쓰지 않은 시드의 배치에서 합니다.
+- `random`은 에피소드마다 배치를 무작위로 바꾸는 범위입니다. 평가는 학습에 쓰지 않은 시드의 배치에서 합니다.
 - 문은 `require: all | any`로 여러 발판을 함께 요구할 수 있습니다.
 - 눈으로 구별할 부품(버튼과 발판, 센서판, 체크포인트, 문, 소켓, 워프, 바닥 타일)에는 ArUco 마커(`DICT_4X4_50`)가 빈 번호로 붙습니다. `marker: {id, size, face}`로 정하고 `marker: none`으로 뺍니다. 번호 중복, 0–49 밖 번호, 면보다 큰 마커는 방을 읽을 때 거절합니다.
 - 시선 센서는 인식 센서가 아니라 기하 판정입니다. 영상을 읽지 않고, 머리 카메라에서 마커가 시야각 `fov/2`·거리 `max_dist`·기울기 `max_tilt` 안에 있고 광선이 가려지지 않으면 "보임"으로 칩니다. `dwell`초 동안 이어서 보면 `<부품>.seen` 채널이 1이 되어 "쳐다보면 열리는 문"(`in: [door_a.seen]`)을 만들 수 있습니다. 방 값 `gaze: {fov: 60, max_dist: 2.0, max_tilt: 70, dwell: 0.5}`, 관측 항목 `markers_seen`(쓰인 번호마다 한 칸, 번호 순).
@@ -84,7 +84,7 @@ links:
 
 ```yaml
 room: switch_door.yaml
-env: {hz: 10, episode_seconds: 40}       # 위층 정책은 초당 10번 결정
+env: {hz: 10, episode_seconds: 40}       # 상위 정책은 초당 10번 결정
 obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
 reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
 termination: {success: true, fall: true}
@@ -142,4 +142,4 @@ def upright(env):                 # 가중치를 곱하기 전의 항목 값
 - `step`: 이동 명령 (앞뒤 속도, 옆 속도, 회전 속도)을 한 제어 주기 동안 따릅니다.
 - `state`: 위치, 자세, 속도, 넘어짐 여부를 돌려줍니다.
 
-마이크로덕 어댑터는 공식 걷기 정책 `velstand.onnx`를 50 Hz로 돌리고, 공식 저장소의 모터 모델(BAM)을 씁니다. 몸 이름(관절, 사이트)은 `bodies/` 안에서만 다룹니다. 다른 몸을 붙이려면 이 네 메서드와 명령 범위를 구현하면 됩니다.
+마이크로덕 어댑터는 공식 걷기 정책 `velstand.onnx`를 50 Hz로 돌리고, 공식 저장소의 모터 모델(BAM)을 씁니다. 몸 이름(관절, 사이트)은 `bodies/` 안에서만 다룹니다. 다른 몸을 붙이려면 이 네 메서드와 명령 범위를 구현하고, `bodies.make_body()`에 새 몸 이름을 등록한 뒤 `task.yaml`의 `body:`에 그 이름을 적습니다.

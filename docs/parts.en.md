@@ -11,7 +11,7 @@ A puzzle room is assembled from parts. One part is one line in the `parts:` list
 | `name` | Part name. `links` and observations refer to the part by it | required |
 | `type` | Part type (list below) | required |
 | `pos: [x, y]` | Position [m], origin at the room centre | required |
-| `random: [dx, dy]` | Range by which the position is shaken each episode [m], so a trained policy does not memorise spots | `[0, 0]` |
+| `random: [dx, dy]` | ± range added uniformly to the position each episode [m]; `dx: 0.2` means −0.2 to +0.2 m, so a trained policy does not memorise spots | `[0, 0]` |
 | `require: all \| any` | With several linked signals, whether all must be on or any one is enough | `all` |
 
 Each part has a role. The check (`mpg check`) and the environment use roles to work out the solution order.
@@ -58,12 +58,12 @@ Success when the body centre is within the radius. No collision.
 | `size: [w, h]` | Interior size [m], origin at the centre |
 | `wall: {thickness, height}` | Outer wall thickness and height |
 | `walls:` | Inner walls, each `{from: [x, y], to: [x, y]}` |
-| `spawn: {pos, yaw, random}` | Start position and heading, and the per-episode range `[dx, dy, dyaw]` |
+| `spawn: {pos, yaw, random}` | Start position and heading, and the per-episode ± range `[dx, dy, dyaw]` (`yaw` and `dyaw` in radians) |
 | `links:` | Signal links, each `{from: part, to: part}` |
 
 ## Making a new part
 
-A part is one Python class that inherits `Part`. It reads its attributes from `cfg` and declares its role with `role`. Register it with `register_part` and put the module name in `plugins:` in `task.yaml`; then `room.yaml` can use it by `type`. See the example in the [guide](guide.en.md#adding-parts-observations-rewards-and-algorithms).
+A part is one Python class that inherits `Part`. It reads its attributes from `cfg` and declares its role with `role`. Register it with `register_part` and put the module name in `plugins:` in `task.yaml`; then `room.yaml` can use it by `type`. Check a room with such parts together with its training config: `uv run mpg check my_room.yaml --task my_task.yaml`. See the example in the [guide](guide.en.md#adding-parts-observations-rewards-and-algorithms).
 
 ## Parts on the way (milestone 2, in design)
 

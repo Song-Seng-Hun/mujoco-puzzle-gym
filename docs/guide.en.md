@@ -68,7 +68,7 @@ links:
   - {from: switch_a, to: door_b}  # door_b opens when switch_a is on
 ```
 
-- `random` is the range by which the layout is shaken each episode. Evaluation uses layouts from seeds not used in training.
+- `random` is the range within which the layout is randomized each episode. Evaluation uses layouts from seeds not used in training.
 - A door can require several switches together with `require: all | any`. A switch stays on once stepped on by default; with `latch: false` it is on only while pressed.
 - Deliberately broken rooms and settings are in [`examples/broken/`](../examples/broken/). They test whether check and diagnose name the cause correctly.
 
@@ -119,4 +119,4 @@ The puzzle code does not know which body is walking. `BodyAdapter` is the bounda
 - `step`: follow a motion command (forward speed, lateral speed, turn rate) for one control period.
 - `state`: return position, orientation, velocities and whether the body has fallen.
 
-The Microduck adapter runs the official walking policy `velstand.onnx` at 50 Hz with the motor model (BAM) from the official repository. Body names (joints, sites) are handled only inside `bodies/`. To add another body, implement these four methods and its command limits.
+The Microduck adapter runs the official walking policy `velstand.onnx` at 50 Hz with the motor model (BAM) from the official repository. Body names (joints, sites) are handled only inside `bodies/`. To add another body, implement these four methods and its command limits, register the new body name in `bodies.make_body()`, and set that name as `body:` in `task.yaml`.
