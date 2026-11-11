@@ -1,0 +1,17 @@
+# Broken on purpose: the switch sits mostly inside the outer wall (y = 0.9);
+# only a 2 cm strip sticks out, too narrow for the body centre to get over it.
+# The link logic still finds an order, so (a) passes; the scripted solver
+# cannot press the switch, so `mpg check` must fail (c).
+name: switch_in_wall
+size: [2.4, 1.8]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.3, -0.9], to: [0.3, -0.28]}
+  - {from: [0.3, 0.28], to: [0.3, 0.9]}
+spawn: {pos: [-0.75, 0.0], yaw: 0.0, random: [0.2, 0.35, 3.14]}
+parts:
+  - {name: switch_a, type: switch, pos: [-0.25, 0.98], size: [0.3, 0.2], random: [0.15, 0.0]}
+  - {name: door_b, type: door, pos: [0.3, 0.0], width: 0.5, axis: y}
+  - {name: goal, type: goal, pos: [0.85, 0.0], radius: 0.15, random: [0.1, 0.45]}
+links:
+  - {from: switch_a, to: door_b}

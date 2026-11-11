@@ -85,10 +85,29 @@ FALL_GRAVITY_Z = -np.cos(np.deg2rad(45.0))
 FALL_HEIGHT = 0.07
 
 
+# Action -> command mapping (PuzzleEnv actions in [-1, 1]^3), built around the
+# measured velstand response (2026-11-11, 5 s runs, flat floor):
+# - vx <= 0.15 alone, vx = -0.2, and turning in place with |wz| <= 0.7 leave the
+#   duck standing; vx = 0.2 with wz = 0.3 also stands.
+# - vx >= 0.25 walks for every wz in [-1, 1]: vx 0.25 -> 0.12 m/s, 0.3 -> 0.15,
+#   0.4 -> 0.22 m/s; with wz = +-1 it turns 0.9-1.0 rad/s while creeping 3-6 cm/s.
+#   At vx 0.4, wz 0 drifts -0.2 rad/s (wz 0.3 walks straight).
+# - in place, only |wz| = 1.0 turns (0.7-0.9 rad/s).
+# - vy alone barely moves (0.3 -> 0.06 m/s); with forward walking it is harmless.
+# So: forward a0 < STOP_BELOW -> stand (vx = 0) and turn in place only at full
+# rate; a0 in [STOP_BELOW, 1] -> vx linear in WALK_VX (no dead band), wz = a2
+# linear (every wz works while walking). vy = a1 * 0.3 linear. Backward walking
+# (weak, dead near -0.2) is not used.
+STOP_BELOW = -0.6
+WALK_VX = (0.25, 0.4)
+TURN_IN_PLACE_MIN = 0.5     # |a2| needed to turn in place; mapped to |wz| = 1.0
+
+
 class MicroduckAdapter(BodyAdapter):
     cmd_limits = ((-0.4, 0.4), (-0.3, 0.3), (-1.0, 1.0))   # velstand twist ranges
     control_dt = TIMESTEP * DECIMATION
     timestep = TIMESTEP
+    footprint_radius = 0.11   # collision geoms span x -0.08..0.11, y +-0.11 m around the trunk
 
     def __init__(self, asset_dir: Path | None = None, vin: float = BAM_VIN,
                  vin_drop_gain: float | None = BAM_VIN_DROP_GAIN,
@@ -123,6 +142,16 @@ class MicroduckAdapter(BodyAdapter):
         self._ctrl = None
         self.last_action = np.zeros(len(JOINTS), dtype=np.float32)
         self._prev_torque = np.zeros(len(JOINTS))
+
+    def command_from_action(self, action: Sequence[float]) -> np.ndarray:
+        a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        vy = a[1] * self.cmd_limits[1][1]
+        if a[0] < STOP_BELOW:
+            wz = np.copysign(self.cmd_limits[2][1], a[2]) if abs(a[2]) >= TURN_IN_PLACE_MIN else 0.0
+            return np.array([0.0, vy, wz])
+        frac = (a[0] - STOP_BELOW) / (1.0 - STOP_BELOW)
+        vx = WALK_VX[0] + frac * (WALK_VX[1] - WALK_VX[0])
+        return np.array([vx, vy, a[2] * self.cmd_limits[2][1]])
 
     # ---- scene -------------------------------------------------------------
     def robot_spec(self) -> mujoco.MjSpec:

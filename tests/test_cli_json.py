@@ -1,13 +1,19 @@
 import json
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 from mujoco_puzzle_gym.cli import COMMANDS
+
+ROOM = str(Path(__file__).resolve().parents[1] / "examples" / "switch_door.yaml")
 
 # Fast invocations that must print one JSON object (assets come from the cache).
 FAST_ARGS = {
     "version": [],
     "fetch-assets": [],
+    "build": [ROOM, "--out", tempfile.mkdtemp(prefix="mpg-build-")],
+    "check": [ROOM, "--seeds", "2"],
     "bench": ["--seconds", "0.3", "--procs", "2"],
 }
 

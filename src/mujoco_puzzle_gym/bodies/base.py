@@ -42,6 +42,9 @@ class BodyAdapter(ABC):
     control_dt: float
     #: Physics timestep the body needs (`model.opt.timestep`).
     timestep: float
+    #: Radius [m] of a circle around the body centre that covers its footprint
+    #: (clearance for path planning in `mpg check`).
+    footprint_radius: float = 0.15
 
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:
@@ -58,6 +61,20 @@ class BodyAdapter(ABC):
     @abstractmethod
     def state(self, data: mujoco.MjData) -> BodyState:
         """Read the body state from `data`."""
+
+    def command_from_action(self, action: Sequence[float]) -> np.ndarray:
+        """Map a normalised action in [-1, 1]^3 to a command (vx, vy, wz).
+
+        Convention every body keeps: action[0] = forward speed (-1 = slowest or
+        stop, +1 = fastest forward), action[1] = lateral (+ = left), action[2] =
+        turn rate (+ = counter-clockwise, |1| = fastest). Default: linear onto
+        `cmd_limits`. Bodies whose walker ignores parts of that range (dead
+        zones) override this so the whole action range does something.
+        """
+        a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        lo = np.array([lim[0] for lim in self.cmd_limits])
+        hi = np.array([lim[1] for lim in self.cmd_limits])
+        return lo + (a + 1.0) / 2.0 * (hi - lo)
 
     def clip_cmd(self, cmd: Sequence[float]) -> np.ndarray:
         lo = np.array([lim[0] for lim in self.cmd_limits])
