@@ -16,6 +16,8 @@ room.yaml (lengths in metres, angles in radians; the room is centred at the orig
       - {from: switch_a, to: door_b}
 
 `random` entries are uniform half-ranges (+-) applied on every env reset.
+A link is a signal channel (R1, R2): it adds the switch's channel to the
+door's `in`, the same as writing `in: [switch_a]` on the door.
 """
 
 from __future__ import annotations
@@ -32,12 +34,19 @@ import yaml
 from .bodies import BodyAdapter, flat_floor_spec
 from .layout import Grid, Segment
 from .registry import get_part
+from .signals import SignalBus, SignalError, wire
 
 WALL_RGBA = (0.75, 0.75, 0.8, 1.0)
 
 
 class RoomError(ValueError):
     """Invalid room file; the message says what to fix."""
+
+
+class Parts(dict):
+    """Part objects by name (room order) plus the signal bus wiring them (R1)."""
+
+    bus: SignalBus
 
 
 @dataclass
@@ -102,9 +111,9 @@ class Room:
         room.make_parts()          # validates parts and links
         return room
 
-    def make_parts(self) -> dict[str, Any]:
-        """Fresh part objects (each env owns its own), with links wired."""
-        parts: dict[str, Any] = {}
+    def make_parts(self) -> Parts:
+        """Fresh part objects (each env owns its own), with links and channels wired."""
+        parts = Parts()
         for i, cfg in enumerate(self.part_cfgs):
             name, kind = cfg.get("name"), cfg.get("type")
             if not name or not kind:
@@ -131,7 +140,14 @@ class Room:
                 raise RoomError(f"links[{i}]: from {src!r} is a {parts[src].role}, must be a switch")
             if parts[dst].role != "gate":
                 raise RoomError(f"links[{i}]: to {dst!r} is a {parts[dst].role}, must be a gate (door)")
-            parts[dst].sources.append(parts[src])
+            if not parts[src].outputs:
+                raise RoomError(f"links[{i}]: {src!r} writes no channel (`out: []`)")
+            if parts[src].outputs[0] not in parts[dst].inputs:
+                parts[dst].inputs.append(parts[src].outputs[0])
+        try:
+            parts.bus = wire(parts)
+        except SignalError as exc:
+            raise RoomError(str(exc)) from None
         return parts
 
     # ---- geometry ---------------------------------------------------------

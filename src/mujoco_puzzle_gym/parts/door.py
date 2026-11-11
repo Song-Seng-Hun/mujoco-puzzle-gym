@@ -1,8 +1,9 @@
 """Sliding door: a panel on a slide joint driven by a position actuator.
 
 Closed (joint at 0) it spans a gap of `width` in a wall; open it slides by
-`width` along its axis into the wall. It opens while its linked switches are on
-(`require: all` or `any`) and closes when they are off. The panel collides with
+`width` along its axis into the wall. It opens while its `in` channels (M1:
+linked switches) are on (`require: all` or `any`) and closes when they are off;
+with `enable` off it holds its current target (R1). The panel collides with
 the walking body but not with the static world (walls), so it can slide into a wall.
 """
 
@@ -73,7 +74,8 @@ class Door(Part):
         self.q = 0.0
 
     def update(self, model, data, body):
-        data.ctrl[self._act] = self.travel if self.sources_on() else 0.0
+        if self.enabled():
+            data.ctrl[self._act] = self.travel if self.inputs_on() else 0.0
         self.q = float(data.qpos[self._qadr])
 
     def state(self):

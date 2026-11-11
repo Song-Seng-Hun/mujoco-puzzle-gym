@@ -11,6 +11,7 @@ from .base import Part
 
 class Goal(Part):
     role = "goal"
+    stage = "input"
     fields = (
         Field("radius", "float", 0.15, unit="m", min=0.03, max=1.0, doc="reach distance"),
     )
@@ -31,7 +32,8 @@ class Goal(Part):
         self.reached = False
 
     def update(self, model, data, body):
-        self.reached = self.reached or bool(np.hypot(*(body.pos[:2] - self.xy)) < self.radius)
+        if self.enabled():
+            self.reached = self.reached or bool(np.hypot(*(body.pos[:2] - self.xy)) < self.radius)
 
     def state(self):
         return float(self.reached)

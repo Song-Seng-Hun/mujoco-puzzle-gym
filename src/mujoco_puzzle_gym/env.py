@@ -46,6 +46,7 @@ class PuzzleEnv(gym.Env):
         body_name = self.task.get("body") or "default"
         self.body = make_body(DEFAULT_BODY if body_name == "default" else body_name)
         self.parts = self.room.make_parts()
+        self.signals = self.parts.bus
         self.mj_spec = self.room.build_spec(self.body, self.parts)
         self.model = self.mj_spec.compile()
         self.data = mujoco.MjData(self.model)
@@ -95,6 +96,7 @@ class PuzzleEnv(gym.Env):
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
         self.body.reset(self.data, layout["spawn"])
+        self.signals.reset()
         for p in self.parts.values():
             p.reset(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
@@ -145,9 +147,7 @@ class PuzzleEnv(gym.Env):
         """Run one env step of body steps with command `cmd`; False if the sim blew up."""
         for _ in range(self.body_steps):
             self.body.step(self.data, cmd)
-            state = self.body.state(self.data)
-            for p in self.parts.values():
-                p.update(self.model, self.data, state)
+            self.signals.step(self.model, self.data, self.body.state(self.data))
         self.body_state = self.body.state(self.data)
         return bool(np.isfinite(self.data.qpos).all() and np.isfinite(self.data.qvel).all()
                     and self.data.warning[mujoco.mjtWarning.mjWARN_BADQACC].number == 0)

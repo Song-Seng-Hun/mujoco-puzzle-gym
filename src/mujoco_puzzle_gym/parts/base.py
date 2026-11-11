@@ -10,6 +10,12 @@ Roles drive the generic logic in `check` and `PuzzleEnv`:
 - "goal":   `satisfied()` is True when the body reached it; ends the episode.
 - "prop":   anything else (decoration, obstacles via `blockers`).
 
+Signals (R1): a part reads channels `in`, writes channels `out` and has an
+optional power channel `enable` (see `signals.py`). `stage` (input, logic,
+device) sets when it updates in a body step; `stateful` parts (delay, latch)
+may sit in a channel loop. `emits` parts write the channel named after the
+part when `out` is not given.
+
 Settings (R3): each class lists its values as `fields` (`schema.Field`); the
 class schema is the union over its base classes (`full_schema`). The checked
 values, defaults filled in, are `self.cfg`; an out-of-range value raises
@@ -18,7 +24,7 @@ values, defaults filled in, are `self.cfg`; an out-of-range value raises
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import mujoco
 import numpy as np
@@ -26,6 +32,10 @@ import numpy as np
 from ..bodies import BodyState
 from ..layout import Grid, Segment
 from ..schema import Field, Schema, resolve
+from ..signals import is_on
+
+if TYPE_CHECKING:
+    from ..signals import SignalBus
 
 BODY_PREFIX = "part/"
 
@@ -33,6 +43,9 @@ BODY_PREFIX = "part/"
 class Part:
     type_name: ClassVar[str] = "part"
     role: ClassVar[str] = "prop"
+    stage: ClassVar[str] = "device"      # input | logic | device (R1 evaluation order)
+    stateful: bool = False               # output does not depend on this step's input
+    emits: ClassVar[bool] = False        # default `out` is the part's own name
     #: Values this class adds to its base classes' schema (R3).
     fields: ClassVar[tuple[Field, ...]] = (
         Field("pos", "vec", length=2, unit="m", doc="position [x, y] on the floor"),
@@ -42,6 +55,9 @@ class Part:
               doc="gates: open when all / any of their inputs are on"),
         Field("requires_body", "list", [],
               doc="body capabilities this part needs (R2b), checked by `mpg check`"),
+        Field("in", "list", [], doc="channels this part reads (R1)"),
+        Field("out", "list", None, doc="channels this part writes (default: its name if it emits)"),
+        Field("enable", "str", None, doc="power channel; off (<= 0.5) freezes the part's output"),
     )
 
     @classmethod
@@ -62,6 +78,11 @@ class Part:
         self.sources: list[Part] = []          # filled from room links (gates)
         self.require = cfg["require"]
         self.requires_body: list[str] = cfg["requires_body"]
+        self.inputs: list[str] = list(cfg["in"])
+        out = cfg["out"]
+        self.outputs: list[str] = list(out) if out is not None else ([name] if self.emits else [])
+        self.enable: str | None = cfg["enable"]
+        self.bus: SignalBus | None = None      # set by signals.wire
         self._bid = -1
 
     @property
@@ -98,11 +119,29 @@ class Part:
     def satisfied(self) -> bool:
         return False
 
-    def sources_on(self, on: set[str] | None = None) -> bool:
-        """Whether this part's link sources are on (from live state, or the set `on`)."""
+    # ---- signals (R1) --------------------------------------------------------
+    def read(self, channel: str) -> float:
+        return self.bus.get(channel)
+
+    def write(self, value: float, channel: str | None = None) -> None:
+        """Write `value` to `channel` (default: this part's first output)."""
+        self.bus.set(channel if channel is not None else self.outputs[0], value)
+
+    def enabled(self) -> bool:
+        return self.enable is None or self.bus.on(self.enable)
+
+    def inputs_on(self) -> bool:
+        """Whether `all` / `any` (per `require`) of the `in` channels are on now."""
+        if not self.inputs:
+            return False
+        flags = [is_on(self.bus.get(ch)) for ch in self.inputs]
+        return all(flags) if self.require == "all" else any(flags)
+
+    def sources_on(self, on: set[str]) -> bool:
+        """Planning: whether this part's sources (writers of its `in`) are all / any in `on`."""
         if not self.sources:
             return False
-        flags = [(s.name in on) if on is not None else s.satisfied() for s in self.sources]
+        flags = [s.name in on for s in self.sources]
         return all(flags) if self.require == "all" else any(flags)
 
     # ---- planning (grid) ---------------------------------------------------

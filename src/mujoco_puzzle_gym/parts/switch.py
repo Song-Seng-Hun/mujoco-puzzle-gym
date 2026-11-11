@@ -15,7 +15,12 @@ ON_RGBA = (0.2, 0.8, 0.3, 1.0)
 
 
 class Switch(Part):
+    """Writes its channel (its name unless `out` is set): 1 while on. With
+    `enable` off it keeps its state (R1)."""
+
     role = "switch"
+    stage = "input"
+    emits = True
     fields = (
         Field("size", "vec", [0.25, 0.25], length=2, unit="m", min=0.05, max=2.0,
               doc="plate size [x, y]"),
@@ -28,6 +33,7 @@ class Switch(Part):
         # Latching by default: one body cannot hold a switch and walk through
         # the door it opens. `latch: false` makes it momentary.
         self.latch = self.cfg["latch"]
+        self.stateful = self.latch
         self.on = False
 
     def build(self, spec):
@@ -47,12 +53,16 @@ class Switch(Part):
     def _set(self, model, on: bool) -> None:
         self.on = on
         model.geom_rgba[self._gid] = ON_RGBA if on else OFF_RGBA
+        for ch in self.outputs:
+            self.write(float(on), ch)
 
     def over(self, xy) -> bool:
         d = np.abs(np.asarray(xy[:2]) - self.xy)
         return bool((d <= self.half).all())
 
     def update(self, model, data, body: BodyState):
+        if not self.enabled():
+            return
         inside = self.over(body.pos)
         on = (self.on or inside) if self.latch else inside
         if on != self.on:
