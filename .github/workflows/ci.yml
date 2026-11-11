@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 18 * * 0"   # weekly, Monday 03:00 KST: the slow suite
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    # macOS on Apple Silicon is the platform the project is tested on.
+    if: github.event_name != 'schedule'
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Cache robot model and walking policy
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mujoco-puzzle-gym
+          key: mpg-assets-${{ hashFiles('src/mujoco_puzzle_gym/upstream.lock.json') }}
+      - name: Install
+        run: uv sync --locked
+      - name: Fetch assets
+        run: uv run mpg fetch-assets
+      - name: Tests (fast)
+        run: uv run pytest -q
+      - name: Example room check
+        run: uv run mpg check examples/switch_door.yaml --json
+
+  banner:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Banners match tools/build_banner.py
+        run: |
+          python tools/build_banner.py
+          git diff --exit-code -- assets/
+      - name: Banners are valid XML
+        run: python -c "import sys, xml.etree.ElementTree as ET; [ET.parse(p) for p in sys.argv[1:]]" assets/banner-*.svg
+
+  slow:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mujoco-puzzle-gym
+          key: mpg-assets-${{ hashFiles('src/mujoco_puzzle_gym/upstream.lock.json') }}
+      - run: uv sync --locked
+      - run: uv run mpg fetch-assets
+      - name: Tests (all, including slow)
+        run: uv run pytest -q -m ''
