@@ -37,8 +37,8 @@ class PuzzleEnv(gym.Env):
         body_name = self.task.get("body") or "default"
         self.body = make_body(DEFAULT_BODY if body_name == "default" else body_name)
         self.parts = self.room.make_parts()
-        self.spec = self.room.build_spec(self.body, self.parts)
-        self.model = self.spec.compile()
+        self.mj_spec = self.room.build_spec(self.body, self.parts)
+        self.model = self.mj_spec.compile()
         self.data = mujoco.MjData(self.model)
         for p in self.parts.values():
             p.bind(self.model, self.data)

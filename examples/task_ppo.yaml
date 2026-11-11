@@ -1,0 +1,17 @@
+# Training task for the example room (R17). Missing keys take task.DEFAULTS.
+room: switch_door.yaml
+env:
+  hz: 10                  # high-level steps per second (5, 10 or 25)
+  episode_seconds: 40     # 400 high-level steps
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
+reward:                   # term: weight
+  progress: 10.0          # per metre of geodesic distance gained toward the next target
+  stage: 2.0              # per switch turned on
+  success: 10.0
+  fall: -5.0
+termination: {success: true, fall: true}
+algo: ppo
+algo_kwargs: {learning_rate: 0.0003, n_steps: 256, batch_size: 1024, gamma: 0.99}
+net: [128, 128]
+n_envs: 12
+seed: 0
