@@ -19,6 +19,7 @@ A framework in which AI agents build puzzle rooms inside a MuJoCo physics simula
 - **Puzzles are built like programs.** A room is one `room.yaml`: walls, part positions, how far each episode shakes them, and the signal links between parts. A new device is one Python class.
 - **It checks a room can be solved first.** Before you spend time training, it checks in seconds that a solution order exists, that the physics is stable, and that a scripted solver that knows the answer solves it.
 - **It trains, and tells you why training fails.** On failure it names the cause (environment bug, falling, not enough exploration, reward hacking) with evidence and a fix direction. Every command prints JSON, so an AI agent can run this loop without a person.
+- **It designs rewards too.** Rewards are terms with weights in `task.yaml` (progress, stage, success, falling and so on). When diagnose reports reward hacking or poor exploration, the agent changes the weights or registers a new reward term as one Python function, and trains again.
 
 The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) by Pollen Robotics. Its published walking policy is used as is, and only "where to walk and how fast" is learned on top.
 

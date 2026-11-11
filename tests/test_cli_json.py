@@ -32,7 +32,8 @@ def test_every_command_emits_json(asset_dir, quick_run, tmp_path):
                       "--max-steps", "64", "--n-envs", "1", "--runs-dir", str(tmp_path)],
             "eval": [run_dir, "--episodes", "1", "--workers", "1"],
             "diagnose": [run_dir, "--episodes", "1", "--workers", "1", "--no-video"],
-            "render": [run_dir, "--seed", "1000000", "--out", str(tmp_path / "r.mp4")]}
+            "render": [run_dir, "--seed", "1000000", "--out", str(tmp_path / "r.mp4")],
+            "demo": ["--seed", "1000000", "--out", str(tmp_path / "demo.mp4")]}
     assert set(COMMANDS) == set(fast), "add a fast --json invocation for new commands"
     for name, extra in fast.items():
         out = run(name, "--json", *extra)
