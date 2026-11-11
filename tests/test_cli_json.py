@@ -45,6 +45,9 @@ def test_bench_json_fields(asset_dir):
     assert result["body_steps_per_high_level_step"] == 5
     assert result["single"]["high_level_steps_per_s"] > 0
     assert [p["procs"] for p in result["parallel"]] == [2]
+    env = result["env"]
+    assert env["single"]["steps_per_s"] > 0
+    assert [p["procs"] for p in env["parallel"]] == [2] and env["parallel"][0]["steps_per_s"] > 0
 
 
 def test_bad_arguments_fail_nonzero_with_reason():

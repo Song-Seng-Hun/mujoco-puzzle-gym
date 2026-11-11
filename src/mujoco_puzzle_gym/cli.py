@@ -54,8 +54,9 @@ def _bench(args: argparse.Namespace) -> dict[str, Any]:
     except ValueError as exc:
         raise CommandError(f"--procs must be comma-separated integers: {args.procs!r}") from exc
     try:
-        return bench.run(seconds=args.seconds, procs=procs)
-    except FileNotFoundError as exc:
+        return bench.run(seconds=args.seconds, procs=procs,
+                         room=None if args.no_env else (args.room or bench.DEFAULT_ROOM))
+    except (FileNotFoundError, ValueError) as exc:
         raise CommandError(str(exc)) from exc
 
 
@@ -63,6 +64,9 @@ def _configure_bench(p: argparse.ArgumentParser) -> None:
     p.add_argument("--seconds", type=float, default=5.0, help="wall time per measurement")
     p.add_argument("--procs", default="4,8,16",
                    help="comma-separated process counts for the parallel runs ('' = none)")
+    p.add_argument("--room", default=None,
+                   help="room for the PuzzleEnv measurement (default: examples/switch_door.yaml)")
+    p.add_argument("--no-env", action="store_true", help="walker only, skip the PuzzleEnv runs")
 
 
 def _build(args: argparse.Namespace) -> dict[str, Any]:
