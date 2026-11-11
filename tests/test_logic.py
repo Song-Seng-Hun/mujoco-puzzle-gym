@@ -1,11 +1,15 @@
-"""R7 safe expression gates and R8 transceivers.
+"""R7 safe expression gates, R8 transceivers, and the check order stage through
+logic parts (a door opened via a gate).
 
 Time is counted in body steps of `bus.dt` = 0.02 s.
 """
 
+import numpy as np
 import pytest
 import yaml
 
+from mujoco_puzzle_gym.check import check_order, check_solver
+from mujoco_puzzle_gym.env import PuzzleEnv
 from mujoco_puzzle_gym.expr import ExprError, compile_expr
 from mujoco_puzzle_gym.parts.base import Part
 from mujoco_puzzle_gym.parts.logic import Gate, Receiver, Transmitter
@@ -292,3 +296,81 @@ def test_band_errors():
     with pytest.raises(SignalError, match="written by both"):
         rig(["a"], t1=(Transmitter, {"pos": [0, 0], "in": ["a"], "band": "x"}),
             t2=(Transmitter, {"pos": [0, 0], "in": ["a"], "band": "x"}))
+
+
+# ---- check order stage through logic parts ---------------------------------------------------
+def gate_room(repo_root, tmp_path, extra_parts, door_in, second_switch=(-0.25, -0.5)):
+    """switch_door with a second switch and the door fed through logic parts."""
+    raw = yaml.safe_load((repo_root / ROOM).read_text())
+    raw["links"] = []
+    raw["parts"].insert(1, {"name": "switch_c", "type": "switch", "pos": list(second_switch),
+                            "size": [0.3, 0.3]})
+    raw["parts"] += extra_parts
+    raw["parts"][2]["in"] = door_in                     # door_b
+    path = tmp_path / "room.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+ROUTES = {
+    "gate": ([{"name": "both", "type": "gate", "expr": "switch_a and delay(switch_c, 0.5)"}],
+             ["both"]),
+    "counter": ([{"name": "c", "type": "counter", "up": "switch_a", "target": 1},
+                 {"name": "g", "type": "gate", "op": "and", "in": ["c.reached", "switch_c"]}],
+                ["g"]),
+    "radio": ([{"name": "tx", "type": "transmitter", "pos": [-1.0, 0.8], "in": ["n"], "band": "b"},
+               {"name": "n", "type": "gate", "expr": "switch_a and switch_c"},
+               {"name": "rx", "type": "receiver", "pos": [0.25, 0.4], "band": "b", "delay": 0.2}],
+              ["rx"]),
+}
+
+
+@pytest.mark.parametrize("route", sorted(ROUTES))
+def test_order_through_logic(asset_dir, repo_root, tmp_path, route):
+    extra, door_in = ROUTES[route]
+    env = PuzzleEnv(room=gate_room(repo_root, tmp_path, extra, door_in))
+    res = check_order(env)
+    assert res["ok"], res
+    assert res["order"] == ["switch_a", "switch_c", "door_b", "goal"]
+    env.close()
+
+
+def test_order_through_gate_fails_when_input_unreachable(asset_dir, repo_root, tmp_path):
+    # switch_c sits behind the door it has to open.
+    extra, door_in = ROUTES["gate"]
+    env = PuzzleEnv(room=gate_room(repo_root, tmp_path, extra, door_in, second_switch=(0.85, 0.6)))
+    res = check_order(env)
+    assert not res["ok"]
+    assert "door_b" in res["reason"] and "unreachable: ['switch_c']" in res["reason"]
+    env.close()
+
+
+def test_order_through_not_gate(asset_dir, repo_root, tmp_path):
+    # Door open while switch_c is off: the goal is reachable with no switch at all.
+    env = PuzzleEnv(room=gate_room(repo_root, tmp_path,
+                                   [{"name": "inv", "type": "gate", "op": "not", "in": ["switch_c"]}],
+                                   ["inv"]))
+    res = check_order(env)
+    assert res["ok"] and res["order"] == ["goal"]
+    env.close()
+
+
+def test_door_opens_through_gate_in_one_body_step(asset_dir, repo_root, tmp_path):
+    extra = [{"name": "g", "type": "gate", "expr": "switch_a and not switch_c"}]
+    env = PuzzleEnv(room=gate_room(repo_root, tmp_path, extra, ["g"]))
+    lay = env.sample_layout(None)
+    lay["spawn"] = (-0.25, 0.5, 0.0)                    # on switch_a
+    env.reset(options={"layout": lay})
+    door = env.parts["door_b"]
+    env.signals.step(env.model, env.data, env.body.state(env.data))
+    assert env.signals.get("g") == 1.0 and env.data.ctrl[door._act] == pytest.approx(door.travel)
+    env.close()
+
+
+@pytest.mark.slow
+def test_gate_room_passes_solver(asset_dir, repo_root, tmp_path):
+    extra, door_in = ROUTES["gate"]
+    env = PuzzleEnv(room=gate_room(repo_root, tmp_path, extra, door_in))
+    res = check_solver(env, seeds=20, need=18)
+    assert res["ok"], res
+    env.close()

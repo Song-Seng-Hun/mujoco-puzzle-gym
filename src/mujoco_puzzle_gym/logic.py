@@ -4,6 +4,13 @@ Walls and closed gates block; a part counts as reachable when its target area,
 grown by one grid cell, touches a cell reachable from the spawn point. There is
 no body clearance here: whether the body physically fits is what the scripted
 solver, check (c), tests.
+
+Gates open through the signal graph: `plan_channels` runs every part's
+`plan_values` in bus order with the input parts in `on` switched on, so a door
+fed by gates, counters, transceivers or delays opens when the inputs behind
+them are on (time functions taken as "eventually": a delay passes its input,
+a counter of a reachable button reaches its target). It assumes every `enable`
+is on and that Python logic plugins can turn on when any input is on.
 """
 
 from __future__ import annotations
@@ -15,12 +22,44 @@ import numpy as np
 from .layout import Grid, Segment
 
 
+def plan_channels(parts: dict[str, Any], on: set[str]) -> dict[str, float]:
+    """Channel values once the input parts named in `on` are on (planning)."""
+    order = parts.bus.order if hasattr(parts, "bus") else list(parts.values())
+    vals: dict[str, float] = {}
+    get = lambda ch: vals.get(ch, 0.0)  # noqa: E731
+    for p in order:
+        vals.update(p.plan_values(on, get))
+    return vals
+
+
+def gate_open(gate: Any, vals: dict[str, float]) -> bool:
+    return gate.plan_inputs_on(lambda ch: vals.get(ch, 0.0))
+
+
+def upstream_inputs(part: Any) -> list[Any]:
+    """Input-stage parts behind `part`, traced back through logic parts (room order kept)."""
+    seen: list[Any] = []
+    out: list[Any] = []
+    stack = list(reversed(part.sources))
+    while stack:
+        p = stack.pop()
+        if any(p is q for q in seen):
+            continue
+        seen.append(p)
+        if p.stage == "input":
+            out.append(p)
+        else:
+            stack.extend(reversed(p.sources))
+    return out
+
+
 def free_mask(grid: Grid, walls: list[Segment], parts: dict[str, Any], on: set[str],
               inflate: float = 0.0) -> np.ndarray:
-    """Free cells with every gate closed unless its sources are in `on`."""
+    """Free cells with every gate closed unless the inputs in `on` open it."""
+    vals = plan_channels(parts, on)
     segs = list(walls)
     for p in parts.values():
-        segs += p.blockers(p.role == "gate" and p.sources_on(on))
+        segs += p.blockers(p.role == "gate" and gate_open(p, vals))
     return ~grid.blocked(segs, inflate)
 
 
@@ -37,7 +76,10 @@ def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
                    start_xy) -> dict[str, Any]:
     """Find an order of switches (and the gates they open) that reaches a goal.
 
-    Returns {"ok", "order": [names], "targets": [non-gate names], "reason"}.
+    Each round turns on reachable switches that open a closed gate: first none
+    (gates already open), then one switch at a time, then all reachable ones;
+    with all of them, the switches kept are those behind the gate in the signal
+    graph. Returns {"ok", "order": [names], "targets": [non-gate names], "reason"}.
     """
     on: set[str] = set()
     order: list[str] = []
@@ -53,24 +95,40 @@ def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
                 targets = [n for n in order if parts[n].role != "gate"]
                 return {"ok": True, "order": order, "targets": targets, "reason": ""}
         new = [s for s in switches if s.name not in on and (_grow(s.target_mask(grid)) & reach).any()]
-        trial = on | {s.name for s in new}
-        newly_open = [g for g in gates if g.name not in opened and g.sources_on(trial)]
+        new_names = {s.name for s in new}
+        trial = on | new_names
+        candidates = [set()] + [{s.name} for s in new] + ([new_names] if len(new) > 1 else [])
+        vals = [plan_channels(parts, on | c) for c in candidates]
+        newly_open, needed = [], set()
+        for g in gates:
+            if g.name in opened:
+                continue
+            for added, v in zip(candidates, vals):
+                if gate_open(g, v):
+                    newly_open.append(g)
+                    if added is new_names and len(new) > 1:
+                        behind = {p.name for p in upstream_inputs(g)} & new_names
+                        needed |= behind or new_names
+                    else:
+                        needed |= added
+                    break
         if not newly_open:
             closed = [g for g in gates if g.name not in opened]
             why = []
             for g in closed:
-                if not g.sources:
+                inputs = upstream_inputs(g)
+                if not inputs:
                     why.append(f"{g.name}: no switch is linked to it")
-                else:
-                    missing = [s.name for s in g.sources if s.name not in trial]
-                    why.append(f"{g.name}: needs {g.require} of {[s.name for s in g.sources]}, "
-                               f"unreachable: {missing}")
+                    continue
+                missing = [s.name for s in inputs if s.name not in trial]
+                via = [s.name for s in g.sources]
+                names = [s.name for s in inputs]
+                path = f"{g.require} of {via}" + (f" (inputs {names})" if via != names else "")
+                why.append(f"{g.name}: needs {path}, unreachable: {missing}")
             reason = "no goal is reachable from spawn"
             if why:
                 reason += "; closed gates: " + "; ".join(why)
             return {"ok": False, "order": order, "targets": [], "reason": reason}
-        # Keep only switches that a newly opened gate needs.
-        needed = {s.name for g in newly_open for s in g.sources} & {s.name for s in new}
         for s in new:
             if s.name in needed:
                 order.append(s.name)
