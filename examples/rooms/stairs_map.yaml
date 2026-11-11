@@ -1,0 +1,24 @@
+# Stairs up to a dais (R37): three 1 cm steps (`step_height` 0.01 m, the
+# Microduck's measured max_step, OQ5) lead to the goal on level 3. The ramp on
+# the right ("/", 3 cm over 0.5 m = 3.4 deg, under max_slope 5 deg) is the
+# second way up. Spaces are cliffs: walking off the dais edge is a fall.
+name: stairs_map
+cell: 0.1
+step_height: 0.01
+legend:
+  "/": {type: ramp, dir: +x, from: 0.0, to: 0.03}
+map: |
+  ##################
+  #......11223333333
+  #......11223333333
+  #......11223333333
+  #......11223333333
+  #.........    3333
+  #.....//////  3333
+  #.....//////  3333
+  #.....//////  3333
+  #.....//////  3333
+  ##################
+spawn: {pos: [-0.6, 0.2], yaw: 0.0, random: [0.05, 0.1, 0.3]}
+parts:
+  - {name: goal, type: goal, pos: [0.6, 0.25], radius: 0.12}

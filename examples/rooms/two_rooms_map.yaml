@@ -1,0 +1,26 @@
+# Two rooms drawn in one letter map (R37), joined by a sliding door (R9).
+# Press the button in the left room; the door in the dividing wall opens and
+# the goal in the right room is reachable. The right room has a cliff corner
+# (spaces: no floor) that the planner keeps the body away from.
+name: two_rooms_map
+cell: 0.1
+map: |
+  ##########################
+  #...........#............#
+  #...........#............#
+  #...........#............#
+  #........................#
+  #........................#
+  #........................#
+  #........................#
+  #........................#
+  #...........#............#
+  #...........#.........    
+  #...........#.........    
+  #...........#.........    
+  ######################    
+spawn: {pos: [-0.85, 0.3], yaw: 0.0, random: [0.1, 0.1, 0.5]}
+parts:
+  - {name: button, type: button, kind: oneshot, pos: [-0.75, -0.4], size: [0.2, 0.2], random: [0.1, 0.05]}
+  - {name: door, type: door, pos: [-0.05, 0.05], width: 0.5, axis: y, in: [button]}
+  - {name: goal, type: goal, pos: [0.65, 0.35], radius: 0.12, random: [0.05, 0.1]}

@@ -25,6 +25,13 @@ Floors (R10): a room with floor parts (`floor_tile`, `trapdoor`) gets a tile
 floor without gaps (floor.py) and a catch plane below; otherwise the M1 plane.
 `floor.friction` sets the default floor friction for either.
 
+Letter maps (R37): `map:` (with `cell`, `step_height`, `legend`; roommap.py)
+replaces `size` and `walls` (using both is an error): no outer walls are
+added, the floor is tiles of the map's heights and ramps, and cliff cells have
+no floor. `on_fall: fail | reset` (default fail) says what a fall into a
+cliff or open trapdoor does: end the episode, or go back to the last
+checkpoint (the episode start without one).
+
 Stages (R14): `stages:` lists further room files (paths relative to this
 one). Each is built in its own zone to the +x side of the previous one, in
 the same model, so observation and snapshot sizes stay fixed; a warp pad with
@@ -48,6 +55,7 @@ from . import floor as floor_mod
 from .bodies import BodyAdapter, flat_floor_spec
 from .floor import FloorMap, Rect, StaticTile
 from .layout import Grid, Segment
+from .roommap import MapError, RoomMap
 from .registry import get_part
 from .signals import SignalBus, SignalError, wire
 
@@ -88,6 +96,8 @@ class Room:
     stages: list[tuple[float, "Room"]] = field(default_factory=list)
     #: zone index of each entry of `part_cfgs` (0: this room)
     part_zones: list[int] = field(default_factory=list)
+    map: RoomMap | None = None          # letter map (R37)
+    on_fall: str = "fail"               # fall into a hole: fail | reset (R37, R16)
 
     # ---- loading ----------------------------------------------------------
     @classmethod
@@ -103,14 +113,34 @@ class Room:
     def from_dict(cls, raw: dict[str, Any], path: Path | None = None, stage: bool = False) -> "Room":
         if not isinstance(raw, dict):
             raise RoomError("room file must be a mapping")
+        wall = raw.get("wall", {}) or {}
+        thick = float(wall.get("thickness", 0.06))
+        height = float(wall.get("height", 0.25))
+        rmap = None
+        if "map" in raw:
+            if "size" in raw or raw.get("walls"):
+                raise RoomError("`map` replaces `size` and `walls`; use one or the other")
+            if raw.get("stages"):
+                raise RoomError("`map` rooms cannot use `stages:` yet; draw connected rooms "
+                                "in one map with walls and doors")
+            try:
+                rmap = RoomMap(raw["map"], cell=raw.get("cell", 0.1),
+                               step_height=raw.get("step_height", 0.01),
+                               wall_height=height, legend=raw.get("legend"))
+            except MapError as exc:
+                raise RoomError(str(exc)) from None
+            ext = rmap.extent()
+            raw = {**raw, "size": [ext.x1 - ext.x0, ext.y1 - ext.y0]}
+        elif any(k in raw for k in ("cell", "legend", "step_height")):
+            raise RoomError("`cell`, `step_height` and `legend` need a `map`")
         try:
             size = tuple(float(v) for v in raw["size"])
             assert len(size) == 2 and min(size) > 0
         except (KeyError, TypeError, ValueError, AssertionError):
             raise RoomError("`size: [x, y]` with positive values is required") from None
-        wall = raw.get("wall", {}) or {}
-        thick = float(wall.get("thickness", 0.06))
-        height = float(wall.get("height", 0.25))
+        on_fall = raw.get("on_fall", "fail")
+        if on_fall not in ("fail", "reset"):
+            raise RoomError(f"`on_fall` must be fail or reset, got {on_fall!r}")
         walls = []
         for i, w in enumerate(raw.get("walls", []) or []):
             try:
@@ -143,6 +173,7 @@ class Room:
             spawn_random=np.asarray(rnd[:3], dtype=float),
             part_cfgs=[dict(c) for c in cfgs], links=[dict(l) for l in links],
             path=path, raw=raw, floor_friction=friction, part_zones=[0] * len(cfgs),
+            map=rmap, on_fall=on_fall,
         )
         if stage:
             if raw.get("stages"):
@@ -244,6 +275,8 @@ class Room:
 
     # ---- geometry ---------------------------------------------------------
     def outer_walls(self) -> list[Segment]:
+        if self.map is not None:
+            return []
         hx, hy = self.size[0] / 2, self.size[1] / 2
         t = self.wall_thickness
         ex, ey = hx + t / 2, hy + t / 2
@@ -251,6 +284,8 @@ class Room:
         return [Segment(corners[i], corners[(i + 1) % 4], t) for i in range(4)]
 
     def own_walls(self) -> list[Segment]:
+        if self.map is not None:
+            return [_rect_segment(r) for r, _ in self.map.wall_rects()]
         return self.outer_walls() + self.inner_walls
 
     def walls(self) -> list[Segment]:
@@ -261,14 +296,28 @@ class Room:
 
     def extent(self) -> Rect:
         """Floor area of this room alone (interior plus walls), room coordinates."""
+        if self.map is not None:
+            return self.map.extent()
         hx, hy = self.size[0] / 2 + self.wall_thickness, self.size[1] / 2 + self.wall_thickness
         return Rect(-hx, hx, -hy, hy)
 
     def zone_extents(self) -> list[Rect]:
         return [self.extent()] + [sub.extent().shifted(dx) for dx, sub in self.stages]
 
-    def grid(self, res: float | None = None) -> Grid:
+    def grid(self, res: float | None = None, body_values: dict | None = None) -> Grid:
+        """Planner grid. A map room's grid is aligned with its cells, and its walls,
+        cliffs, steps above `max_step` and ramps above `max_slope` (from
+        `body_values`, the body's capability values; no limit without) are blocked."""
         kw = {"res": res} if res else {}
+        if self.map is not None:
+            m = self.map
+            r = res or m.cell / math.ceil(m.cell / 0.04 - 1e-9)
+            ext = m.extent()
+            grid = Grid((ext.x1 - ext.x0, ext.y1 - ext.y0), res=r)
+            vals = body_values or {}
+            grid.terrain, _ = m.terrain(grid, float(vals.get("max_step", math.inf)),
+                                        float(vals.get("max_slope", 90.0)))
+            return grid
         if not self.stages:
             t = 2 * self.wall_thickness
             return Grid((self.size[0] + t, self.size[1] + t), **kw)
@@ -279,7 +328,7 @@ class Room:
 
     # ---- floor (R10) --------------------------------------------------------
     def needs_tiles(self, parts: dict[str, Any]) -> bool:
-        return any(getattr(p, "floor_part", False) for p in parts.values())
+        return self.map is not None or any(getattr(p, "floor_part", False) for p in parts.values())
 
     def static_tiles(self, parts: dict[str, Any]) -> list[StaticTile]:
         """Boxes filling every zone's floor around the floor parts (no gaps)."""
@@ -287,6 +336,11 @@ class Room:
         fr = self.floor_friction or floor_mod.DEFAULT_FRICTION
         rooms = [(0.0, self)] + self.stages
         out = []
+        if self.map is not None:
+            for t in self.map.floor_tiles():
+                f = t.friction if t.friction != floor_mod.DEFAULT_FRICTION else fr
+                out += [StaticTile(r, t.top, f) for r in floor_mod.cover(t.rect, holes)]
+            return out
         for dx, room in rooms:
             f = room.floor_friction or fr
             out += [StaticTile(r, 0.0, f) for r in floor_mod.cover(room.extent().shifted(dx), holes)]
@@ -297,8 +351,12 @@ class Room:
         if not self.needs_tiles(parts):
             return None
         fm = FloorMap()
-        for t in self.static_tiles(parts):
-            fm.add_static(t)
+        if self.map is not None:
+            fm.outside_rim = self.map.rim
+            fm.add(self.map.extent(), self.map.height_at)
+        else:
+            for t in self.static_tiles(parts):
+                fm.add_static(t)
         for p in parts.values():
             if getattr(p, "floor_part", False):
                 fm.add(p.floor_rect(), p.height_at)
@@ -313,7 +371,10 @@ class Room:
     # ---- scene ------------------------------------------------------------
     def build_spec(self, body: BodyAdapter, parts: dict[str, Any]) -> mujoco.MjSpec:
         spec = flat_floor_spec()
-        _add_walls(spec, self.own_walls(), self.wall_height, "wall")
+        if self.map is not None:
+            self.map.build(spec, WALL_RGBA, floor_mod.TILE_RGBA[0])
+        else:
+            _add_walls(spec, self.own_walls(), self.wall_height, "wall")
         for k, (dx, sub) in enumerate(self.stages, start=1):
             _add_walls(spec, [_shift(s, dx) for s in sub.own_walls()], sub.wall_height, f"wall/s{k}")
         if self.needs_tiles(parts):
@@ -323,11 +384,23 @@ class Room:
             spec.geom("floor").friction = list(self.floor_friction)
             spec.geom("floor").priority = 1
         for part in parts.values():
-            part.build(spec)
+            pb = part.build(spec)
+            if self.map is not None and pb is not None and not getattr(part, "floor_part", False):
+                top = self.map.height_at(part.base_xy)[0]     # stand parts on raised cells
+                if top:
+                    pb.pos = [pb.pos[0], pb.pos[1], pb.pos[2] + top]
         body.spawn(spec, self.sample_spawn(None))
         spec.visual.global_.offwidth = 960
         spec.visual.global_.offheight = 720
         return spec
+
+
+def _rect_segment(r: Rect) -> Segment:
+    """A wall rectangle as a segment along its long side (thickness = short side)."""
+    (cx, cy), (hx, hy) = r.centre, r.half
+    if hx >= hy:
+        return Segment((cx - hx + hy, cy), (cx + hx - hy, cy), 2 * hy)
+    return Segment((cx, cy - hy + hx), (cx, cy + hy - hx), 2 * hx)
 
 
 def _add_walls(spec: mujoco.MjSpec, segs: list[Segment], height: float, prefix: str) -> None:

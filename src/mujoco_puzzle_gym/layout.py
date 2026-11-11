@@ -33,6 +33,9 @@ class Grid:
         self.ny = int(math.ceil(self.size[1] / res))
         self.x0 = self.origin[0] - self.nx * res / 2
         self.y0 = self.origin[1] - self.ny * res / 2
+        #: Extra blocked cells (letter-map terrain, R37): walls, cliffs, steps, steep ramps.
+        #: `blocked` adds them, grown by `inflate`.
+        self.terrain: np.ndarray | None = None
         xs = self.x0 + (np.arange(self.nx) + 0.5) * res
         ys = self.y0 + (np.arange(self.ny) + 0.5) * res
         self.X, self.Y = np.meshgrid(xs, ys)          # shape (ny, nx)
@@ -53,7 +56,22 @@ class Grid:
         pad = inflate + self.res * 0.75
         for s in segments:
             out |= self._seg_dist(s) <= s.thickness / 2 + pad
+        if self.terrain is not None:
+            out |= self.dilate(self.terrain, inflate)
         out[0, :] = out[-1, :] = out[:, 0] = out[:, -1] = True
+        return out
+
+    def dilate(self, mask: np.ndarray, radius: float) -> np.ndarray:
+        """`mask` grown by every cell whose centre is within `radius` of a True cell."""
+        k = int(radius // self.res)
+        if k <= 0:
+            return mask.copy()
+        out = mask.copy()
+        for dy in range(-k, k + 1):
+            for dx in range(-k, k + 1):
+                if (dx or dy) and math.hypot(dx, dy) * self.res <= radius:
+                    src = mask[max(0, -dy):self.ny - max(0, dy), max(0, -dx):self.nx - max(0, dx)]
+                    out[max(0, dy):self.ny - max(0, -dy), max(0, dx):self.nx - max(0, -dx)] |= src
         return out
 
     def _seg_dist(self, s: Segment) -> np.ndarray:

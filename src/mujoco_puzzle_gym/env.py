@@ -22,6 +22,10 @@
 - Tile floors (R10): `fallen` is measured from the top of the floor tile under
   the body (`Room.floor_map`); over a hole (open trapdoor, no floor) the body
   has fallen once its trunk is below the rim.
+- Letter maps (R37): the planner grid blocks walls, cliffs, steps above the
+  body's `max_step` and ramps above its `max_slope`; with room `on_fall: reset`
+  a fall into a hole restores the last checkpoint (or the start) instead of
+  ending the episode (`info["respawned"]`).
 - Warps (R14): parts append requests to `World.requests`; `advance` carries
   them out after the body step (teleport, `reset` to the last checkpoint or the
   episode start, `next_stage`). `info["warped"]` names the pads used this env
@@ -73,7 +77,8 @@ class PuzzleEnv(gym.Env):
         self.world.data = self.data
         self.floor = self.room.floor_map(self.parts)
         self.zone_spawns = self.room.zone_spawns()
-        self._needs_start = any(p.role == "warp" for p in self.parts.values())
+        self._needs_start = (any(p.role == "warp" for p in self.parts.values())
+                             or self.room.on_fall == "reset")
         self.start_snap: snapshot.Snapshot | None = None
         self.zone = 0
         self._warp_events: dict[str, Any] = {"warped": [], "stage_changed": False}
@@ -99,7 +104,7 @@ class PuzzleEnv(gym.Env):
         self.metadata = {**self.metadata, "render_fps": hz}
         self.render_mode = render_mode
 
-        self.grid: Grid = self.room.grid()
+        self.grid: Grid = self.room.grid(body_values=dict(self.body.capabilities.values))
         self.walls = self.room.walls()
         self.obs_terms = [(n, OBS[n]) for n in self.task["obs"]]
         self.reward_terms = [(n, REWARDS[n], float(w)) for n, w in self.task["reward"].items()]
@@ -325,6 +330,11 @@ class PuzzleEnv(gym.Env):
                 and self.checkpoint_snap is not None):
             self.restore_snapshot(self.checkpoint_snap)
             respawned, fallen, failed = True, False, []
+        elif (sane and fallen and not failed and self.room.on_fall == "reset"
+              and self.floor_height(self.body_state.pos[:2])[0] is None):
+            # R37 / R16 `on_fall: reset`: a fall into a hole goes back, it does not end the episode
+            self.restore_snapshot(self.checkpoint_snap or self.start_snap)
+            respawned, fallen = True, False
         self.events = {"progress": float(progress), "new_on": len(on_after - on_before),
                        "success": success, "fallen": fallen, "respawned": respawned}
         terms = {name: weight * float(fn(self)) for name, fn, weight in self.reward_terms}

@@ -111,9 +111,12 @@ class MicroduckAdapter(BodyAdapter):
     fall_height = FALL_HEIGHT
     footprint_radius = 0.11   # collision geoms span x -0.08..0.11, y +-0.11 m around the trunk
     # R2b. beak_grab: weld grab at the `mouth_tip` site (spec R18); max_lift_mass
-    # is the conservative pre-measurement default from spec R18.
+    # is the conservative pre-measurement default from spec R18. max_step [m] and
+    # max_slope [deg] (R37) are OQ5 measurements (2026-11-11, velstand, vx 0.3,
+    # 10 seeds): 1 cm steps up 10/10 (1.2 cm 8/10, 1.4 cm 5/10), 2 cm down
+    # without a fall; 5 deg slopes up 10/10 (6 deg 9/10, 7 deg 2/10).
     capabilities = Capabilities(names=frozenset({"walk", "beak_grab"}),
-                                values={"max_lift_mass": 0.05})
+                                values={"max_lift_mass": 0.05, "max_step": 0.01, "max_slope": 5.0})
 
     def __init__(self, asset_dir: Path | None = None, vin: float = BAM_VIN,
                  vin_drop_gain: float | None = BAM_VIN_DROP_GAIN,

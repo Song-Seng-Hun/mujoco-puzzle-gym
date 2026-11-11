@@ -2,6 +2,8 @@
 
 body:      every part's `requires_body` capabilities are on the body (R2b, static);
 (a) order:     a switch/door order that reaches a goal exists (link graph on the room grid);
+               in letter-map rooms (R37) also: parts, spawn and their random ranges lie on
+               floor cells, and a failure names the steps / steep ramps (cells) in the way;
 (b) stability: zero command for 10 s at the nominal layout: no NaN, no fall;
 (c) solver:    the scripted privileged solver succeeds on >= `need` of `seeds`
                random layouts (seeds 0..seeds-1); skipped when body or (a) fails.
@@ -16,7 +18,7 @@ from typing import Any
 import numpy as np
 
 from .env import PuzzleEnv
-from .logic import solution_order
+from .logic import free_mask, solution_order
 from .solver import ScriptedSolver, run_episode
 
 STABILITY_SECONDS = 10.0
@@ -40,7 +42,57 @@ def check_order(env: PuzzleEnv) -> dict[str, Any]:
     for n, xy in layout["parts"].items():
         env.parts[n].place(env.model, xy)
     res = solution_order(env.grid, env.walls, env.parts, layout["spawn"][:2])
-    return {"ok": res["ok"], "order": res["order"], **({"reason": res["reason"]} if not res["ok"] else {})}
+    out = {"ok": res["ok"], "order": res["order"], **({"reason": res["reason"]} if not res["ok"] else {})}
+    if env.room.map is not None:
+        places = map_placement(env)
+        if places:
+            out["ok"] = False
+            out["placement"] = places
+            out["reason"] = "; ".join(([out["reason"]] if "reason" in out else []) + places)
+        elif not res["ok"]:
+            steps = map_steps(env, layout["spawn"][:2])
+            if steps:
+                out["steps"] = steps
+                out["reason"] += "; in the way: " + "; ".join(steps)
+    return out
+
+
+def map_placement(env: PuzzleEnv) -> list[str]:
+    """Letter maps (R37): parts, spawn and their random ranges must lie on floor cells."""
+    m = env.room.map
+    out: list[str] = []
+
+    def probe(what: str, xy, rnd, half=(0.0, 0.0)) -> None:
+        ex, ey = abs(rnd[0]) + half[0], abs(rnd[1]) + half[1]
+        for sx, sy in ((0, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)):
+            p = (xy[0] + sx * ex, xy[1] + sy * ey)
+            k = m.kind_at(p)
+            if k[0] in ("wall", "void"):
+                rc = m.cell_of(p)
+                where = f"cell {m.label(*rc)}" if rc is not None else "outside the map"
+                what_k = "is on a wall" if k[0] == "wall" else "has no floor under it"
+                span = " (with its random range and size)" if (sx or sy) else ""
+                out.append(f"{what} at ({p[0]:.2f}, {p[1]:.2f}){span} {what_k}: {where}")
+                return
+
+    probe("spawn", env.room.spawn_pos, env.room.spawn_random[:2])
+    for n, p in env.parts.items():
+        if not p.has_body or getattr(p, "floor_part", False):
+            continue
+        half = tuple(getattr(p, "half", (0.0, 0.0))) if np.ndim(getattr(p, "half", 0.0)) == 1 else (0.0, 0.0)
+        probe(f"part {n!r}", p.base_xy, p.random, half)
+    return out
+
+
+def map_steps(env: PuzzleEnv, start_xy) -> list[str]:
+    """Steps and ramps between the reachable floor (all switches on) and the rest (R37)."""
+    m = env.room.map
+    on = {p.name for p in env.parts.values() if p.role in ("switch", "warp")}
+    reach = env.grid.flood(free_mask(env.grid, env.walls, env.parts, on), start_xy)
+    cells = {m.cell_of(env.grid.center(iy, ix)) for iy, ix in zip(*np.nonzero(reach))}
+    cells.discard(None)
+    vals = env.body.capabilities.values
+    return m.step_reasons(cells, float(vals.get("max_step", np.inf)), float(vals.get("max_slope", 90.0)))
 
 
 def check_stability(env: PuzzleEnv, seconds: float = STABILITY_SECONDS) -> dict[str, Any]:
