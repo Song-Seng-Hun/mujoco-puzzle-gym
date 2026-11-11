@@ -67,6 +67,6 @@ A part is one Python class that inherits `Part`. It reads its attributes from `c
 
 ## Parts on the way (milestone 2, in design)
 
-Buttons (wall and floor), pressure plates, zone and laser sensors, receptacles, targets, logic gates and counters, transceivers, signal sources and wires, warps and springs, traps, beak-grabbed objects and devices (lever, dial, drawer, dispenser), self-moving robots and an owner, tow ropes, a wheel add-on station, destroyers, checkpoints, and puzzle presets that bundle them. Each will be added here with its attributes as it lands.
+Buttons (wall and floor), pressure plates, zone and laser sensors, receptacles, targets, logic gates and counters, transceivers, signal sources and wires, warps and springs, traps, beak-grabbed objects and devices (lever, dial, drawer, dispenser), self-moving robots and an owner, tow ropes, a wheel add-on station, destroyers, checkpoints, coins and coin locks, and puzzle presets that bundle them. Each will be added here with its attributes as it lands.
 
 After that, milestone 3 adds parts for other bodies, such as arms and wheeled robots.
