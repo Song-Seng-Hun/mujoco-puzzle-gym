@@ -1,5 +1,12 @@
 <p align="center"><a href="../README.md">한국어</a> · <b>English</b> · <a href="README.ja.md">日本語</a></p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/banner-dark.svg">
+    <img src="../assets/banner-light.svg" width="640" alt="Pixel-art banner. As Claude types room.yaml line by line at a terminal, pieces sparkle into a top-view room on the right: walls with an opening in the divider, a yellow floor switch, a brown door, a blue goal circle and the signal link from the switch to the door. After a green check, a small duck robot walks onto the switch; the switch turns green and the door slides open. The duck walks through to the goal, sparkles pop, the terminal prints success 0.99 and Claude nods.">
+  </picture>
+</p>
+
 # mujoco-puzzle-gym — a puzzle lab that agents build
 
 A framework in which AI agents build puzzle rooms inside a MuJoCo physics simulation and train a robot body in them. A puzzle is a program, not a fixed scene. You build a room whose state changes by wiring floor switches, doors, signals and logic together in YAML, and when a part is missing you register one more Python class. The agent runs the loop itself: build a room, check that it can be solved, train briefly, and when training fails, get a diagnosis and fix the room.

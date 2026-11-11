@@ -1,5 +1,12 @@
 <p align="center"><b>한국어</b> · <a href="docs/README.en.md">English</a> · <a href="docs/README.ja.md">日本語</a></p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+    <img src="assets/banner-light.svg" width="640" alt="픽셀아트 배너. Claude가 터미널에 room.yaml을 한 줄씩 적을 때마다 오른쪽 방 평면도에 칸막이에 틈이 난 벽, 노란 발판, 갈색 문, 파란 골 원, 발판과 문을 잇는 신호선이 반짝이며 나타납니다. 점검 줄에 초록 체크가 뜨면 작은 오리 로봇이 발판으로 걸어가 밟고, 발판이 초록으로 바뀌며 문이 미끄러져 열립니다. 오리가 문을 지나 골에 도착하면 반짝임과 함께 터미널에 success 0.99가 찍히고 Claude가 고개를 끄덕입니다.">
+  </picture>
+</p>
+
 # mujoco-puzzle-gym — 에이전트가 만드는 퍼즐 실험장
 
 AI 에이전트가 MuJoCo 물리 시뮬레이션 안에 퍼즐 방을 직접 짓고, 그 방에서 로봇 몸을 학습시키는 프레임워크입니다. 퍼즐은 정해진 장면이 아니라 프로그램입니다. 발판, 문, 신호, 논리를 이어 상태가 바뀌는 방을 YAML로 짓고, 모자란 부품은 파이썬 클래스로 하나 더 등록하면 됩니다. 에이전트는 방을 짓고, 풀 수 있는지 점검하고, 짧게 학습시키고, 실패하면 이유를 진단받아 고치는 순환을 스스로 돕니다.
