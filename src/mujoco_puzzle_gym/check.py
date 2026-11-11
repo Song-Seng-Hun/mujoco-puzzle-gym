@@ -42,12 +42,13 @@ from .env import PuzzleEnv
 from .logic import free_mask, solution_order
 from .parts.base import BODY_PREFIX
 from .parts.floor.coin import unreachable_coins
+from . import community as community_mod
 from .room import RoomError
 from .solver import ScriptedSolver, run_episode
 
 STABILITY_SECONDS = 10.0
 LOAD_STAGES = ("values", "channels", "demo")
-STATIC = (*LOAD_STAGES, "body", "parts", "overlap", "order")
+STATIC = ("community", *LOAD_STAGES, "body", "parts", "overlap", "order")   # community: --community only
 DYNAMIC = ("stability", "solver")
 STAGES = STATIC + DYNAMIC
 OVERLAP_DEPTH = 0.005    # [m] penetration that counts as an overlap
@@ -265,10 +266,21 @@ def _summary(result: dict[str, Any]) -> None:
 
 def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
           need: int = 18, static_only: bool = False,
-          snap_dir: str | Path | None = SNAP_DIR) -> dict[str, Any]:
-    """All stages; `static_only` stops after the static phase (no simulation)."""
+          snap_dir: str | Path | None = SNAP_DIR, community: bool = False) -> dict[str, Any]:
+    """All stages; `static_only` stops after the static phase (no simulation);
+    `community` adds the shared-room limits (community.py) and stops on a failure."""
     t0 = time.perf_counter()
     skipped = {"ok": False, "successes": 0, "seeds": seeds, "need": need}
+    if community:
+        problems = community_mod.check_raw(room)
+        if problems:
+            result = {"room": Path(room).stem, "community": community_mod.stage(problems),
+                      "error": problems[0]}
+            if not static_only:
+                result["solver"] = {**skipped, "skipped": "static stage community failed"}
+            _summary(result)
+            result["wall_seconds"] = round(time.perf_counter() - t0, 1)
+            return result
     try:
         env = PuzzleEnv(task=task, room=room)
     except RoomError as exc:
@@ -282,10 +294,12 @@ def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
         result["wall_seconds"] = round(time.perf_counter() - t0, 1)
         return result
     result: dict[str, Any] = {"room": env.room.name, "episode_seconds": env.max_steps / env.hz}
+    if community:
+        result["community"] = community_mod.stage(community_mod.check_loaded(env.room))
     result.update(check_static(env))
     if not static_only:
         result["stability"] = check_stability(env)
-        failed = [k for k in STATIC if not result[k]["ok"]]
+        failed = [k for k in STATIC if k in result and not result[k]["ok"]]
         if not failed:
             result["solver"] = check_solver(env, seeds, need, snap_dir)
         else:

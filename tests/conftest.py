@@ -26,3 +26,9 @@ def quick_run(asset_dir, repo_root, tmp_path_factory):
     summary = train(repo_root / "examples/task_ppo.yaml", minutes=1.0, n_envs=2,
                     runs_dir=runs, run_id="quick", max_steps=2048)
     return Path(summary["run_dir"])
+
+
+@pytest.fixture(autouse=True)
+def _trust_tmp_runs(monkeypatch):
+    """Tests train into tmp folders outside ./runs/; trust them. tests/test_trust.py unsets it."""
+    monkeypatch.setenv("MPG_TRUST", "1")

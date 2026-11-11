@@ -346,9 +346,11 @@ def _curriculum(task: dict[str, Any]) -> cur_mod.Curriculum:
         if len(segs) < 2:
             raise TaskError(f"--curriculum {task['curriculum']['mode']} needs checkpoint flags "
                             f"in the room ({task['room']} has none)")
+        from .trust import UntrustedPathError
+
         try:
             cur_mod.load_snapshots(env)
-        except cur_mod.CurriculumError as exc:
+        except (cur_mod.CurriculumError, UntrustedPathError) as exc:
             raise TaskError(str(exc)) from None
         task["curriculum"]["snapshots"] = str(cur_mod.snapshot_dir(env).resolve())
     finally:
@@ -360,7 +362,10 @@ def _curriculum(task: dict[str, Any]) -> cur_mod.Curriculum:
 
 def load_run(run_dir: str | Path) -> dict[str, Any]:
     """Summary, resolved task and episode log of a finished run."""
+    from .trust import require_trusted
+
     run_dir = Path(run_dir)
+    require_trusted(run_dir, "run folder")
     summary_path = run_dir / SUMMARY_NAME
     if not summary_path.exists():
         raise FileNotFoundError(f"{summary_path} missing: not a finished `mpg train` run")

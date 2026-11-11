@@ -101,9 +101,12 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
     from .task import TaskError
 
     need = args.need if args.need is not None else math.ceil(0.9 * args.seeds)
+    if args.community and args.task:
+        raise CommandError("--community takes no --task: a task's `plugins:` import code; "
+                           "shared rooms are checked with the built-in task")
     try:
         return check(args.room, task=args.task, seeds=args.seeds, need=need,
-                     static_only=args.static)
+                     static_only=args.static, community=args.community)
     except (RoomError, TaskError, FileNotFoundError) as exc:
         raise CommandError(str(exc)) from exc
 
@@ -117,6 +120,9 @@ def _configure_check(p: argparse.ArgumentParser) -> None:
     p.add_argument("--static", action="store_true",
                    help="static stages only (no simulation): values, channels, demo, body, "
                         "parts, overlap, order")
+    p.add_argument("--community", action="store_true",
+                   help="also check the limits for shared rooms (community/rooms/): built-in "
+                        "parts only, stages inside the room's folder, size caps; no --task")
 
 
 def _parts(args: argparse.Namespace) -> dict[str, Any]:
@@ -171,6 +177,8 @@ def _configure_train(p: argparse.ArgumentParser) -> None:
                    help="segment success rate that opens the next segment (default 0.8)")
     p.add_argument("--replay", type=float, default=None,
                    help="share of episodes started at earlier open segments (default 0.2)")
+    p.add_argument("--trust", action="store_true",
+                   help="open run folders and snapshots outside ./runs/ (pickle can run code)")
 
 
 def _run_errors():
@@ -203,6 +211,8 @@ def _configure_eval(p: argparse.ArgumentParser) -> None:
     p.add_argument("--segments", action="store_true",
                    help="also run every checkpoint segment from its snapshot: segment_success_rates; "
                         "with --full also chain_gap_rate (R22)")
+    p.add_argument("--trust", action="store_true",
+                   help="open run folders and snapshots outside ./runs/ (pickle can run code)")
 
 
 def _diagnose(args: argparse.Namespace) -> dict[str, Any]:
@@ -220,6 +230,8 @@ def _configure_diagnose(p: argparse.ArgumentParser) -> None:
     p.add_argument("--episodes", type=int, default=20, help="rollouts of the saved policy")
     p.add_argument("--no-video", action="store_true", help="skip the failure MP4")
     p.add_argument("--workers", type=int, default=12, help="parallel processes")
+    p.add_argument("--trust", action="store_true",
+                   help="open run folders and snapshots outside ./runs/ (pickle can run code)")
 
 
 def _render(args: argparse.Namespace) -> dict[str, Any]:
@@ -237,6 +249,8 @@ def _configure_render(p: argparse.ArgumentParser) -> None:
     p.add_argument("--seed", type=int, default=None,
                    help="render this env seed whatever happens (default: first eval-seed success)")
     p.add_argument("--tries", type=int, default=20, help="eval seeds to try for a success")
+    p.add_argument("--trust", action="store_true",
+                   help="open run folders and snapshots outside ./runs/ (pickle can run code)")
 
 
 DEMO_RUN = Path(__file__).resolve().parents[2] / "examples" / "pretrained" / "switch_door"
@@ -290,6 +304,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if getattr(args, "trust", False):
+        from .trust import set_trust
+        set_trust(True)
     _, handler, _ = COMMANDS[args.command]
     try:
         result = handler(args)
