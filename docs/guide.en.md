@@ -15,7 +15,7 @@ flowchart LR
 ```
 
 1. **Build**: an agent (or a person) writes `room.yaml` and the training settings `task.yaml`. `mpg build` makes the MJCF and a top-view image to look at.
-2. **Check**: `mpg check` runs three stages. (a) Given the signal links and walls, is there a solution order that reaches the goal? (b) Does the body stay up with no NaN for 10 s at zero command? (c) Does a scripted solver that knows the answer solve at least 18 of 20 random layouts?
+2. **Check**: `mpg check` looks at the room in two phases. The static phase runs no simulation and checks value ranges (`values`), signal links (`channels`), solution subgoals (`demo`), body capabilities (`body`), per-part checks (`parts`), overlaps (`overlap`) and the solution order to the goal (`order`). The dynamic phase checks that the body does not fall or blow up numerically for 10 s at zero command (`stability`), and that a scripted solver that knows the answer solves at least 18 of 20 random layouts (`solver`). Each stage is described in [Parts and presets](parts-guide.en.md#two-phase-check).
 3. **Train**: `mpg train` trains for a set time and leaves a checkpoint, learning curves and an episode log in `runs/<id>/`.
 4. **Diagnose**: `mpg diagnose` reads the training log and fresh rollouts and classifies the cause. Fix it and train again.
 5. **Eval and video**: `mpg eval` measures the success rate on layouts not used in training, and `mpg render` makes a success video.
@@ -24,7 +24,8 @@ flowchart LR
 
 - **Rooms in YAML**: room size and walls, part layout, per-part randomisation ranges, start pose, and signal links between parts (`links`).
 - **Extensible parts, observations, rewards and algorithms**: all go through the same registration functions (`register_part`, `register_obs`, `register_reward`, `register_algo`). The built-in parts are registered the same way.
-- **Three-stage check**: solution order, physics stability, scripted-solver success rate.
+- **Part presets**: load parts such as buttons, gates, doors, floor tiles and balls by preset name and change only the values you need. There are also assembly presets that bundle several parts. [Parts and presets](parts-guide.en.md)
+- **Two-phase check**: a static phase (values, signals, overlaps, solution order and more) and a dynamic phase (physics stability, scripted-solver success rate).
 - **Training**: PPO (default), SAC and A2C from Stable-Baselines3. Your own algorithm plugs in through the `Trainer` interface. Parallel environments, checkpoints, per-term reward logs, learning curves.
 - **Diagnosis**: four causes (environment bug, body failure, exploration, reward hacking) with evidence numbers, a failure video and a fix direction.
 - **Eval and video**: success rate and mean time on held-out seeds, comparison with a random policy, offscreen MP4.
@@ -39,7 +40,8 @@ Every command accepts `--json` and exits non-zero on failure.
 |---|---|
 | `mpg fetch-assets` | Download the robot model and walking policy from pinned commits and verify hashes |
 | `mpg build <room.yaml>` | Make the body + room MJCF and a top-view PNG |
-| `mpg check <room.yaml>` | Check solution order, physics stability and scripted-solver success |
+| `mpg check <room.yaml>` | Check the static phase (values, signals, overlaps, solution order) and the dynamic phase (physics stability, scripted-solver success). `--static` runs only the static phase |
+| `mpg parts` | Registered parts, value schemas and the preset list (`--json`), value tables (`--markdown`) |
 | `mpg train <task.yaml> --minutes N` | Train for a set time; results in `runs/<id>/` |
 | `mpg diagnose runs/<id>` | Classify the failure cause, with evidence numbers and a failure video |
 | `mpg eval runs/<id>` | Success rate and mean time on held-out layouts (`--policy random` for a baseline) |
@@ -68,8 +70,12 @@ links:
   - {from: switch_a, to: door_b}  # door_b opens when switch_a is on
 ```
 
+- The floor switch `switch` is a floor button that keeps its M1 name. It is the same as the button preset `input/floor_oneshot` (stays on once the body steps on it); with `latch: false` it is `momentary`, on only while pressed.
+- New rooms are easier to build from presets. Write `{name: b, preset: input/floor_oneshot, pos: [x, y]}` and add only the values you want to change. The example rooms and how to use presets are in [Parts and presets](parts-guide.en.md). The examples are [`examples/rooms/`](../examples/rooms/) (buttons and logic gates, three doors, four flags, coins, a ball, text maps) and the ball assembly presets (`mini_soccer`, `ball_ramp`, `bowling`, `color_sort`).
 - `random` is the range within which the layout is randomized each episode. Evaluation uses layouts from seeds not used in training.
-- A door can require several switches together with `require: all | any`. A switch stays on once stepped on by default; with `latch: false` it is on only while pressed.
+- A door can require several switches together with `require: all | any`.
+- Parts meant to be told apart by sight (buttons and floor switches, sensor plates, checkpoints, doors, sockets, warps, floor tiles) get an ArUco marker (`DICT_4X4_50`) with a free id. Set it with `marker: {id, size, face}` and remove it with `marker: none`. Duplicate ids, ids outside 0–49 and markers larger than their face are rejected when the room is loaded.
+- The gaze sensor is a geometric test, not a recognition sensor. It reads no images: a marker counts as "seen" when, from the head camera, it is within the view angle `fov/2`, the distance `max_dist` and the tilt `max_tilt`, and the ray to it is not blocked. After `dwell` seconds of continuous viewing the `<part>.seen` channel becomes 1, so you can make "a door that opens when you look at it" (`in: [door_a.seen]`). Room value `gaze: {fov: 60, max_dist: 2.0, max_tilt: 70, dwell: 0.5}`; observation term `markers_seen` (one slot per id in use, in id order).
 - Deliberately broken rooms and settings are in [`examples/broken/`](../examples/broken/). They test whether check and diagnose name the cause correctly.
 
 ## Training settings
@@ -88,6 +94,23 @@ net: [128, 128]
 n_envs: 12
 plugins: []                              # your own part / observation / reward modules
 ```
+
+## Staged training and segment evaluation
+
+A room with checkpoint flags (`type: checkpoint`, `order: 1, 2, …`) is split into segments. With two flags there are three segments: `start->f1`, `f1->f2` and `f2->goal`. The first segment starts like a normal episode; the others start from the flag snapshots that `mpg check` leaves (`runs/check/<room>/checkpoints/<flag>.pkl`). So run `mpg check` first.
+
+```bash
+mpg check room.yaml
+mpg train task.yaml --minutes 60 --curriculum forward --advance-at 0.8 --replay 0.2
+mpg eval runs/<id> --full --segments
+```
+
+- `--curriculum forward`: trains only the first segment, and opens the next one when that segment's recent success rate (over `window` episodes) reaches `--advance-at`. A `--replay` fraction of episodes starts from earlier segments already opened. A segment episode ends as a success when it reaches the flag at the end of the segment.
+- `--curriculum reverse`: starts from the last segment to the goal and moves the start point earlier. `none` (the default) runs from the start to the goal.
+- The same values can go in task.yaml as `curriculum: {mode: forward, advance_at: 0.8, replay: 0.2, window: 50, snapshots: null}`. `snapshots` is the snapshot folder (empty means `runs/check/<room>/checkpoints`).
+- Progress is recorded in `runs/<id>/curriculum.json` with the time, the open segments and the success rate per segment.
+- Flags are part of the solution order, so the `progress` reward and the `target_pos` observation go through the flags in turn. The `checkpoints` observation term is the next flag (one-hot, the last slot is the goal) and whether each flag has been reached.
+- `mpg eval --full` reports the success rate from the start to the goal with no snapshots (`full_success_rate`), and `--segments` the success rate per segment (`segment_success_rates`). With both, it also reports the share of runs where every segment succeeded but the full run failed (`chain_gap_rate`).
 
 ## Adding parts, observations, rewards and algorithms
 
