@@ -11,6 +11,13 @@ new part or term needs no edit to library code:
 
 Weights and which terms are active come from task.yaml (`obs:`, `reward:`).
 
+Python logic for gates (R7) goes in only as a registered function; room.yaml
+names it (`{type: gate, logic: my_rule, in: [a, b]}`) and never holds code:
+
+    @register_logic("majority")
+    def majority(inputs, state, dt):   # inputs: channel -> value; state: dict kept per gate
+        return float(sum(v > 0.5 for v in inputs.values()) * 2 > len(inputs))
+
 Training algorithms (R8) are `algos.base.Trainer` subclasses, found by name in
 this order: built-ins (ppo, sac, a2c), `register_algo` calls (e.g. from a
 task.yaml `plugins:` module), then the Python entry point group
@@ -33,11 +40,13 @@ if TYPE_CHECKING:
 
 ObsFn = Callable[["PuzzleEnv"], np.ndarray]
 RewardFn = Callable[["PuzzleEnv"], float]
+LogicFn = Callable[[dict[str, float], dict[str, Any], float], float]
 
 PARTS: dict[str, type["Part"]] = {}
 OBS: dict[str, ObsFn] = {}
 REWARDS: dict[str, RewardFn] = {}
 ALGOS: dict[str, type["Trainer"]] = {}
+LOGIC: dict[str, LogicFn] = {}
 ALGO_ENTRY_POINTS = "mujoco_puzzle_gym.algos"
 
 
@@ -71,6 +80,20 @@ def register_reward(name: str, fn: RewardFn | None = None, *, replace: bool = Fa
     if fn is None:
         return lambda f: register_reward(name, f, replace=replace)
     return _register(REWARDS, "reward term", name, fn, replace)
+
+
+def register_logic(name: str, fn: LogicFn | None = None, *, replace: bool = False):
+    """Register a gate logic function fn(inputs, state, dt) -> float (R7)."""
+    if fn is None:
+        return lambda f: register_logic(name, f, replace=replace)
+    return _register(LOGIC, "logic", name, fn, replace)
+
+
+def get_logic(name: str) -> LogicFn:
+    try:
+        return LOGIC[name]
+    except KeyError:
+        raise KeyError(f"unknown logic {name!r}; registered: {sorted(LOGIC)}") from None
 
 
 def load_builtins() -> None:

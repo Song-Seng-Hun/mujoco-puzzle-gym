@@ -49,3 +49,9 @@ def target_pos(env):
     """Privileged: the current target (next part in the solution order), heading frame (2)."""
     t = env.current_target()
     return _to_body_frame(env, t.xy) if t is not None else np.zeros(2)
+
+
+@register_obs("counters", replace=True)
+def counters(env):
+    """Every counter's count over its target (R8b), room order (1 per counter)."""
+    return np.array([p.ratio() for p in env.parts.values() if hasattr(p, "ratio")], dtype=float)
