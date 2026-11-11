@@ -50,6 +50,7 @@ class SignalBus:
         self.order = order                  # parts in evaluation order
         self.writers = writers              # channel -> name of the part writing it
         self.values: dict[str, float] = {ch: 0.0 for ch in writers}
+        self.dt = 0.02                      # seconds per body step (the env sets it)
 
     def reset(self) -> None:
         for ch in self.values:
@@ -71,6 +72,9 @@ class SignalBus:
 
     def snapshot(self) -> dict[str, float]:
         return dict(self.values)
+
+    def load(self, values: dict[str, float]) -> None:
+        self.values.update(values)
 
 
 def _reads(part: "Part") -> list[str]:

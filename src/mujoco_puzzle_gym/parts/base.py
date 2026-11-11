@@ -8,13 +8,24 @@ Roles drive the generic logic in `check` and `PuzzleEnv`:
 - "switch": has an on/off state; `satisfied()` is True when on. Can be a link source.
 - "gate":   blocks movement until its linked sources are on. Can be a link target.
 - "goal":   `satisfied()` is True when the body reached it; ends the episode.
-- "prop":   anything else (decoration, obstacles via `blockers`).
+- "checkpoint": a flag (R6); the env saves a snapshot when one turns on.
+- "prop":   anything else (logic parts, decoration, obstacles via `blockers`).
 
 Signals (R1): a part reads channels `in`, writes channels `out` and has an
 optional power channel `enable` (see `signals.py`). `stage` (input, logic,
 device) sets when it updates in a body step; `stateful` parts (delay, latch)
 may sit in a channel loop. `emits` parts write the channel named after the
-part when `out` is not given.
+part when `out` is not given; `suffixes` add channels `<name><suffix>`
+(a counter writes `<name>.count` and `<name>.reached`).
+
+Bodies (R5): a part whose class sets `kind` ("object", "npc") owns a free
+body that sensors classify by that kind (`World.kind_of`); `trigger: body |
+object | npc | any` on input parts picks which kinds count.
+
+State (R6): `save_state` / `load_state` copy the attributes named in
+`state_keys` for checkpoint snapshots; `failed()` True ends the episode.
+Planning (R6a): `plan_values` gives the channels this part writes when the
+input parts in `on` are on (logic parts compute through, see logic.py).
 
 Settings (R3): each class lists its values as `fields` (`schema.Field`); the
 class schema is the union over its base classes (`full_schema`). The checked
@@ -24,6 +35,8 @@ values, defaults filled in, are `self.cfg`; an out-of-range value raises
 
 from __future__ import annotations
 
+import copy
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import mujoco
@@ -39,6 +52,39 @@ if TYPE_CHECKING:
 
 BODY_PREFIX = "part/"
 
+#: Which body kinds each `trigger` value counts (R4, R5). Shells and rope knots
+#: never count (they have their own kinds).
+TRIGGERS: dict[str, frozenset[str]] = {
+    "body": frozenset({"body"}),
+    "object": frozenset({"object"}),
+    "npc": frozenset({"npc"}),
+    "any": frozenset({"body", "object", "npc"}),
+}
+
+
+@dataclass
+class World:
+    """What parts may know about the scene beyond their own body (set by the env).
+
+    kinds:   root body id -> "body" (the walking body), "object", "npc", ...
+    objects: root body id -> the part owning that free body
+    held:    root body ids the body is holding now (not counted by sensors, R5)
+    """
+
+    dt: float = 0.02
+    kinds: dict[int, str] = field(default_factory=dict)
+    objects: dict[int, "Part"] = field(default_factory=dict)
+    held: set[int] = field(default_factory=set)
+    checkpoints: list["Part"] = field(default_factory=list)
+
+    def kind_of(self, model: mujoco.MjModel, body_id: int) -> str | None:
+        return self.kinds.get(int(model.body_rootid[body_id]))
+
+    def next_checkpoint(self) -> int | None:
+        """Lowest `order` among flags not reached yet (R6)."""
+        left = [c.order for c in self.checkpoints if not c.reached]
+        return min(left) if left else None
+
 
 class Part:
     type_name: ClassVar[str] = "part"
@@ -46,6 +92,10 @@ class Part:
     stage: ClassVar[str] = "device"      # input | logic | device (R1 evaluation order)
     stateful: bool = False               # output does not depend on this step's input
     emits: ClassVar[bool] = False        # default `out` is the part's own name
+    suffixes: ClassVar[tuple[str, ...]] = ()   # extra channels <name><suffix>
+    has_body: ClassVar[bool] = True      # False: no MuJoCo body (logic parts)
+    kind: ClassVar[str | None] = None    # body kind for sensors ("object", "npc")
+    state_keys: ClassVar[tuple[str, ...]] = ()  # attributes saved in snapshots (R6)
     #: Values this class adds to its base classes' schema (R3).
     fields: ClassVar[tuple[Field, ...]] = (
         Field("pos", "vec", length=2, unit="m", doc="position [x, y] on the floor"),
@@ -81,8 +131,11 @@ class Part:
         self.inputs: list[str] = list(cfg["in"])
         out = cfg["out"]
         self.outputs: list[str] = list(out) if out is not None else ([name] if self.emits else [])
+        self.outputs += [name + s for s in self.suffixes]
         self.enable: str | None = cfg["enable"]
         self.bus: SignalBus | None = None      # set by signals.wire
+        self.world: World | None = None        # set by the env
+        self.pending_snapshot = False          # checkpoint asks the env for a snapshot
         self._bid = -1
 
     @property
@@ -90,17 +143,25 @@ class Part:
         return BODY_PREFIX + self.name
 
     # ---- scene ------------------------------------------------------------
-    def build(self, spec: mujoco.MjSpec) -> mujoco.MjsBody:
+    def build(self, spec: mujoco.MjSpec) -> mujoco.MjsBody | None:
         """Add this part's body (named `body_name`) at `base_xy`; subclasses add geoms."""
+        if not self.has_body:
+            return None
         return spec.worldbody.add_body(name=self.body_name, pos=[*self.base_xy, 0.0])
 
     def bind(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
-        self._bid = model.body(self.body_name).id
+        if self.has_body:
+            self._bid = model.body(self.body_name).id
 
     def place(self, model: mujoco.MjModel, xy) -> None:
         """Move the part (randomised layouts). Call `mj_forward` afterwards."""
         self.xy = np.asarray(xy, dtype=float)
-        model.body_pos[self._bid, :2] = self.xy
+        if self.has_body:
+            model.body_pos[self._bid, :2] = self.xy
+
+    def root_body_ids(self, model: mujoco.MjModel) -> list[int]:
+        """Free bodies this part owns, classified as `kind` for sensors."""
+        return [self._bid] if self.kind and self._bid >= 0 else []
 
     def sample_xy(self, rng: np.random.Generator) -> np.ndarray:
         return self.base_xy + rng.uniform(-self.random, self.random)
@@ -119,6 +180,23 @@ class Part:
     def satisfied(self) -> bool:
         return False
 
+    def failed(self) -> bool:
+        """True ends the episode as a failure (receptacle `wrong: fail`, flag `skip: fail`)."""
+        return False
+
+    def substep(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
+        """Called after every physics step when a part overrides it (R5 `substep` hook):
+        record contact starts or peak forces here and judge them in `update`."""
+
+    # ---- snapshots (R6) -------------------------------------------------------------
+    def save_state(self) -> dict[str, Any]:
+        return {k: copy.deepcopy(getattr(self, k)) for k in self.state_keys}
+
+    def load_state(self, model: mujoco.MjModel, data: mujoco.MjData, st: dict[str, Any]) -> None:
+        """Restore `save_state` output. Called after the bus values are restored."""
+        for k, v in st.items():
+            setattr(self, k, copy.deepcopy(v))
+
     # ---- signals (R1) --------------------------------------------------------
     def read(self, channel: str) -> float:
         return self.bus.get(channel)
@@ -135,6 +213,21 @@ class Part:
         if not self.inputs:
             return False
         flags = [is_on(self.bus.get(ch)) for ch in self.inputs]
+        return all(flags) if self.require == "all" else any(flags)
+
+    def plan_values(self, on: set[str], get) -> dict[str, float]:
+        """Planning: channels this part writes when the input parts named in `on` are
+        on and other channels read `get(channel)`. Inputs: on iff named in `on`;
+        logic parts compute through (logic.py); devices write nothing."""
+        if self.stage == "input":
+            return {ch: float(self.name in on) for ch in self.outputs}
+        return {}
+
+    def plan_inputs_on(self, get) -> bool:
+        """Planning: `inputs_on` with channel values from `get`."""
+        if not self.inputs:
+            return False
+        flags = [is_on(get(ch)) for ch in self.inputs]
         return all(flags) if self.require == "all" else any(flags)
 
     def sources_on(self, on: set[str]) -> bool:
