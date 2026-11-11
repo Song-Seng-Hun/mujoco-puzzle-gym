@@ -58,7 +58,7 @@
 | `size: [w, h]` | 部屋の内寸 [m]、原点が中央 |
 | `wall: {thickness, height}` | 外壁の厚さと高さ |
 | `walls:` | 内側の壁の一覧、各`{from: [x, y], to: [x, y]}` |
-| `spawn: {pos, yaw, random}` | 出発位置と向き、エピソードごとに揺らす±範囲`[dx, dy, dyaw]`(`yaw`と`dyaw`はラジアン) |
+| `spawn: {pos, yaw, random}` | 出発位置と向き、エピソードごとにランダムに変える±範囲`[dx, dy, dyaw]`(`yaw`と`dyaw`はラジアン) |
 | `links:` | 信号のつながりの一覧、各`{from: 部品, to: 部品}` |
 
 ## 新しい部品を作る

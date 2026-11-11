@@ -68,7 +68,7 @@ links:
   - {from: switch_a, to: door_b}  # door_b opens when switch_a is on
 ```
 
-- `random` is the range by which the layout is shaken each episode. Evaluation uses layouts from seeds not used in training.
+- `random` is the range within which the layout is randomized each episode. Evaluation uses layouts from seeds not used in training.
 - A door can require several switches together with `require: all | any`. A switch stays on once stepped on by default; with `latch: false` it is on only while pressed.
 - Deliberately broken rooms and settings are in [`examples/broken/`](../examples/broken/). They test whether check and diagnose name the cause correctly.
 
