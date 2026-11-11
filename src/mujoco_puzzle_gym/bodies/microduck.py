@@ -35,7 +35,7 @@ import mujoco
 import numpy as np
 
 from .. import assets
-from .base import BodyAdapter, BodyState, Pose, rotate_inverse, yaw_from_quat
+from .base import BodyAdapter, BodyState, Capabilities, Pose, rotate_inverse, yaw_from_quat
 
 # Files in the asset cache (keys of upstream.lock.json).
 ROBOT_XML = "robot/robot_allcollisions_backlash.xml"
@@ -108,6 +108,10 @@ class MicroduckAdapter(BodyAdapter):
     control_dt = TIMESTEP * DECIMATION
     timestep = TIMESTEP
     footprint_radius = 0.11   # collision geoms span x -0.08..0.11, y +-0.11 m around the trunk
+    # R2b. beak_grab: weld grab at the `mouth_tip` site (spec R18); max_lift_mass
+    # is the conservative pre-measurement default from spec R18.
+    capabilities = Capabilities(names=frozenset({"walk", "beak_grab"}),
+                                values={"max_lift_mass": 0.05})
 
     def __init__(self, asset_dir: Path | None = None, vin: float = BAM_VIN,
                  vin_drop_gain: float | None = BAM_VIN_DROP_GAIN,

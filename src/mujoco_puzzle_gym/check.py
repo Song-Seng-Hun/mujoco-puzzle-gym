@@ -1,9 +1,10 @@
 """`mpg check room.yaml` (R6): is the room solvable, stable and actually solved?
 
+body:      every part's `requires_body` capabilities are on the body (R2b, static);
 (a) order:     a switch/door order that reaches a goal exists (link graph on the room grid);
 (b) stability: zero command for 10 s at the nominal layout: no NaN, no fall;
 (c) solver:    the scripted privileged solver succeeds on >= `need` of `seeds`
-               random layouts (seeds 0..seeds-1); skipped when (a) fails.
+               random layouts (seeds 0..seeds-1); skipped when body or (a) fails.
 """
 
 from __future__ import annotations
@@ -19,6 +20,19 @@ from .logic import solution_order
 from .solver import ScriptedSolver, run_episode
 
 STABILITY_SECONDS = 10.0
+STAGES = ("body", "order", "stability", "solver")
+
+
+def check_body(env: PuzzleEnv) -> dict[str, Any]:
+    """Static: parts whose `requires_body` names a capability the body lacks (R2b)."""
+    caps = env.body.capabilities
+    missing = {n: m for n, p in env.parts.items() if (m := caps.missing(p.requires_body))}
+    res: dict[str, Any] = {"ok": not missing, "capabilities": sorted(caps.names)}
+    if missing:
+        res["missing"] = missing
+        res["reason"] = "; ".join(f"part {n!r} needs body capabilities {m} the body lacks"
+                                  for n, m in missing.items())
+    return res
 
 
 def check_order(env: PuzzleEnv) -> dict[str, Any]:
@@ -61,15 +75,17 @@ def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
     t0 = time.perf_counter()
     env = PuzzleEnv(task=task, room=room)
     result: dict[str, Any] = {"room": env.room.name, "episode_seconds": env.max_steps / env.hz}
+    result["body"] = check_body(env)
     result["order"] = check_order(env)
     result["stability"] = check_stability(env)
-    if result["order"]["ok"]:
+    if result["body"]["ok"] and result["order"]["ok"]:
         result["solver"] = check_solver(env, seeds, need)
     else:
-        result["solver"] = {"ok": False, "skipped": "no solution order (a)", "successes": 0,
+        why = "no solution order (a)" if not result["order"]["ok"] else "missing body capabilities"
+        result["solver"] = {"ok": False, "skipped": why, "successes": 0,
                             "seeds": seeds, "need": need}
-    result["ok"] = all(result[k]["ok"] for k in ("order", "stability", "solver"))
-    result["failed"] = [k for k in ("order", "stability", "solver") if not result[k]["ok"]]
+    result["ok"] = all(result[k]["ok"] for k in STAGES)
+    result["failed"] = [k for k in STAGES if not result[k]["ok"]]
     result["wall_seconds"] = round(time.perf_counter() - t0, 1)
     env.close()
     return result

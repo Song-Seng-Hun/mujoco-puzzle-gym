@@ -9,8 +9,8 @@ policy files (enforced by tests/test_boundary.py).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Sequence
+from dataclasses import dataclass, field
+from typing import Iterable, Mapping, Sequence
 
 import mujoco
 import numpy as np
@@ -26,6 +26,20 @@ class BodyState:
     ang_vel: np.ndarray   # (3,) trunk angular velocity in the body frame [rad/s]
     gravity: np.ndarray   # (3,) unit gravity in the body frame (upright: [0, 0, -1])
     fallen: bool
+
+
+@dataclass(frozen=True)
+class Capabilities:
+    """What a body can do (R2b): capability names (e.g. `walk`, `beak_grab`) and
+    numeric limits (e.g. `max_lift_mass` [kg]). The body adapter sets both; parts
+    state what they need with `requires_body: [...]` and `mpg check` compares."""
+
+    names: frozenset[str] = frozenset()
+    values: Mapping[str, float] = field(default_factory=dict)
+
+    def missing(self, required: Iterable[str]) -> list[str]:
+        """Required names this body lacks, in the order given."""
+        return [r for r in required if r not in self.names]
 
 
 class BodyAdapter(ABC):
@@ -48,6 +62,8 @@ class BodyAdapter(ABC):
     #: When False, `clip_cmd` passes commands through unclipped. Only for
     #: deliberately broken tasks (`env.command_scale` > 1, `mpg diagnose` tests).
     clip_commands: bool = True
+    #: What this body can do (R2b); parts' `requires_body` is checked against it.
+    capabilities: Capabilities = Capabilities()
 
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:

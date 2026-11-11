@@ -40,6 +40,8 @@ class Part:
               doc="uniform +- range added to pos on every reset"),
         Field("require", "enum", "all", choices=("all", "any"),
               doc="gates: open when all / any of their inputs are on"),
+        Field("requires_body", "list", [],
+              doc="body capabilities this part needs (R2b), checked by `mpg check`"),
     )
 
     @classmethod
@@ -59,6 +61,7 @@ class Part:
         self.xy = self.base_xy.copy()
         self.sources: list[Part] = []          # filled from room links (gates)
         self.require = cfg["require"]
+        self.requires_body: list[str] = cfg["requires_body"]
         self._bid = -1
 
     @property
