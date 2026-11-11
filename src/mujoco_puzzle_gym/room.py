@@ -100,7 +100,7 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
         raise RoomError("`demo:` must be a list of sub-goals, e.g. [press switch_a, goto goal]", "demo")
     out: list[tuple] = []
 
-    def part(i: int, name: str, what: str):
+    def part(i: int, name: str):
         if name not in parts:
             raise RoomError(f"demo[{i}]: no part named {name!r} (parts: {sorted(parts)})", "demo")
         return name
@@ -118,7 +118,7 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
         if cmd in ("goto", "press"):
             if len(args) != 1:
                 raise RoomError(f"demo[{i}]: `{cmd} <part>` takes one part name, got {entry!r}", "demo")
-            p = part(i, args[0], cmd)
+            p = part(i, args[0])
             if cmd == "press" and parts[p].role not in ("switch", "checkpoint", "goal"):
                 raise RoomError(f"demo[{i}]: cannot press {p!r} (a {parts[p].role}); press "
                                 f"switches, buttons, sensors and flags", "demo")
@@ -135,7 +135,7 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
         else:
             if len(args) != 3 or args[1] != "to":
                 raise RoomError(f"demo[{i}]: write `push <ball> to <net or pin>`, got {entry!r}", "demo")
-            ball, target = part(i, args[0], cmd), part(i, args[2], cmd)
+            ball, target = part(i, args[0]), part(i, args[2])
             if getattr(parts[ball], "object_kind", None) != "ball":
                 raise RoomError(f"demo[{i}]: {ball!r} is not a ball", "demo")
             if not hasattr(parts[target], "push_target"):
