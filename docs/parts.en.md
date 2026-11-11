@@ -2,6 +2,8 @@
 
 [Back to README](README.en.md) · [한국어](parts.md) · [日本語](parts.ja.md)
 
+> All milestone 2 parts, the presets and the value tables are in [Parts and presets](parts-guide.en.md). This document covers only the three parts of the first milestone.
+
 A puzzle room is assembled from parts. One part is one line in the `parts:` list of `room.yaml`, made of a **type (`type`) and its attributes**. Parts pass signals to each other through `links:`. This document lists the parts available now and their attributes.
 
 ## Attributes every part has
@@ -26,7 +28,7 @@ Each part has a role. The check (`mpg check`) and the environment use roles to w
 ## Built-in parts
 
 ### `switch` — floor switch (role `switch`)
-On when the body centre is over the plate. No collision.
+On when the body centre is over the plate. No collision. It is an alias of the floor button (`button`) and the same as the preset `input/floor_oneshot`.
 
 | Attribute | Meaning | Default |
 |---|---|---|
