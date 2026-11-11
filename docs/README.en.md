@@ -98,6 +98,7 @@ All commands, training settings, adding parts and rewards, and swapping the body
 ## Limits
 
 - The high-level policy uses privileged observations that read the puzzle state directly. There is no policy yet that solves puzzles from real sensors (camera, distance sensor) alone.
+- The high-level policy generalises to unseen layouts, but the training room always has the same order (switch → door → goal) and the reward points toward that order. Whether it can work out the order by itself has not been tested yet.
 - The official walking policy is kept frozen. It cannot walk backward and walks forward at about 0.12–0.22 m/s. Room sizes and time limits have to fit this speed.
 - Simulation only. Transfer to the real robot (sim2real) is out of scope.
 - Tested on macOS (Apple Silicon, CPU MuJoCo). Rendering on Linux has not been checked yet.
