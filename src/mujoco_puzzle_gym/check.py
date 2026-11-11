@@ -1,6 +1,8 @@
 """`mpg check room.yaml` (R6): is the room solvable, stable and actually solved?
 
 body:      every part's `requires_body` capabilities are on the body (R2b, static);
+parts:     no part reports a static problem (`Part.check_static`: a ball too big
+           for its goal net, a ball in a wall or out of reach, R38);
 (a) order:     a switch/door order that reaches a goal exists (link graph on the room grid);
 (b) stability: zero command for 10 s at the nominal layout: no NaN, no fall;
 (c) solver:    the scripted privileged solver succeeds on >= `need` of `seeds`
@@ -20,7 +22,7 @@ from .logic import solution_order
 from .solver import ScriptedSolver, run_episode
 
 STABILITY_SECONDS = 10.0
-STAGES = ("body", "order", "stability", "solver")
+STAGES = ("body", "parts", "order", "stability", "solver")
 
 
 def check_body(env: PuzzleEnv) -> dict[str, Any]:
@@ -33,6 +35,12 @@ def check_body(env: PuzzleEnv) -> dict[str, Any]:
         res["reason"] = "; ".join(f"part {n!r} needs body capabilities {m} the body lacks"
                                   for n, m in missing.items())
     return res
+
+
+def check_parts(env: PuzzleEnv) -> dict[str, Any]:
+    """Static: reasons parts give through `check_static` (R38)."""
+    why = [r for p in env.parts.values() for r in p.check_static(env)]
+    return {"ok": not why, **({"reason": "; ".join(why)} if why else {})}
 
 
 def check_order(env: PuzzleEnv) -> dict[str, Any]:
@@ -76,12 +84,14 @@ def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
     env = PuzzleEnv(task=task, room=room)
     result: dict[str, Any] = {"room": env.room.name, "episode_seconds": env.max_steps / env.hz}
     result["body"] = check_body(env)
+    result["parts"] = check_parts(env)
     result["order"] = check_order(env)
     result["stability"] = check_stability(env)
-    if result["body"]["ok"] and result["order"]["ok"]:
+    if result["body"]["ok"] and result["order"]["ok"] and result["parts"]["ok"]:
         result["solver"] = check_solver(env, seeds, need)
     else:
-        why = "no solution order (a)" if not result["order"]["ok"] else "missing body capabilities"
+        why = ("no solution order (a)" if not result["order"]["ok"] else
+               "missing body capabilities" if not result["body"]["ok"] else "part static check")
         result["solver"] = {"ok": False, "skipped": why, "successes": 0,
                             "seeds": seeds, "need": need}
     result["ok"] = all(result[k]["ok"] for k in STAGES)

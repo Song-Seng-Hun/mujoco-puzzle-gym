@@ -2,6 +2,8 @@
 
 from ..registry import register_part
 from .base import Part
+from .device.goal_net import GoalNet
+from .object import Ball, Pin
 from .door import Door
 from .goal import Goal
 from .input import Button, Checkpoint, Laser, PressurePlate, Receptacle, Zone
@@ -21,6 +23,10 @@ register_part("laser", Laser, replace=True)
 register_part("pressure", PressurePlate, replace=True)
 register_part("receptacle", Receptacle, replace=True)
 register_part("checkpoint", Checkpoint, replace=True)
+register_part("ball", Ball, replace=True)
+register_part("pin", Pin, replace=True)
+register_part("goal_net", GoalNet, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
-           "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint"]
+           "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
+           "Ball", "Pin", "GoalNet"]
