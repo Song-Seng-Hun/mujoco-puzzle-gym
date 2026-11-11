@@ -4,6 +4,7 @@ the body lacks, naming the part and the capability."""
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import yaml
@@ -13,8 +14,10 @@ from mujoco_puzzle_gym.check import check_body
 from mujoco_puzzle_gym.env import PuzzleEnv
 
 ROOM = "examples/switch_door.yaml"
-# M1 example rooms. M2 example rooms (examples/rooms/) join this list when they exist (step 8).
-ROOMS = [ROOM, "examples/broken/door_unlinked.yaml", "examples/broken/switch_in_wall.yaml"]
+# M1 example rooms and the M2 example rooms (examples/rooms/, step 8).
+ROOMS = [ROOM, "examples/broken/door_unlinked.yaml", "examples/broken/switch_in_wall.yaml",
+         *sorted(str(p.relative_to(Path(__file__).resolve().parents[1]))
+                 for p in (Path(__file__).resolve().parents[1] / "examples/rooms").glob("*.yaml"))]
 
 
 def _variant(repo_root, tmp_path, edit):
