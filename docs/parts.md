@@ -58,7 +58,7 @@
 | `size: [w, h]` | 방 안쪽 크기 [m], 원점이 가운데 |
 | `wall: {thickness, height}` | 바깥벽 두께와 높이 |
 | `walls:` | 안쪽 벽 목록, 각 `{from: [x, y], to: [x, y]}` |
-| `spawn: {pos, yaw, random}` | 출발 위치와 방향, 매 에피소드 흔드는 ±범위 `[dx, dy, dyaw]` (`yaw`, `dyaw`는 라디안) |
+| `spawn: {pos, yaw, random}` | 출발 위치와 방향, 매 에피소드 무작위로 바꾸는 ±범위 `[dx, dy, dyaw]` (`yaw`, `dyaw`는 라디안) |
 | `links:` | 신호 연결 목록, 각 `{from: 부품, to: 부품}` |
 
 ## 새 부품 만들기

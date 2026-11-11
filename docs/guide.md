@@ -68,7 +68,7 @@ links:
   - {from: switch_a, to: door_b}  # switch_a가 켜지면 door_b가 열림
 ```
 
-- `random`은 에피소드마다 배치를 흔드는 범위입니다. 평가는 학습에 쓰지 않은 시드의 배치에서 합니다.
+- `random`은 에피소드마다 배치를 무작위로 바꾸는 범위입니다. 평가는 학습에 쓰지 않은 시드의 배치에서 합니다.
 - 문은 `require: all | any`로 여러 발판을 함께 요구할 수 있습니다. 발판은 기본으로 한 번 밟으면 켜진 채로 있고, `latch: false`면 밟고 있는 동안만 켜집니다.
 - 일부러 고장 낸 방과 설정이 [`examples/broken/`](../examples/broken/)에 있습니다. 점검과 진단이 원인을 제대로 짚는지 보는 시험용입니다.
 
@@ -78,7 +78,7 @@ links:
 
 ```yaml
 room: switch_door.yaml
-env: {hz: 10, episode_seconds: 40}       # 위층 정책은 초당 10번 결정
+env: {hz: 10, episode_seconds: 40}       # 상위 정책은 초당 10번 결정
 obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
 reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
 termination: {success: true, fall: true}

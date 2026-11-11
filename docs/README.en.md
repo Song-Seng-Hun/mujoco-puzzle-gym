@@ -16,10 +16,10 @@ A framework in which AI agents build puzzle rooms inside a MuJoCo physics simula
 
 ## What is this?
 
-- **Puzzles are built like programs.** A room is one `room.yaml`: walls, part positions, how far each episode shakes them, and the signal links between parts. A new device is one Python class.
-- **It checks a room can be solved first.** Before you spend time training, it checks in seconds that a solution order exists, that the physics is stable, and that a scripted solver that knows the answer solves it.
+- **Puzzles are built like programs.** A room is one `room.yaml`: walls, part positions, how much their positions vary each episode, and the signal links between parts. A new device is one Python class.
+- **It checks a room can be solved first.** Before you spend time training, it checks in seconds that a solution order exists, that the physics is stable, and that a scripted solver can actually solve the room.
 - **It trains, and tells you why training fails.** On failure it names the cause (environment bug, falling, not enough exploration, reward hacking) with evidence and a fix direction. An AI agent can run this loop without a person.
-- **It designs rewards too.** Rewards are terms with weights in `task.yaml` (progress, stage, success, falling and so on). When diagnose reports reward hacking or poor exploration, the agent changes the weights or registers a new reward term as one Python function, and trains again.
+- **Rewards are configurable too.** Rewards are terms with weights in `task.yaml` (progress, stage, success, falling and so on). When `mpg diagnose` reports reward hacking or poor exploration, the agent changes the weights or registers a new reward term as one Python function, and trains again.
 
 The agent is not included: you have the AI coding agent you already use (Claude Code, for example) edit the YAML and Python files and run the `mpg` commands. A person can use the same commands directly.
 
@@ -27,9 +27,9 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 
 ## Features
 
-- **A part is a bundle of attributes.** Each part is a type (`type`) plus attributes: position, size, whether it stays on once stepped on, which way it opens, how far each episode shakes it, and so on. The parts and their attributes are listed in a separate [parts document](parts.en.md).
+- **A part is a bundle of attributes.** Each part is a type (`type`) plus attributes: position, size, whether it stays on once stepped on, which way it opens, how much its position varies each episode, and so on. The parts and their attributes are listed in a separate [parts document](parts.en.md).
 - **The agent designs puzzles by assembling parts.** Pick parts, place them and wire them with signal links (`links`), and you have a puzzle. Simple rooms like switch → door → goal and rooms with stacked conditions, such as a door that opens only when several switches are all on (`require: all`), are built the same way. A missing part can be written and plugged in.
-- **Randomization is supported.** Today, part positions and the start position and heading are shaken within set ranges every episode, so a policy solves the puzzle instead of memorising the layout. Placing anywhere inside a region, picking one of several candidates, and changing the room structure itself come in milestone 2.
+- **Randomization is supported.** Today, part positions and the start position and heading are randomized within set ranges every episode, so a policy solves the puzzle instead of memorising the layout. Placing anywhere inside a region, picking one of several candidates, and changing the room structure itself come in milestone 2.
 - **Baseline environments are included.** The example room, a verified PPO training config, a pretrained policy (`mpg demo`), a random-policy comparison on the same seeds (`mpg eval --policy random`), and a set of deliberately broken configs ([`examples/broken/`](../examples/broken/)) give a starting point to compare new rooms or new algorithms against.
 - **The body can be swapped.** The puzzle code does not know the body; a body adapter takes movement commands and drives the body. Build a new body adapter and another robot trains in the same rooms (how: [guide](guide.en.md#body-adapter)). The only body included today is Microduck.
 
@@ -51,7 +51,7 @@ Make a video of the trained duck solving the example room (`demo.mp4`).
 uv run mpg demo
 ```
 
-Train your own. On a 12-core machine, 15 minutes solved 99% of unseen layouts ([training log](training-log.md)).
+Train your own. On a 12-core machine, 15 minutes of training solved 99% of unseen layouts ([training log](training-log.md)).
 
 ```bash
 uv run mpg train examples/task_ppo.yaml --minutes 15 --id first
@@ -98,7 +98,7 @@ All commands, training settings, adding parts and rewards, and swapping the body
 ## Limits
 
 - The high-level policy uses privileged observations that read the puzzle state directly. There is no policy yet that solves puzzles from real sensors (camera, distance sensor) alone.
-- The official walking policy is used frozen. It cannot walk backward and walks forward at about 0.12–0.22 m/s. Room sizes and time limits have to fit this speed.
+- The official walking policy is kept frozen. It cannot walk backward and walks forward at about 0.12–0.22 m/s. Room sizes and time limits have to fit this speed.
 - Simulation only. Transfer to the real robot (sim2real) is out of scope.
 - Tested on macOS (Apple Silicon, CPU MuJoCo). Rendering on Linux has not been checked yet.
 
