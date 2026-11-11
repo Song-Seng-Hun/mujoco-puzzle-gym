@@ -61,6 +61,62 @@ jobs:
       - name: Banners are valid XML
         run: python -c "import sys, xml.etree.ElementTree as ET; [ET.parse(p) for p in sys.argv[1:]]" assets/banner-*.svg
 
+  community:
+    # Shared rooms (docs/community.md): runs only when a PR changes community/.
+    # `pull_request` (not `pull_request_target`): the PR's code runs without secrets
+    # and with the read-only token above.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      MUJOCO_GL: osmesa
+      PYOPENGL_PLATFORM: osmesa
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Changed files under community/
+        id: changed
+        run: |
+          git diff --name-only --diff-filter=ACMRT "$BASE_SHA"...HEAD -- community/ > changed.txt
+          cat changed.txt
+          echo "any=$([ -s changed.txt ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Accepted file types and sizes
+        if: steps.changed.outputs.any == 'true'
+        run: python3 tools/check_community_files.py $(cat changed.txt)
+      - name: Install OSMesa (software rendering)
+        if: steps.changed.outputs.any == 'true'
+        run: sudo apt-get update && sudo apt-get install -y libosmesa6 libgl1
+      - uses: astral-sh/setup-uv@v6
+        if: steps.changed.outputs.any == 'true'
+        with:
+          enable-cache: true
+      - name: Cache robot model and walking policy
+        if: steps.changed.outputs.any == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mujoco-puzzle-gym
+          key: mpg-assets-${{ hashFiles('src/mujoco_puzzle_gym/upstream.lock.json') }}
+      - name: Install
+        if: steps.changed.outputs.any == 'true'
+        run: uv sync --locked && uv run mpg fetch-assets
+      - name: Check each changed room (10 min a room)
+        if: steps.changed.outputs.any == 'true'
+        run: |
+          fail=0
+          for room in $(grep '\.yaml$' changed.txt); do
+            echo "== $room"
+            if timeout 600 uv run mpg check --community --seeds 20 --json "$room" > result.json; then
+              echo "ok"
+            else
+              echo "::error file=$room::mpg check --community failed (exit $?)"
+              fail=1
+            fi
+            python3 -c "import json; r = json.load(open('result.json')); print({k: r.get(k) for k in ('ok', 'failed', 'error', 'community')})" || true
+          done
+          exit $fail
+
   slow:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
