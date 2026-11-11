@@ -1,0 +1,7 @@
+# Broken on purpose for `mpg diagnose` (R9): expected cause exploration.
+# Default rewards; the switch is out of reach within one episode, so it is never pressed.
+room: room_far_switch.yaml
+env: {hz: 10, episode_seconds: 12}
+algo: ppo
+algo_kwargs: {n_steps: 128, batch_size: 512}
+n_envs: 12

@@ -45,6 +45,9 @@ class BodyAdapter(ABC):
     #: Radius [m] of a circle around the body centre that covers its footprint
     #: (clearance for path planning in `mpg check`).
     footprint_radius: float = 0.15
+    #: When False, `clip_cmd` passes commands through unclipped. Only for
+    #: deliberately broken tasks (`env.command_scale` > 1, `mpg diagnose` tests).
+    clip_commands: bool = True
 
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:
@@ -77,6 +80,8 @@ class BodyAdapter(ABC):
         return lo + (a + 1.0) / 2.0 * (hi - lo)
 
     def clip_cmd(self, cmd: Sequence[float]) -> np.ndarray:
+        if not self.clip_commands:
+            return np.asarray(cmd, dtype=np.float64)
         lo = np.array([lim[0] for lim in self.cmd_limits])
         hi = np.array([lim[1] for lim in self.cmd_limits])
         return np.clip(np.asarray(cmd, dtype=np.float64), lo, hi)

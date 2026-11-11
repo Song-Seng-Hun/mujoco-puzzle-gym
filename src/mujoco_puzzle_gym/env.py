@@ -8,6 +8,11 @@
   per-term weighted values in `info["reward_terms"]`.
 - Episode ends on success or fall (task `termination`), or is truncated after
   `episode_seconds`.
+- `info` also carries `switches_on` (switches on now) and `contradiction`
+  (a part state outside [0, 1], or success while a gate on the solution path
+  never opened): evidence for `mpg diagnose`.
+- `env.command_scale` != 1 multiplies the body command and turns off the
+  body's command clipping; only for deliberately broken tasks.
 """
 
 from __future__ import annotations
@@ -25,6 +30,10 @@ from .logic import free_mask, solution_order
 from .registry import OBS, REWARDS
 from .room import Room
 from .task import TaskError, load_task
+
+# A gate counts as having let the body through once its state passed this
+# (a half-open door already leaves a gap wider than the body).
+GATE_PASSABLE = 0.3
 
 
 class PuzzleEnv(gym.Env):
@@ -60,6 +69,9 @@ class PuzzleEnv(gym.Env):
         self.reward_terms = [(n, REWARDS[n], float(w)) for n, w in self.task["reward"].items()]
         self.term_fall = bool(self.task["termination"].get("fall", True))
         self.term_success = bool(self.task["termination"].get("success", True))
+        self.command_scale = float(self.task["env"].get("command_scale", 1.0))
+        if self.command_scale != 1.0:
+            self.body.clip_commands = False
 
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(3,), dtype=np.float32)
         self._renderer = None
@@ -95,6 +107,7 @@ class PuzzleEnv(gym.Env):
         self.prev_dist = self.target_distance()
         self.steps = 0
         self.events = {"progress": 0.0, "new_on": 0, "success": False, "fallen": False}
+        self._gates_opened: set[str] = set()
 
     def _stage(self) -> int:
         for i, t in enumerate(self.targets):
@@ -147,7 +160,7 @@ class PuzzleEnv(gym.Env):
 
     def step(self, action):
         on_before = {n for n, p in self.parts.items() if p.role == "switch" and p.satisfied()}
-        cmd = self.body.command_from_action(action)
+        cmd = self.body.command_from_action(action) * self.command_scale
         sane = self.advance(cmd)
         self.steps += 1
         on_after = {n for n, p in self.parts.items() if p.role == "switch" and p.satisfied()}
@@ -171,11 +184,25 @@ class PuzzleEnv(gym.Env):
         terminated = (success and self.term_success) or (fallen and self.term_fall) or not sane
         truncated = (not terminated) and self.steps >= self.max_steps
         info = self._info()
-        info.update(reward_terms=terms, command=cmd.tolist(), nan=not sane)
+        info.update(reward_terms=terms, command=cmd.tolist(), nan=not sane,
+                    switches_on=len(on_after), contradiction=self._contradiction(info, success))
         obs = self._obs()
         if not sane:
             obs = np.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
         return obs, reward, terminated, truncated, info
+
+    def _contradiction(self, info: dict[str, Any], success: bool) -> bool:
+        states = info["parts"].values()
+        if not all(np.isfinite(v) and -1e-6 <= v <= 1.0 + 1e-6 for v in states):
+            return True
+        for name in self.plan["order"]:
+            part = self.parts[name]
+            if part.role == "gate" and part.state() >= GATE_PASSABLE:
+                self._gates_opened.add(name)
+        if success and self.plan["ok"]:
+            gates = [n for n in self.plan["order"] if self.parts[n].role == "gate"]
+            return any(g not in self._gates_opened for g in gates)
+        return False
 
     def _info(self) -> dict[str, Any]:
         t = self.current_target()

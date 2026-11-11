@@ -1,0 +1,12 @@
+# Broken on purpose for `mpg diagnose` (R9): expected cause reward_hacking.
+# Only the progress term, with a huge weight. Progress is the drop in geodesic
+# distance to the current target; with the momentary switch the target flips
+# switch -> goal -> switch as the body steps on and off the switch edge, and
+# each flip resets the distance, so pacing at the edge earns progress forever
+# while success stays at zero.
+room: room_momentary_switch.yaml
+env: {hz: 10, episode_seconds: 20}
+reward: {progress: 100.0}
+algo: ppo
+algo_kwargs: {n_steps: 128, batch_size: 512}
+n_envs: 12

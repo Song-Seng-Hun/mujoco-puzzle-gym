@@ -80,6 +80,19 @@ View (read-only copy): (아직 없음)
 15. 진단 (R9): 네 분류 규칙과 근거 숫자, 실패 영상. 망가진 설정 3개로 테스트.
 16. 평가 (R10)와 영상 (R11): 학습에 안 쓴 시드 범위, `mujoco.Renderer` offscreen MP4(CI는 `MUJOCO_GL=egl`).
 17. 보상·하이퍼파라미터 조정 (R10): 성공률 80%까지. 조정 반복은 subagent, 최종 설정만 커밋.
+   - **PR C 구현 메모 (2026-11-11)** — 13–16단계와 달라진 곳:
+     - `render`는 따로 파일을 두지 않고 `evaluate.py`에 eval과 함께 둔다(같은 정책 불러오기·에피소드 실행을 쓴다).
+     - 알고리즘 찾는 순서: 기본(ppo, sac, a2c) → `register_algo` → 진입점 `mujoco_puzzle_gym.algos`. `--algo`가 task의 `algo`와 다르면 task의 `algo_kwargs`는 버린다(PPO의 `n_steps`는 SAC에 없다). 버린 값은 `summary.json`의 `algo_kwargs_dropped`.
+     - 작업자 프로세스 등록 문제: task.yaml에 `plugins: [모듈]`을 추가했다. `load_task`가 가져오므로 본 프로세스와 모든 작업자(SubprocVecEnv, spawn)에서 사용자 부품·항목·알고리즘이 등록된다.
+     - 학습 로그는 알고리즘과 무관하게 VecEnv 감싸개(`EpisodeLog`)가 `episodes.jsonl`로 남긴다(사용자 알고리즘도 곡선·항목별 보상이 생긴다).
+     - 시드: 학습은 env i가 `seed + i`로 시작해 자기 난수열을 잇는다(task `seed` < 900,000). eval은 1,000,000부터, diagnose 롤아웃은 2,000,000부터.
+     - `PuzzleEnv` info에 `switches_on`, `contradiction`(부품 상태가 [0, 1] 밖이거나, 풀이 경로의 문이 열린 적 없는데 성공) 추가. 진단 근거용.
+     - 진단용 망가진 설정 3개(`examples/broken/task_*.yaml`)에서 spec과 다른 점:
+       - "진척 보상만 크게": 진척 보상은 측지 거리 감소라 합이 처음 거리로 묶여 그것만으로는 해킹할 틈이 없다. 그래서 발판을 순간형(`latch: false`)으로 둔 방을 함께 쓴다. 발판 가장자리를 오가면 목표가 발판↔골로 바뀌며 거리가 다시 매겨져 진척 보상이 끝없이 쌓이고, 성공은 0이다.
+       - "발판을 아주 멀리": 발판을 스폰에서 약 3.5 m에 두고 에피소드를 12초(최대 약 2.6 m)로 줄였다. 측지 진척 보상이 있으면 거리만 먼 발판은 결국 배우므로 "한 에피소드 안에 못 닿는 거리"로 정했다.
+       - "명령을 범위 밖으로": task `env.command_scale`(기본 1)을 추가했다. 1이 아니면 명령에 곱하고 몸의 명령 자르기를 끈다(`BodyAdapter.clip_commands`). 5배에서 넘어짐(측정: 무작위 행동 4배 10/10 넘어짐, 3배 0/10).
+     - 진단 규칙: 넘어짐이나 탐색 부족이 있으면 보상 해킹은 붙이지 않는다(성공이 그대로인 이유가 이미 설명됨).
+     - 추가 옵션: `mpg eval --policy random`(같은 시드에서 무작위 기준선, R8 비교용), `mpg render --seed N`(성공이 아니어도 그 시드를 녹화).
 
 **PR D — 에이전트 안내, 문서, CI, 끝에서 끝까지**
 18. `AGENTS.md`(R12), `skills/mujoco-puzzle-gym/SKILL.md`(R18).

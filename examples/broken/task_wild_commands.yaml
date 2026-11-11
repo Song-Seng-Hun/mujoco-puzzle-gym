@@ -1,0 +1,8 @@
+# Broken on purpose for `mpg diagnose` (R9): expected cause body_failure.
+# command_scale 5 sends walk commands five times beyond the body's limits,
+# unclipped; the walking policy was never trained on them and the body falls.
+room: ../switch_door.yaml
+env: {hz: 10, episode_seconds: 20, command_scale: 5.0}
+algo: ppo
+algo_kwargs: {n_steps: 128, batch_size: 512}
+n_envs: 12
