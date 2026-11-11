@@ -1,0 +1,4 @@
+# Gate: its one input, `seconds` later (R7). Set: in: [channel], seconds.
+type: gate
+op: delay
+seconds: 1.0

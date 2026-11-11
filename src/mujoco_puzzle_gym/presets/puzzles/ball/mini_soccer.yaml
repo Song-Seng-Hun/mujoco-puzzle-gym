@@ -1,0 +1,17 @@
+# Mini soccer (R38): push the ball into the net to open the door, then walk to the goal.
+# The duck pushes with its body (no kick, no walking backward): it walks round
+# behind the ball and dribbles it north into the net.
+name: mini_soccer
+size: [2.4, 1.8]
+wall: {thickness: 0.06, height: 0.25}
+walls:                            # divider at x = 0.5 with a 0.5 m door opening at y = 0
+  - {from: [0.5, -0.9], to: [0.5, -0.28]}
+  - {from: [0.5, 0.28], to: [0.5, 0.9]}
+spawn: {pos: [-0.9, -0.4], yaw: 0.0, random: [0.1, 0.15, 3.14]}
+parts:
+  - {name: ball, type: ball, pos: [-0.35, 0.05], random: [0.08, 0.08]}   # defaults: r 0.05 m, 0.05 kg, elasticity 0.5
+  - {name: net, type: goal_net, pos: [-0.35, 0.72], width: 0.4, depth: 0.2, facing: -90}
+  - {name: door, type: door, pos: [0.5, 0.0], width: 0.5, axis: y, in: [net]}
+  - {name: goal, type: goal, pos: [0.9, 0.0], radius: 0.15, random: [0.1, 0.4]}
+demo:                             # scripted solver (R20): push, then the grid answer to the goal
+  - push ball to net

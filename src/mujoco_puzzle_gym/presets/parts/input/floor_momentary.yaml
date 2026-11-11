@@ -1,0 +1,6 @@
+# Floor button, on while something stands on it (R4 `momentary`).
+# Set: pos, size, trigger (body | object | npc | any).
+type: button
+kind: momentary
+trigger: any
+size: [0.25, 0.25]

@@ -1,0 +1,6 @@
+# Floor button, each new press flips it 0 <-> 1 (R4 `toggle`). Step off and on
+# again to flip. Set: pos, size.
+type: button
+kind: toggle
+trigger: body
+size: [0.25, 0.25]

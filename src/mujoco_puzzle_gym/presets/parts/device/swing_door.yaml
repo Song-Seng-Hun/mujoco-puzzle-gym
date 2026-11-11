@@ -1,0 +1,7 @@
+# Swing door on a hinge (R9). Set: pos, width, axis, hinge (-1 | 1),
+# open_dir (side it swings to), in.
+type: swing_door
+mode: follow
+width: 0.5
+axis: y
+angle: 90.0

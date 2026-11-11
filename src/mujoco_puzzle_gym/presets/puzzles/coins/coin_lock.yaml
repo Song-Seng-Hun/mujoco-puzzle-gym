@@ -1,0 +1,18 @@
+# coin_lock (R36): a door that opens once enough coins of a group are picked.
+#
+# Parts: the coins (one group), a `coin_lock` (an R8b counter whose `up` is the
+# group's `<group>.picked` pulse and whose target is `need`), and a door that
+# reads `<lock>.reached`. Change:
+#   - the coins' `pos` (and `random`), and add or remove coins;
+#   - `need`: `all` (every coin of the group) or a number;
+#   - the door's `pos`, `width`, `axis` to fit the room's wall opening.
+# Load it with a room's top-level `preset: puzzles/coins/coin_lock` and change
+# parts by name in the room's `parts:` (e.g. `{name: lock_door, pos: [...]}`);
+# the room adds its size, walls, spawn and goal. Channels: coins.count,
+# coins.total, coins.picked, lock.count, lock.reached.
+parts:
+  - {name: coin_1, type: coin, group: coins, pos: [-0.4, 0.4]}
+  - {name: coin_2, type: coin, group: coins, pos: [0.0, 0.35]}
+  - {name: coin_3, type: coin, group: coins, pos: [-0.05, -0.35]}
+  - {name: lock, type: coin_lock, group: coins, need: all}
+  - {name: lock_door, type: door, pos: [0.3, 0.0], width: 0.5, axis: y, in: [lock.reached]}

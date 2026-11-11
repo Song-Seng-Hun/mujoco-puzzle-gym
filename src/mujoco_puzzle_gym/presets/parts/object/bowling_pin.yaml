@@ -1,0 +1,5 @@
+# Bowling pin (R38): `<name>.down` once it tips past `down_angle`. Set: pos.
+type: pin
+radius: 0.02
+height: 0.12
+mass: 0.03

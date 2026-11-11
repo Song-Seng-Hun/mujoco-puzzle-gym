@@ -1,0 +1,17 @@
+# Broken on purpose (R20): two logic gates read each other with no stateful
+# part (delay, latch) in between, so the loop has no evaluation order.
+# `mpg check` fails the static stage `channels`: "signal loop through
+# stateless parts only: keep -> hold_open -> keep".
+name: stateless_loop
+size: [2.4, 1.8]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.3, -0.9], to: [0.3, -0.28]}
+  - {from: [0.3, 0.28], to: [0.3, 0.9]}
+spawn: {pos: [-0.75, 0.0], yaw: 0.0, random: [0.2, 0.35, 3.14]}
+parts:
+  - {name: button, type: button, pos: [-0.25, 0.5], size: [0.3, 0.3]}
+  - {name: keep, type: gate, expr: "button or hold_open"}
+  - {name: hold_open, type: gate, expr: "keep"}
+  - {name: door_b, type: door, pos: [0.3, 0.0], width: 0.5, axis: y, in: [hold_open]}
+  - {name: goal, type: goal, pos: [0.85, 0.0], radius: 0.15}

@@ -28,14 +28,15 @@ pinned better-actuator-models 1.0.3, not the git build used for training.
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import mujoco
 import numpy as np
 
 from .. import assets
-from .base import BodyAdapter, BodyState, Pose, rotate_inverse, yaw_from_quat
+from .base import BodyAdapter, BodyState, Capabilities, Pose, SubstepFn, rotate_inverse, yaw_from_quat
 
 # Files in the asset cache (keys of upstream.lock.json).
 ROBOT_XML = "robot/robot_allcollisions_backlash.xml"
@@ -46,6 +47,8 @@ PREFIX = "body/"
 TRUNK_BODY = "trunk_base"
 FREEJOINT = "trunk_base_freejoint"
 GYRO_SENSOR = "imu_ang_vel"
+HEAD_SITE = "head_camera"     # MJCF frame site and camera of the head camera (R39)
+LEVEL_SETTLE_STEPS = 25       # body steps standing still before reading the level head pose
 
 # Actuator order of the MJCF == policy action order (infer_policy.py DEFAULT_POSE).
 JOINTS = (
@@ -107,7 +110,15 @@ class MicroduckAdapter(BodyAdapter):
     cmd_limits = ((-0.4, 0.4), (-0.3, 0.3), (-1.0, 1.0))   # velstand twist ranges
     control_dt = TIMESTEP * DECIMATION
     timestep = TIMESTEP
+    fall_height = FALL_HEIGHT
     footprint_radius = 0.11   # collision geoms span x -0.08..0.11, y +-0.11 m around the trunk
+    # R2b. beak_grab: weld grab at the `mouth_tip` site (spec R18); max_lift_mass
+    # is the conservative pre-measurement default from spec R18. max_step [m] and
+    # max_slope [deg] (R37) are OQ5 measurements (2026-11-11, velstand, vx 0.3,
+    # 10 seeds): 1 cm steps up 10/10 (1.2 cm 8/10, 1.4 cm 5/10), 2 cm down
+    # without a fall; 5 deg slopes up 10/10 (6 deg 9/10, 7 deg 2/10).
+    capabilities = Capabilities(names=frozenset({"walk", "beak_grab"}),
+                                values={"max_lift_mass": 0.05, "max_step": 0.01, "max_slope": 5.0})
 
     def __init__(self, asset_dir: Path | None = None, vin: float = BAM_VIN,
                  vin_drop_gain: float | None = BAM_VIN_DROP_GAIN,
@@ -164,6 +175,7 @@ class MicroduckAdapter(BodyAdapter):
         spec.meshdir = ""
         kt = self.bam_model.kt.value
         force_limit = self.bam_model.actuator.vin * kt / self.bam_model.R.value
+        self._fix_head_camera(spec)
         joints = {j.name: j for j in spec.joints}
         for act in spec.actuators:
             if act.target.startswith("passive_"):
@@ -179,6 +191,74 @@ class MicroduckAdapter(BodyAdapter):
             joint.solref_friction = BAM_STIFF_SOLREF_FRICTION
             joint.solimp_friction = BAM_STIFF_SOLIMP_FRICTION
         return spec
+
+    @staticmethod
+    def _fix_head_camera(spec: mujoco.MjSpec) -> None:
+        """Point the MJCF `head_camera` camera along its frame site's +x (the lens
+        axis; site +z is up). Upstream's camera quat looks backward into the head
+        shell under MuJoCo's camera convention (view along -z, +y up)."""
+        site = next((s for s in spec.sites if s.name == HEAD_SITE), None)
+        cam = next((c for c in spec.cameras if c.name == HEAD_SITE), None)
+        if site is None or cam is None:
+            return
+        rs = np.zeros(9)
+        mujoco.mju_quat2Mat(rs, np.asarray(site.quat, dtype=np.float64))
+        rs = rs.reshape(3, 3)
+        rc = np.column_stack([-rs[:, 1], rs[:, 2], -rs[:, 0]])   # camera x, y, z
+        q = np.zeros(4)
+        mujoco.mju_mat2Quat(q, rc.ravel())
+        cam.pos = site.pos
+        cam.quat = q
+
+    def view_camera(self, model: mujoco.MjModel) -> int | None:
+        cid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, PREFIX + HEAD_SITE)
+        return cid if cid >= 0 else None
+
+    def _level_head_frame(self) -> tuple[np.ndarray, np.ndarray]:
+        """Head-site position and the head body's rotation relative to the heading
+        frame, read once from the body standing still on a flat floor (cached)."""
+        if getattr(self, "_level_cache", None) is None:
+            from .base import flat_floor_spec
+
+            probe = MicroduckAdapter(asset_dir=self.policy_path.parents[1], vin=self.vin,
+                                     vin_drop_gain=self.vin_drop_gain,
+                                     action_lag=self.action_lag, robot_xml=self.robot_xml)
+            model = probe.spawn(flat_floor_spec()).compile()
+            data = mujoco.MjData(model)
+            probe.reset(data)
+            for _ in range(LEVEL_SETTLE_STEPS):
+                probe.step(data, (0.0, 0.0, 0.0))
+            sid = model.site(PREFIX + HEAD_SITE).id
+            bid = int(model.site_bodyid[sid])
+            yaw = probe.state(data).yaw
+            c, s = np.cos(yaw), np.sin(yaw)
+            r_yaw = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+            r_body = r_yaw.T @ data.xmat[bid].reshape(3, 3)          # head in heading frame
+            self._level_cache = (model.site_pos[sid].copy(), r_body)
+        return self._level_cache
+
+    def add_rangefinders(self, spec: mujoco.MjSpec, yaws: Sequence[float], prefix: str) -> list[str]:
+        site = next((s for s in spec.sites if s.name == PREFIX + HEAD_SITE), None)
+        if site is None:
+            raise RuntimeError("spawn the body before adding rangefinders")
+        head = site.parent
+        pos, r_body = self._level_head_frame()
+        names = []
+        for i, a in enumerate(yaws):
+            d_local = r_body.T @ np.array([np.cos(a), np.sin(a), 0.0])   # ray in head frame
+            z = np.array([0.0, 0.0, 1.0])
+            axis = np.cross(z, d_local)
+            ang = float(np.arctan2(np.linalg.norm(axis), d_local @ z))
+            n = np.linalg.norm(axis)
+            axis = axis / n if n > 1e-9 else np.array([1.0, 0.0, 0.0])
+            quat = [np.cos(ang / 2), *(np.sin(ang / 2) * axis)]       # site +z -> ray
+            sname = f"{prefix}{i}"
+            head.add_site(name=sname, pos=pos, quat=quat, group=4)
+            sen = spec.add_sensor(name=sname, type=mujoco.mjtSensor.mjSENS_RANGEFINDER,
+                                  objtype=mujoco.mjtObj.mjOBJ_SITE, objname=sname)
+            sen.intprm[0] = 1 << int(mujoco.mjtRayDataField.mjRAYDATA_DIST)
+            names.append(sname)
+        return names
 
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:
         x, y, yaw = pose
@@ -261,7 +341,41 @@ class MicroduckAdapter(BodyAdapter):
             command,                                                     # command (13)
         ]).astype(np.float32)
 
-    def step(self, data: mujoco.MjData, cmd: Sequence[float]) -> None:
+    def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:
+        self.reset(data, pose)
+        if z:
+            data.qpos[self._root_qpos + 2] += z
+            mujoco.mj_forward(data.model, data)
+
+    def root_body_id(self, model: mujoco.MjModel) -> int:
+        return model.body(PREFIX + TRUNK_BODY).id
+
+    def history_state(self) -> dict[str, Any]:
+        c = self._ctrl
+        return {
+            "last_action": self.last_action.copy(),
+            "prev_torque": self._prev_torque.copy(),
+            "targets": [t.copy() for t in self._targets],
+            "q_target": c.q_target.copy(),
+            "actuator_state": copy.deepcopy(c.actuator_state),
+            "control": copy.deepcopy(c.control),
+            "last_ts": c.last_ts,
+        }
+
+    def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
+        if self._data is not data:
+            self._bind(data)
+        c = self._ctrl
+        self.last_action = state["last_action"].copy()
+        self._prev_torque = state["prev_torque"].copy()
+        self._targets = [t.copy() for t in state["targets"]]
+        c.q_target[:] = state["q_target"]
+        c.actuator_state = copy.deepcopy(state["actuator_state"])
+        c.control = copy.deepcopy(state["control"])
+        c.last_ts = state["last_ts"]
+
+    def step(self, data: mujoco.MjData, cmd: Sequence[float],
+             on_substep: SubstepFn | None = None) -> None:
         if self._data is not data:
             raise RuntimeError("call reset(data) before step(data)")
         obs = self.observation(data, self.clip_cmd(cmd))
@@ -283,8 +397,10 @@ class MicroduckAdapter(BodyAdapter):
             act.vin = self.vin
             self._prev_torque = data.ctrl[self._ctrl.act_indexes].copy()
             mujoco.mj_step(model, data)
+            if on_substep is not None:
+                on_substep(model, data)
 
-    def state(self, data: mujoco.MjData) -> BodyState:
+    def state(self, data: mujoco.MjData, floor_z: float = 0.0) -> BodyState:
         q, v = self._root_qpos, self._root_qvel
         quat = data.qpos[q + 3:q + 7]
         yaw = yaw_from_quat(quat)
@@ -298,5 +414,5 @@ class MicroduckAdapter(BodyAdapter):
             lin_vel=np.array([c * vw[0] + s * vw[1], -s * vw[0] + c * vw[1], vw[2]]),
             ang_vel=data.qvel[v + 3:v + 6].copy(),
             gravity=gravity,
-            fallen=bool(gravity[2] > FALL_GRAVITY_Z or pos[2] < FALL_HEIGHT),
+            fallen=bool(gravity[2] > FALL_GRAVITY_Z or pos[2] - floor_z < FALL_HEIGHT),
         )

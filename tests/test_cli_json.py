@@ -15,6 +15,7 @@ FAST_ARGS = {
     "build": [ROOM, "--out", tempfile.mkdtemp(prefix="mpg-build-")],
     "check": [ROOM, "--seeds", "2"],
     "bench": ["--seconds", "0.3", "--procs", "2"],
+    "parts": [],
 }
 
 

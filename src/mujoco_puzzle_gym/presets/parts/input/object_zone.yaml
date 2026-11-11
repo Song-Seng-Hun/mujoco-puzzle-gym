@@ -1,0 +1,6 @@
+# Zone sensor for objects (balls, boxes), 1 while one is in the box (R5).
+# `objects: [name, ...]` limits it to those parts. Set: pos, size.
+type: zone
+trigger: object
+size: [0.4, 0.4]
+height: 0.3

@@ -5,11 +5,15 @@ writes one JSON line per finished episode (return, length, success, fall,
 switches, NaN/contradiction flags, per-term reward sums), then to the chosen
 `Trainer`. A run directory `runs/<id>/` gets:
 
-    task.resolved.yaml   the task with every default filled in
+    task.resolved.yaml   the task with every default filled in, and `room_parts`:
+                         the room's parts with preset values and overrides (R3)
     checkpoint.*         what the trainer saved (SB3: checkpoint.zip)
     episodes.jsonl       one line per training episode
     curves.png           return, success / fall / switch rates, per-term rewards
-    summary.json         budget, steps, speed, first/last-window statistics
+    summary.json         budget, steps, speed, first/last-window statistics,
+                         `obs_kind` (`sensors_only` or `privileged`, R39)
+    curriculum.json      with `--curriculum forward|reverse` (R21): time, open
+                         segments and success rate per segment over training
 
 Training seeds: env i of a run with task `seed: s` starts from seed s + i and
 then continues its own RNG stream; `mpg eval` uses seeds from EVAL_SEED_BASE
@@ -30,7 +34,10 @@ from typing import Any
 import numpy as np
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnvWrapper
 
+from . import curriculum as cur_mod
+from .obs import obs_kind
 from .registry import get_algo
+from .room import Room
 from .task import TaskError, load_task, write_resolved
 
 EPISODES_NAME = "episodes.jsonl"
@@ -106,12 +113,64 @@ class EpisodeLog(VecEnvWrapper):
               "switches_on": a["switches_on"], "stage": info.get("stage"),
               "nan": a["nan"], "contradiction": a["contradiction"],
               "terms": {k: round(v, 4) for k, v in a["terms"].items()}}
+        if info.get("segment") is not None:
+            ep.update(segment=int(info["segment"]), segment_success=bool(info["segment_success"]))
         self.episodes.append(ep)
         self._file.write(json.dumps(ep) + "\n")
         self._file.flush()
 
     def close(self):
         self._file.close()
+        self.venv.close()
+
+
+class CurriculumVec(VecEnvWrapper):
+    """Feeds finished episodes' segment results to a `Curriculum`, sends the start
+    probabilities to the env workers, and logs to `curriculum.json`."""
+
+    def __init__(self, venv, cur: cur_mod.Curriculum, log_path: Path | None = None):
+        super().__init__(venv)
+        self.cur = cur
+        self.log_path = Path(log_path) if log_path else None
+        self.log: list[dict[str, Any]] = []
+        self.t0 = time.monotonic()
+        self.steps = 0
+        self._episodes = 0
+        self._send()
+        self._write("start")
+
+    def _send(self) -> None:
+        self.venv.env_method("set_segment_draw", self.cur.probs(), self.cur.to_goal)
+
+    def _write(self, event: str) -> None:
+        self.log.append({"t": round(time.monotonic() - self.t0, 2), "step": self.steps,
+                         "episodes": self._episodes, "event": event, **self.cur.state()})
+        if self.log_path is not None:
+            self.log_path.write_text(json.dumps(self.log, indent=1))
+
+    def reset(self):
+        return self.venv.reset()
+
+    def step_async(self, actions):
+        self.venv.step_async(actions)
+
+    def step_wait(self):
+        obs, rewards, dones, infos = self.venv.step_wait()
+        self.steps += self.num_envs
+        opened = False
+        for done, info in zip(dones, infos):
+            if done and info.get("segment") is not None:
+                self._episodes += 1
+                opened |= self.cur.record(int(info["segment"]), bool(info["segment_success"]))
+                if self._episodes % self.cur.window == 0 and not opened:
+                    self._write("progress")
+        if opened:
+            self._send()
+            self._write("open")
+        return obs, rewards, dones, infos
+
+    def close(self):
+        self._write("end")
         self.venv.close()
 
 
@@ -195,9 +254,18 @@ def _run_id(task_path: str | Path | None, algo: str) -> str:
 
 def train(task_path: str | Path, minutes: float, algo: str | None = None,
           n_envs: int | None = None, runs_dir: str | Path = "runs", run_id: str | None = None,
-          max_steps: int | None = None) -> dict[str, Any]:
+          max_steps: int | None = None, curriculum: str | None = None,
+          advance_at: float | None = None, replay: float | None = None) -> dict[str, Any]:
     wall0 = time.monotonic()
     task = load_task(task_path)
+    cur_cfg = task["curriculum"]
+    for key, val in (("mode", curriculum), ("advance_at", advance_at), ("replay", replay)):
+        if val is not None:
+            cur_cfg[key] = val
+    try:
+        cur_mod.validate(cur_cfg)
+    except cur_mod.CurriculumError as exc:
+        raise TaskError(str(exc)) from None
     dropped = {}
     if algo and algo != task["algo"]:
         # algo_kwargs belong to the task's own algorithm (PPO's n_steps means nothing to SAC).
@@ -210,15 +278,22 @@ def train(task_path: str | Path, minutes: float, algo: str | None = None,
     if minutes <= 0:
         raise TaskError("--minutes must be > 0")
     trainer_cls = get_algo(task["algo"])
+    if task.get("critic_obs") is not None and task["algo"] == "sac":
+        raise TaskError("`critic_obs` needs an actor-critic algorithm (ppo, a2c), not 'sac'")
+
+    cur = _curriculum(task) if cur_cfg["mode"] != "none" else None
 
     run_id = run_id or _run_id(task_path, task["algo"])
     run_dir = Path(runs_dir) / run_id
     if run_dir.exists():
         raise TaskError(f"run directory {run_dir} already exists")
     run_dir.mkdir(parents=True)
-    write_resolved(task, run_dir)
+    write_resolved({**task, "room_parts": Room.load(task["room"]).resolved_parts()}, run_dir)
 
-    venv = EpisodeLog(make_vec_env(task, int(task["n_envs"])), run_dir / EPISODES_NAME)
+    vec = make_vec_env(task, int(task["n_envs"]))
+    if cur is not None:
+        vec = CurriculumVec(vec, cur, run_dir / cur_mod.LOG_NAME)
+    venv = EpisodeLog(vec, run_dir / EPISODES_NAME)
     venv.seed(int(task["seed"]))
     try:
         trainer = trainer_cls(venv, task, seed=int(task["seed"]))
@@ -237,6 +312,8 @@ def train(task_path: str | Path, minutes: float, algo: str | None = None,
         "run_dir": str(run_dir.resolve()),
         "task": str(Path(task_path).resolve()),
         "algo": task["algo"],
+        "obs_kind": obs_kind(task),
+        "critic_obs": task.get("critic_obs") is not None,
         "checkpoint": checkpoint.name,
         "minutes_budget": minutes,
         "train_seconds": round(train_seconds, 1),
@@ -250,12 +327,35 @@ def train(task_path: str | Path, minutes: float, algo: str | None = None,
         "first_window": window_stats(first, hz),
         "last_window": window_stats(last, hz),
         **({"algo_kwargs_dropped": dropped} if dropped else {}),
+        **({"curriculum": cur.state()} if cur is not None else {}),
         "files": {"task": "task.resolved.yaml", "episodes": EPISODES_NAME,
-                  "curves": CURVES_NAME, "checkpoint": checkpoint.name},
+                  "curves": CURVES_NAME, "checkpoint": checkpoint.name,
+                  **({"curriculum": cur_mod.LOG_NAME} if cur is not None else {})},
     }
     plot_curves(eps, run_dir / CURVES_NAME, title=f"{run_id}")
     (run_dir / SUMMARY_NAME).write_text(json.dumps(summary, indent=2))
     return summary
+
+
+def _curriculum(task: dict[str, Any]) -> cur_mod.Curriculum:
+    """The controller for the task's room; checks the flag snapshots load first
+    and pins their directory in the task (workers and later evals use it)."""
+    env = make_env(task)
+    try:
+        segs = env.segments
+        if len(segs) < 2:
+            raise TaskError(f"--curriculum {task['curriculum']['mode']} needs checkpoint flags "
+                            f"in the room ({task['room']} has none)")
+        try:
+            cur_mod.load_snapshots(env)
+        except cur_mod.CurriculumError as exc:
+            raise TaskError(str(exc)) from None
+        task["curriculum"]["snapshots"] = str(cur_mod.snapshot_dir(env).resolve())
+    finally:
+        env.close()
+    c = task["curriculum"]
+    return cur_mod.Curriculum(c["mode"], len(segs), c["advance_at"], c["replay"], c["window"],
+                              names=[s["name"] for s in segs])
 
 
 def load_run(run_dir: str | Path) -> dict[str, Any]:

@@ -1,0 +1,30 @@
+# Ball ramp (R38 + R37): the ball rests on a 3 cm platform; push it down the
+# ramp ("/", 3 cm over 0.5 m = 3.4 deg, under the default walking body's max_slope 5 deg)
+# into the net at the bottom to open the door, then walk to the goal.
+# A letter-map ramp, not a tilted floor_tile: a tile hinges at its centre, so
+# its edges are steps above max_step that the planner does not see.
+name: ball_ramp
+cell: 0.1
+step_height: 0.01
+legend:
+  "/": {type: ramp, dir: -x, from: 0.0, to: 0.03}
+map: |
+  ########################
+  #333333/////.......#...#
+  #333333/////.......#...#
+  #333333/////.......#...#
+  #333333/////...........#
+  #333333/////...........#
+  #333333/////...........#
+  #333333/////...........#
+  #333333/////...........#
+  ########################
+spawn: {pos: [-0.95, -0.1], yaw: 0.0, random: [0.05, 0.1, 0.5]}
+parts:
+  - {name: ball, type: ball, pos: [-0.6, 0.18], random: [0.03, 0.05]}
+  - {name: net, type: goal_net, pos: [0.5, 0.18], width: 0.34, depth: 0.2, facing: 180}
+  - {name: door, type: door, pos: [0.75, -0.14], width: 0.48, axis: y, in: [net]}   # clear of the bottom wall
+  - {name: goal, type: goal, pos: [0.95, -0.15], radius: 0.1}
+demo:                             # scripted solver (R20)
+  - push ball to net
+  - goto goal

@@ -8,7 +8,8 @@ around the envs, so a Trainer only has to step them.
 The env given to `__init__` is a Stable-Baselines3 `VecEnv` (n parallel
 PuzzleEnvs; may be None when loading only to predict):
 
-    obs = env.reset()                                  # (n, obs_dim)
+    obs = env.reset()                                  # (n, obs_dim), or a dict of
+                                                       # (n, ...) arrays (R39 camera / critic_obs)
     obs, rewards, dones, infos = env.step(actions)     # actions (n, 3) in [-1, 1]
     env.num_envs, env.observation_space, env.action_space
 

@@ -1,0 +1,6 @@
+# Heavier, larger ball (R38): 8 cm, 0.5 kg (the walking body pushes up to 1 kg
+# at this size). Set: pos, color.
+type: ball
+radius: 0.08
+mass: 0.5
+elasticity: 0.2

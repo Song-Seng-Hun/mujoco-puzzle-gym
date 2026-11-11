@@ -1,0 +1,4 @@
+# Receiver (R8): writes what the transmitters on `band` send. Set: band.
+type: receiver
+band: radio
+delay: 0.0

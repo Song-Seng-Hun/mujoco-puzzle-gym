@@ -9,13 +9,15 @@ policy files (enforced by tests/test_boundary.py).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Sequence
+from dataclasses import dataclass, field
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import mujoco
 import numpy as np
 
 Pose = tuple[float, float, float]  # x [m], y [m], yaw [rad] on the floor
+#: Called after every physics step inside `BodyAdapter.step` (R5 `substep` hook).
+SubstepFn = Callable[[mujoco.MjModel, mujoco.MjData], None]
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,20 @@ class BodyState:
     ang_vel: np.ndarray   # (3,) trunk angular velocity in the body frame [rad/s]
     gravity: np.ndarray   # (3,) unit gravity in the body frame (upright: [0, 0, -1])
     fallen: bool
+
+
+@dataclass(frozen=True)
+class Capabilities:
+    """What a body can do (R2b): capability names (e.g. `walk`, `beak_grab`) and
+    numeric limits (e.g. `max_lift_mass` [kg]). The body adapter sets both; parts
+    state what they need with `requires_body: [...]` and `mpg check` compares."""
+
+    names: frozenset[str] = frozenset()
+    values: Mapping[str, float] = field(default_factory=dict)
+
+    def missing(self, required: Iterable[str]) -> list[str]:
+        """Required names this body lacks, in the order given."""
+        return [r for r in required if r not in self.names]
 
 
 class BodyAdapter(ABC):
@@ -48,6 +64,11 @@ class BodyAdapter(ABC):
     #: When False, `clip_cmd` passes commands through unclipped. Only for
     #: deliberately broken tasks (`env.command_scale` > 1, `mpg diagnose` tests).
     clip_commands: bool = True
+    #: What this body can do (R2b); parts' `requires_body` is checked against it.
+    capabilities: Capabilities = Capabilities()
+    #: Trunk height [m] above the floor below which the body counts as fallen (R10 uses
+    #: it for holes: over a hole the env passes `floor_z = rim - fall_height`).
+    fall_height: float = 0.07
 
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:
@@ -58,12 +79,57 @@ class BodyAdapter(ABC):
         """Put the body in its standing pose at `pose` and clear controller state."""
 
     @abstractmethod
-    def step(self, data: mujoco.MjData, cmd: Sequence[float]) -> None:
-        """Advance one `control_dt` tracking cmd = (vx, vy, wz), clipped to `cmd_limits`."""
+    def step(self, data: mujoco.MjData, cmd: Sequence[float],
+             on_substep: SubstepFn | None = None) -> None:
+        """Advance one `control_dt` tracking cmd = (vx, vy, wz), clipped to `cmd_limits`.
+
+        `on_substep(model, data)`, when given, runs after every physics step
+        (`mj_step`) inside it; the env passes the parts' `substep` hooks there.
+        """
 
     @abstractmethod
-    def state(self, data: mujoco.MjData) -> BodyState:
-        """Read the body state from `data`."""
+    def state(self, data: mujoco.MjData, floor_z: float = 0.0) -> BodyState:
+        """Read the body state from `data`. `fallen` measures the trunk height from
+        `floor_z`, the top of the floor under the body (R10 tile floors)."""
+
+    @abstractmethod
+    def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:
+        """Put the body standing at `pose` (floor height `z`), with zero velocity and
+        the walking controller's history cleared (warps, R14)."""
+
+    @abstractmethod
+    def root_body_id(self, model: mujoco.MjModel) -> int:
+        """Id of the body's root (free-floating) MuJoCo body; sensors use it to tell
+        the walking body from objects (`body_rootid`)."""
+
+    @abstractmethod
+    def history_state(self) -> dict[str, Any]:
+        """Controller memory outside `MjData` (last action, command queue, actuator
+        state) for checkpoint snapshots (R6). Must be safe to keep and reload."""
+
+    @abstractmethod
+    def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
+        """Restore `history_state` output; call after the MjData state is restored."""
+
+    # ---- sensors (R39, R27) ------------------------------------------------
+    def view_camera(self, model: mujoco.MjModel) -> int | None:
+        """Id of the body's eye camera in the compiled scene (MuJoCo convention:
+        looks along its -z, +y up), or None if the body has no camera."""
+        return None
+
+    def view_frame(self, model: mujoco.MjModel, data: mujoco.MjData) -> tuple[np.ndarray, np.ndarray]:
+        """World position (3,) and rotation (3, 3) of the eye camera (columns: camera
+        x, y, z axes; the view direction is -z)."""
+        cam = self.view_camera(model)
+        if cam is None:
+            raise NotImplementedError(f"{type(self).__name__} has no eye camera")
+        return data.cam_xpos[cam].copy(), data.cam_xmat[cam].reshape(3, 3).copy()
+
+    def add_rangefinders(self, spec: mujoco.MjSpec, yaws: Sequence[float], prefix: str) -> list[str]:
+        """Add one MuJoCo `rangefinder` sensor per yaw offset [rad, + = left] to `spec`
+        (after `spawn`): rays from the head, level when the body stands, fanned
+        around its heading. Returns the sensor names (`prefix` + index)."""
+        raise NotImplementedError(f"{type(self).__name__} has no rangefinder mount")
 
     def command_from_action(self, action: Sequence[float]) -> np.ndarray:
         """Map a normalised action in [-1, 1]^3 to a command (vx, vy, wz).

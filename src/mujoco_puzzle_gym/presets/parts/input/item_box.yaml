@@ -1,0 +1,8 @@
+# Open-top box that signals when accepted objects are inside (R5 receptacle).
+# Set: pos, accept (names or kinds), require (all | count | mass | order).
+type: receptacle
+shape: box
+size: [0.3, 0.3]
+wall_height: 0.06
+require: all
+wrong: ignore

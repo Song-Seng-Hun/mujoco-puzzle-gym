@@ -1,0 +1,20 @@
+# Staged-training demo task (R21, R22) for examples/rooms/four_flags.yaml.
+# Run `mpg check rooms/four_flags.yaml` first: its solver saves the flag
+# snapshots segment starts use. Result: docs/training-log.md "four_flags".
+room: rooms/four_flags.yaml
+env:
+  hz: 10
+  episode_seconds: 60     # the scripted solver needs 21.8 s on average
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, target_pos, checkpoints]
+reward:
+  progress: 10.0          # through the flags in order (they are in the solution order)
+  stage: 2.0
+  success: 10.0           # forward: also paid at a segment's end flag
+  fall: -5.0
+termination: {success: true, fall: true}
+curriculum: {mode: forward, advance_at: 0.8, replay: 0.2, window: 50}
+algo: ppo
+algo_kwargs: {learning_rate: 0.0003, n_steps: 256, batch_size: 896, gamma: 0.99}
+net: [128, 128]
+n_envs: 7
+seed: 0

@@ -1,0 +1,6 @@
+# Pressure plate, 1 while objects weighing at least `min_mass` press it (R5).
+# The walking body does not count (`trigger: object`). Set: pos, min_mass.
+type: pressure
+trigger: object
+size: [0.25, 0.25]
+min_mass: 0.1

@@ -1,0 +1,6 @@
+# Floor tile that tilts to `on_tilt` while its inputs are on (R10 "tilting
+# bridge"). 5 deg is the walking body's max slope. Set: pos, size, tilt_axis, in.
+type: floor_tile
+size: [0.4, 0.3]
+tilt: 0.0
+on_tilt: 5.0
