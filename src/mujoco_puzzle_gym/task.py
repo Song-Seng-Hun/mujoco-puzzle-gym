@@ -10,6 +10,9 @@ task is saved as `task.resolved.yaml` next to a run.
                                   # parameters: {item: coins, k: 5} (R39, obs.py)
     critic_obs: [part_pos, part_state]   # optional: value function only (R39)
     randomize: {body: 1.0}        # optional: scales obs-item `noise` (R35 body layer)
+    curriculum: {mode: none, advance_at: 0.8, replay: 0.2, window: 50, snapshots: null}
+                                  # R21 segments over checkpoint flags (curriculum.py);
+                                  # `snapshots` is relative to the task file
     reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
     termination: {success: true, fall: true}
     algo: ppo
@@ -28,6 +31,7 @@ from typing import Any
 
 import yaml
 
+from . import curriculum
 from .registry import REWARDS, load_builtins
 
 RESOLVED_NAME = "task.resolved.yaml"
@@ -46,6 +50,7 @@ DEFAULTS: dict[str, Any] = {
     "net": [128, 128],
     "n_envs": 12,
     "seed": 0,
+    "curriculum": dict(curriculum.DEFAULTS),
 }
 
 
@@ -85,6 +90,9 @@ def load_task(task: str | Path | dict | None = None, room: str | Path | None = N
         raise TaskError("task needs `room: path/to/room.yaml`")
     else:
         out["room"] = str((base_dir / out["room"]).resolve())
+    cur = out.get("curriculum")
+    if isinstance(cur, dict) and cur.get("snapshots"):
+        cur["snapshots"] = str((base_dir / cur["snapshots"]).resolve())
     validate(out)
     return out
 
@@ -132,6 +140,10 @@ def validate(task: dict[str, Any]) -> None:
         body = rnd.get("body", 1.0)
         if isinstance(body, bool) or not isinstance(body, (int, float)) or body < 0:
             raise TaskError(f"randomize.body must be a number >= 0, got {body!r}")
+    try:
+        curriculum.validate(task["curriculum"])
+    except curriculum.CurriculumError as exc:
+        raise TaskError(str(exc)) from None
     if not isinstance(task["reward"], dict) or not task["reward"]:
         raise TaskError("`reward` must map term names to weights")
     unknown = [r for r in task["reward"] if r not in REWARDS]

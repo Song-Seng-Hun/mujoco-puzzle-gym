@@ -35,6 +35,10 @@
   them out after the body step (teleport, `reset` to the last checkpoint or the
   episode start, `next_stage`). `info["warped"]` names the pads used this env
   step and `info["stage_changed"]` is True after a `next_stage` warp.
+- Segments (R21, curriculum.py): `reset(options={"segment": i})` starts segment
+  i (checkpoint flag i's snapshot; `"to_goal": True` runs on to the goal), or a
+  worker draws i from `set_segment_draw`. A segment episode ends with success at
+  its end flag; `info["segment"]` and `info["segment_success"]` report it.
 """
 
 from __future__ import annotations
@@ -46,7 +50,7 @@ import gymnasium as gym
 import mujoco
 import numpy as np
 
-from . import snapshot
+from . import curriculum, snapshot
 from .bodies import DEFAULT_BODY, BodyState, make_body
 from .layout import Grid
 from .logic import free_mask, solution_order
@@ -104,6 +108,10 @@ class PuzzleEnv(gym.Env):
             self._on_substep = on_substep
         self._model0 = snapshot.model_values(self.model)
         self.checkpoint_snap: snapshot.Snapshot | None = None
+        self.segments = curriculum.segments(self.parts)          # R21
+        self.segment: dict[str, Any] | None = None
+        self.segment_draw: curriculum.SegmentDraw | None = None
+        self._start_snaps: dict[str, snapshot.Snapshot] | None = None
 
         hz = float(self.task["env"]["hz"])
         ratio = 1.0 / (hz * self.body.control_dt)
@@ -254,6 +262,7 @@ class PuzzleEnv(gym.Env):
         self.plan = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2])
         self.targets = [self.parts[n] for n in self.plan["targets"]] if self.plan["ok"] else \
             [p for p in self.parts.values() if p.role in ("switch", "goal")]
+        self.targets = curriculum.with_flags(self, self.targets, layout["spawn"][:2])   # R21
         self._fields: dict[tuple, np.ndarray] = {}
         self.stage = self._stage()
         self._mark_target()
@@ -356,10 +365,21 @@ class PuzzleEnv(gym.Env):
         return bool(np.isfinite(self.data.qpos).all() and np.isfinite(self.data.qvel).all()
                     and self.data.warning[mujoco.mjtWarning.mjWARN_BADQACC].number == 0)
 
+    def set_segment_draw(self, probs: list[float] | None, to_goal: bool = False) -> None:
+        """Start later episodes at a segment drawn with `probs` (R21); None: M1 starts."""
+        self.segment_draw = None if probs is None else curriculum.SegmentDraw(probs, to_goal)
+
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
-        layout = (options or {}).get("layout")
-        self._reset_sim(self.np_random, layout)
+        opts = options or {}
+        seg, to_goal = opts.get("segment"), bool(opts.get("to_goal", False))
+        if seg is None and self.segment_draw is not None:
+            seg, to_goal = self.segment_draw.draw(self.np_random), self.segment_draw.to_goal
+        self.segment = None
+        if seg is None:
+            self._reset_sim(self.np_random, opts.get("layout"))
+        else:
+            curriculum.begin_segment(self, int(seg), to_goal, opts.get("layout"))
         return self._obs(), self._info()
 
     def step(self, action):
@@ -393,11 +413,14 @@ class PuzzleEnv(gym.Env):
             # R37 / R16 `on_fall: reset`: a fall into a hole goes back, it does not end the episode
             self.restore_snapshot(self.checkpoint_snap or self.start_snap)
             respawned, fallen = True, False
+        done = success
+        if self.segment is not None:                 # R21: the segment end counts as success
+            done = curriculum.segment_done(self, success)
         self.events = {"progress": float(progress), "new_on": len(on_after - on_before),
-                       "success": success, "fallen": fallen, "respawned": respawned}
+                       "success": done, "fallen": fallen, "respawned": respawned}
         terms = {name: weight * float(fn(self)) for name, fn, weight in self.reward_terms}
         reward = float(sum(terms.values()))
-        terminated = ((success and self.term_success) or (fallen and self.term_fall) or not sane
+        terminated = ((done and self.term_success) or (fallen and self.term_fall) or not sane
                       or bool(failed))
         truncated = (not terminated) and self.steps >= self.max_steps
         info = self._info()
@@ -405,6 +428,8 @@ class PuzzleEnv(gym.Env):
                     switches_on=len(on_after), contradiction=self._contradiction(info, success),
                     failed=failed, respawned=respawned, warped=self._warp_events["warped"],
                     stage_changed=self._warp_events["stage_changed"], zone=self.zone)
+        if self.segment is not None:
+            info.update(segment=self.segment["index"], segment_success=done)
         obs = self._obs()
         if not sane:
             clean = lambda a: np.nan_to_num(a, nan=0.0, posinf=0.0, neginf=0.0)  # noqa: E731
