@@ -12,7 +12,7 @@ View (read-only copy): (아직 없음)
   - Hugging Face `pollen-robotics/microduck-policies` (Apache-2.0): `velstand.onnx`, manifest.
 - 의존성(파이썬 3.12 고정, `uv`): `mujoco`, `onnxruntime`, `better-actuator-models==1.0.3`, `numpy`, `gymnasium`, `stable-baselines3`, `torch`(CPU), `pyyaml`, `imageio[ffmpeg]`, `matplotlib`, 테스트용 `pytest`. 버전은 1단계에서 `uv.lock`으로 고정한다. MuJoCo 버전은 상위 MJCF가 그대로 로드되는 가장 최신으로 고른다.
 - push와 PR은 매번 사용자 승인. 병합은 사용자.
-- 경로 표기: 아래 표의 `mujoco_puzzle_gym/...`는 실제로 `src/mujoco_puzzle_gym/...`에 있다(uv 기본 src 구조, 2026-11-11 1단계에서 정함). MuJoCo는 4.0.0이 설치됐다. 상위 MJCF가 로드되는지는 2단계에서 확인한다.
+- 경로 표기: 아래 표의 `mujoco_puzzle_gym/...`는 실제로 `src/mujoco_puzzle_gym/...`에 있다(uv 기본 src 구조, 2026-11-11 1단계에서 정함). MuJoCo는 4.0.0이 설치됐다. 상위 MJCF는 4.0.0에서 그대로 로드된다(2026-11-11 확인).
 
 ## Files that change
 | File | Change | R |
@@ -47,6 +47,9 @@ View (read-only copy): (아직 없음)
 3. 자산 받기 (R1): GitHub는 `codeload.github.com/.../tar.gz/<commit>`에서 로봇 폴더만 풀고, HF는 `huggingface.co/.../resolve/<rev>/<file>`로 받는다. 받은 파일은 `~/.cache/mujoco-puzzle-gym/<commit>/`에 두고 해시가 다르면 지우지 않고 `.bad`로 이름을 바꾼 뒤 실패한다. 두 번째 실행은 해시만 확인. 라이선스·출처 출력.
 4. 몸 경계 (R2): `BodyAdapter`(메서드 `spawn(spec, pose)`, `reset(data, pose)`, `step(data, cmd)`, `state(data) -> BodyState(pos, yaw, lin_vel, ang_vel, gravity, fallen)`, 상수 `cmd_limits`, `control_dt`)와 경계 테스트.
 5. 마이크로덕 (R3): `infer_policy.py`(고정 커밋)를 읽고 관측 61차원, 기본 관절 자세, 행동 스케일, BAM 설정을 옮겨 다시 쓴다. 넘어짐 판정은 투영 중력 z와 몸통 높이로. `test_walk.py` 통과까지 subagent가 반복해도 된다.
+   - 2026-11-11 구현 메모: `infer_policy.py` 기본값과 학습 설정(`Mjlab-VelStand-Rough-Backlash-MicroDuck`)이 다른 곳은 학습 쪽을 따랐다: 로봇 `robot_allcollisions_backlash.xml`, 엔코더가 백래시를 거쳐 읽힘(관측과 펌웨어 PD), 액추에이터 지연 4 물리스텝(학습 3–6). 이것 없이는 wz=−1.0, vx=−0.4 등에서 제자리에 선다. BAM은 고정 의존성 1.0.3(학습은 BAM git `62bd8ce`, XL330 m6 계수가 다름).
+   - 경계 보조: `bodies/__init__.py`의 `make_body()`, `bodies/base.py`의 `flat_floor_spec()`, 어댑터 속성 `timestep`과 `clip_cmd()`. 합친 모델 안의 몸 이름에는 `body/` 접두사가 붙는다(`MjSpec.attach`).
+   - **R3 거리 기준 불일치 (사용자 결정 대기)**: velstand는 vx를 절반 정도만 따른다. 측정: 명령 0.3 → 5초 0.73 m(약 0.16 m/s), 0.4 → 약 0.23 m/s. 상위 저장소 자체 평가도 0.4 → 0.17 m/s(`docs/velstand_policy.md`). spec의 1.05–1.95 m는 이 정책으로 닿을 수 없어 `test_walk.py`는 임시로 0.5–1.1 m를 확인한다.
 6. 첫 속도 측정 (R13 일부): 걷기만 돌려 초당 물리 스텝을 잰다. 위층 1스텝 = 걷기 5스텝이므로 위층 스텝/초를 추정해 `docs/bench.md`에 적는다. 이 숫자로 2시간 안에 몇 스텝을 학습할 수 있는지 먼저 계산해 데스크에 보고한다.
 
 **PR B — 부품, 방, 점검, 환경**
@@ -73,6 +76,7 @@ View (read-only copy): (아직 없음)
 ## Risks
 - **학습 속도 (가장 큼)**: 위층 1스텝에 물리 20스텝 + ONNX 5회. 2시간에 PPO가 필요한 스텝에 못 미칠 수 있다. 6단계에서 먼저 재고, 12단계 관문에서 멈춘다. 줄이는 방법 후보: 주기 낮추기(spec 허용 5–25 Hz), 병렬 늘리기, 방 무작위 범위 좁히기.
 - **걷기 재현**: 관측 순서, 기본 자세, BAM 설정이 하나라도 다르면 오리가 넘어진다. `infer_policy.py`를 줄 단위로 대조하고 R3 테스트로 막는다.
+- **걷기 명령의 실제 반응 (2026-11-11 측정)**: 앞으로 최대 약 0.23 m/s(명령 0.4), vx 0.1 이하는 제자리, 뒤로는 −0.2에서 제자리·−0.4에서 −0.2 m/s, 제자리 회전은 |wz| 0.5에서 0, 1.0에서 약 0.7–0.9 rad/s. PR B의 스크립트 해답(10단계 c)과 `PuzzleEnv` 행동 스케일은 이 데드존을 감안해야 한다.
 - **방이 걷기를 망침**: 바닥 마찰·높이, 발판 두께가 걷기 정책 학습 조건과 다르면 넘어진다. 발판은 충돌 없는 판으로 두고 바닥은 상위 scene과 같은 값으로.
 - **문 통과**: 문이 얇거나 빠르면 몸이 뚫고 지나갈 수 있다. R4 테스트로 확인.
 - **보상 해킹**: 진척 보상만 크면 발판 근처를 맴돈다. R9 진단이 이 경우를 잡도록 만들어 둔다.
@@ -84,7 +88,7 @@ View (read-only copy): (아직 없음)
 |---|---|
 | R1 | `pytest tests/test_assets.py` 통과; `mpg fetch-assets --json` → `"verified": true`, 두 번째 실행 `"downloaded": 0` |
 | R2 | `pytest tests/test_boundary.py` 통과 |
-| R3 | `pytest tests/test_walk.py` 통과 (vx=0.3 5초 → 1.05–1.95 m, 넘어짐 없음; 명령 0 → 0.1 m 미만) |
+| R3 | `pytest tests/test_walk.py` 통과 (vx=0.3 5초 → spec은 1.05–1.95 m, 지금 테스트는 0.5–1.1 m이며 사용자 결정 대기; 넘어짐 없음; 명령 0 → 0.1 m 미만) |
 | R4 | `pytest tests/test_parts.py` 통과 |
 | R5 | `mpg build examples/switch_door.yaml --json` → `ok: true` + MJCF·PNG 경로; 잘못된 링크 → `ok: false` + 이유 |
 | R6 | `mpg check examples/switch_door.yaml --json` 세 항목 통과; 실패 예제 2개가 각각 (a), (c)에서 실패 |
