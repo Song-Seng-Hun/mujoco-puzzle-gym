@@ -9,6 +9,9 @@ press it down.
 Once the tile has turned more than `HOLE_AT` the cell counts as a hole for the
 fall rule (floor.py): a body whose trunk drops below the rim (the tile's
 closed top, z = 0) has fallen. What falls in lands on the catch plane.
+
+Planning: once the inputs that open it are on, the planner grid has no floor
+on the tile (`hole_mask`), so solution orders and solver paths go round it.
 """
 
 from __future__ import annotations
@@ -91,3 +94,10 @@ class Trapdoor(FloorPart, Opening):
 
     def height_at(self, xy):
         return (None, 0.0) if self.is_open() else (0.0, 0.0)
+
+    # ---- planning (R20: the planner keeps the body off trapdoors that open) -------------
+    def hole_mask(self, grid, get):
+        return grid.rect(self.xy, tuple(self.half)) if self.plan_inputs_on(get) else None
+
+    def hole_now(self, grid):
+        return grid.rect(self.xy, tuple(self.half)) if self.q > 0.01 or self.goal > 0.01 else None

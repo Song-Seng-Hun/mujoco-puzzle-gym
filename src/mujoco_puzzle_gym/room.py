@@ -38,6 +38,17 @@ the same model, so observation and snapshot sizes stay fixed; a warp pad with
 `to: next_stage` moves the body to the next zone's spawn. Part names must be
 unique over all stages; channels are shared. The goal requirement holds for
 the stages together (an earlier stage may have none).
+
+Demo (R20): `demo:` lists the scripted solver's sub-goals for `mpg check`, in
+order (strings): `goto <part>`, `press <part>`, `wait <seconds>`, `push <ball>
+to <net or pin>`. After the last one the solver goes on with the grid answer
+(the solution order), so a demo may stop before the goal. Without `demo:` the
+solver uses the grid answer only. `grab` and `place` come with cubes (PR E3).
+
+Errors: `RoomError.stage` names the `mpg check` static stage a load error
+belongs to (`values`: a value out of its range, R3; `channels`: a channel no
+part writes, two writers, a stateless loop or a link to a missing part, R1;
+`demo`: a bad `demo:` entry); None for a file that cannot be read at all.
 """
 
 from __future__ import annotations
@@ -68,7 +79,72 @@ def _shift(seg: Segment, dx: float, dy: float = 0.0) -> Segment:
 
 
 class RoomError(ValueError):
-    """Invalid room file; the message says what to fix."""
+    """Invalid room file; the message says what to fix. `stage`: see the module docstring."""
+
+    def __init__(self, msg: str, stage: str | None = None):
+        super().__init__(msg)
+        self.stage = stage
+
+
+DEMO_COMMANDS = ("goto", "press", "wait", "push")
+DEMO_LATER = ("grab", "place")        # E3 (cubes)
+MAX_WAIT = 60.0                        # [s] longest `wait`
+
+
+def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
+    """`demo:` entries as tuples: ("goto"|"press", part), ("wait", seconds),
+    ("push", ball, target). Raises RoomError (stage `demo`) naming the bad entry."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise RoomError("`demo:` must be a list of sub-goals, e.g. [press switch_a, goto goal]", "demo")
+    out: list[tuple] = []
+
+    def part(i: int, name: str):
+        if name not in parts:
+            raise RoomError(f"demo[{i}]: no part named {name!r} (parts: {sorted(parts)})", "demo")
+        return name
+
+    for i, entry in enumerate(raw):
+        words = str(entry).split() if isinstance(entry, str) else []
+        if not words:
+            raise RoomError(f"demo[{i}]: must be a string like 'goto goal', got {entry!r}", "demo")
+        cmd, args = words[0], words[1:]
+        if cmd in DEMO_LATER:
+            raise RoomError(f"demo[{i}]: `{cmd}` comes with cubes (PR E3); "
+                            f"use one of {DEMO_COMMANDS}", "demo")
+        if cmd not in DEMO_COMMANDS:
+            raise RoomError(f"demo[{i}]: unknown sub-goal {cmd!r}; use one of {DEMO_COMMANDS}", "demo")
+        if cmd in ("goto", "press"):
+            if len(args) != 1:
+                raise RoomError(f"demo[{i}]: `{cmd} <part>` takes one part name, got {entry!r}", "demo")
+            p = part(i, args[0])
+            if cmd == "press" and parts[p].role not in ("switch", "checkpoint", "goal"):
+                raise RoomError(f"demo[{i}]: cannot press {p!r} (a {parts[p].role}); press "
+                                f"switches, buttons, sensors and flags", "demo")
+            out.append((cmd, p))
+        elif cmd == "wait":
+            try:
+                sec = float(args[0]) if len(args) == 1 else -1.0
+            except ValueError:
+                sec = -1.0
+            if not 0.0 < sec <= MAX_WAIT:
+                raise RoomError(f"demo[{i}]: `wait <seconds>` needs one number in (0, {MAX_WAIT:g}], "
+                                f"got {entry!r}", "demo")
+            out.append(("wait", sec))
+        else:
+            if len(args) != 3 or args[1] != "to":
+                raise RoomError(f"demo[{i}]: write `push <ball> to <net or pin>`, got {entry!r}", "demo")
+            ball, target = part(i, args[0]), part(i, args[2])
+            if getattr(parts[ball], "object_kind", None) != "ball":
+                raise RoomError(f"demo[{i}]: {ball!r} is not a ball", "demo")
+            if not hasattr(parts[target], "push_target"):
+                raise RoomError(f"demo[{i}]: cannot push a ball to {target!r} "
+                                f"(push to a goal net or a pin)", "demo")
+            if not parts[target].push_accepts(parts[ball]):
+                raise RoomError(f"demo[{i}]: {target!r} does not accept {ball!r}", "demo")
+            out.append(("push", ball, target))
+    return out
 
 
 class Parts(dict):
@@ -98,6 +174,7 @@ class Room:
     part_zones: list[int] = field(default_factory=list)
     map: RoomMap | None = None          # letter map (R37)
     on_fall: str = "fail"               # fall into a hole: fail | reset (R37, R16)
+    demo: list[tuple] = field(default_factory=list)   # scripted solver sub-goals (R20)
 
     # ---- loading ----------------------------------------------------------
     @classmethod
@@ -180,7 +257,8 @@ class Room:
                 raise RoomError("a `stages:` room cannot list stages itself")
             return room
         room._add_stages(raw.get("stages") or [])
-        room.make_parts()          # validates parts and links
+        parts = room.make_parts()          # validates parts and links
+        room.demo = parse_demo(raw.get("demo"), parts)
         return room
 
     def _add_stages(self, paths: list[Any]) -> None:
@@ -230,7 +308,7 @@ class Room:
             try:
                 parts[name] = cls(name, {k: v for k, v in cfg.items() if k not in ("name", "type")})
             except (ValueError, TypeError) as exc:
-                raise RoomError(str(exc)) from None
+                raise RoomError(str(exc), "values") from None
             parts[name].zone = self.part_zones[i] if i < len(self.part_zones) else 0
         for kind in {type(p): None for p in list(parts.values())}:
             try:
@@ -263,7 +341,7 @@ class Room:
             for end, ref in (("from", src), ("to", dst)):
                 if ref not in parts:
                     raise RoomError(f"links[{i}].{end}: no part named {ref!r} "
-                                    f"(parts: {sorted(parts)})")
+                                    f"(parts: {sorted(parts)})", "channels")
             if parts[src].role != "switch":
                 raise RoomError(f"links[{i}]: from {src!r} is a {parts[src].role}, must be a switch")
             if parts[dst].role != "gate":
@@ -275,7 +353,7 @@ class Room:
         try:
             parts.bus = wire(parts)
         except SignalError as exc:
-            raise RoomError(str(exc)) from None
+            raise RoomError(str(exc), "channels") from None
         return parts
 
     # ---- geometry ---------------------------------------------------------

@@ -12,6 +12,9 @@ them are on (time functions taken as "eventually": a delay passes its input,
 a counter of a reachable button reaches its target). It assumes every `enable`
 is on and that Python logic plugins can turn on when any input is on.
 
+Trapdoors and pits (R20): a hole a part opens with the inputs in `on`
+(`Part.hole_mask`) is blocked like a wall, so the order goes round it.
+
 Warp pads (R14): when no reachable switch opens a gate, a reachable warp pad
 whose destination lies outside the reached area is taken: it joins the order
 (the body must step on it) and the search goes on from its destination.
@@ -59,12 +62,32 @@ def upstream_inputs(part: Any) -> list[Any]:
 
 def free_mask(grid: Grid, walls: list[Segment], parts: dict[str, Any], on: set[str],
               inflate: float = 0.0) -> np.ndarray:
-    """Free cells with every gate closed unless the inputs in `on` open it."""
+    """Free cells with every gate closed unless the inputs in `on` open it, and no
+    cell over a hole (trapdoor, pit) that the inputs in `on` open."""
     vals = plan_channels(parts, on)
+    get = lambda ch: vals.get(ch, 0.0)  # noqa: E731
     segs = list(walls)
     for p in parts.values():
         segs += p.blockers(p.role == "gate" and gate_open(p, vals))
-    return ~grid.blocked(segs, inflate)
+    free = ~grid.blocked(segs, inflate)
+    for p in parts.values():
+        if (hole := p.hole_mask(grid, get)) is not None:
+            free &= ~grid.dilate(hole, inflate)
+    return free
+
+
+def live_free(grid: Grid, walls: list[Segment], parts: dict[str, Any], passable: float,
+              inflate: float = 0.0) -> np.ndarray:
+    """Free cells from the parts' state now: gates whose `state()` reached `passable`
+    are open, holes (`hole_now`) are blocked. Used by the `demo:` executor."""
+    segs = list(walls)
+    for p in parts.values():
+        segs += p.blockers(p.role == "gate" and p.state() >= passable)
+    free = ~grid.blocked(segs, inflate)
+    for p in parts.values():
+        if (hole := p.hole_now(grid)) is not None:
+            free &= ~grid.dilate(hole, inflate)
+    return free
 
 
 def _grow(mask: np.ndarray) -> np.ndarray:

@@ -25,3 +25,6 @@ parts:
   - {name: net, type: goal_net, pos: [0.5, 0.18], width: 0.34, depth: 0.2, facing: 180}
   - {name: door, type: door, pos: [0.75, -0.15], width: 0.5, axis: y, in: [net]}
   - {name: goal, type: goal, pos: [0.95, -0.15], radius: 0.1}
+demo:                             # scripted solver (R20)
+  - push ball to net
+  - goto goal

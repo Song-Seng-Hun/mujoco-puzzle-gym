@@ -91,7 +91,8 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
 
     need = args.need if args.need is not None else math.ceil(0.9 * args.seeds)
     try:
-        return check(args.room, task=args.task, seeds=args.seeds, need=need)
+        return check(args.room, task=args.task, seeds=args.seeds, need=need,
+                     static_only=args.static)
     except (RoomError, TaskError, FileNotFoundError) as exc:
         raise CommandError(str(exc)) from exc
 
@@ -102,6 +103,9 @@ def _configure_check(p: argparse.ArgumentParser) -> None:
     p.add_argument("--seeds", type=int, default=20, help="random layouts for the scripted solver")
     p.add_argument("--need", type=int, default=None,
                    help="successes required (default: 90%% of --seeds, 18 of 20)")
+    p.add_argument("--static", action="store_true",
+                   help="static stages only (no simulation): values, channels, demo, body, "
+                        "parts, overlap, order")
 
 
 def _train(args: argparse.Namespace) -> dict[str, Any]:

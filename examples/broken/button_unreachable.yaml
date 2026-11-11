@@ -1,0 +1,16 @@
+# Broken on purpose (R20): the button that opens the door sits in a walled-in
+# corner with no way in, so the body can never press it. `mpg check` fails the
+# static stage `order`: "door_b: needs all of ['button'] ..., unreachable: ['button']".
+name: button_unreachable
+size: [2.4, 1.8]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.3, -0.9], to: [0.3, -0.28]}
+  - {from: [0.3, 0.28], to: [0.3, 0.9]}
+  - {from: [-1.2, 0.3], to: [-0.6, 0.3]}       # closed corner around the button
+  - {from: [-0.6, 0.3], to: [-0.6, 0.9]}
+spawn: {pos: [-0.5, -0.3], yaw: 0.0, random: [0.1, 0.2, 3.14]}
+parts:
+  - {name: button, type: button, kind: oneshot, pos: [-0.9, 0.6], size: [0.25, 0.25]}
+  - {name: door_b, type: door, pos: [0.3, 0.0], width: 0.5, axis: y, in: [button]}
+  - {name: goal, type: goal, pos: [0.85, 0.0], radius: 0.15}
