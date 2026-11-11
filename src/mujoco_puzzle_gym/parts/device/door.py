@@ -16,6 +16,7 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 
+from ... import markers
 from ...layout import Segment
 from ...schema import Field
 from ..base import Part
@@ -56,6 +57,9 @@ class Opening(Part):
 
 class Door(Opening):
     role = "gate"
+    marked = True
+    marker_anchor = "/panel"
+    marker_faces = markers.FACES_PANEL
     state_keys = ("q", "goal", "latched")
     fields = (
         Field("width", "float", 0.5, unit="m", min=0.1, max=2.0, doc="opening the panel spans"),
@@ -66,6 +70,9 @@ class Door(Opening):
         Field("speed", "float", None, unit="m/s", min=0.02, max=5.0,
               doc="opening speed (default: as fast as the motor moves it)"),
     )
+
+    def marker_face_size(self, face):
+        return float(min(self.cfg["width"], self.cfg["height"]))
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)

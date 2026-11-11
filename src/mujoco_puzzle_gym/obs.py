@@ -126,10 +126,11 @@ def balls(env, k: int = BALLS_K):
 
 # ---- obs items with parameters (R39) ---------------------------------------------
 from . import sensors  # noqa: E402,F401  registers `rangefinder` and `camera`
+from . import gaze  # noqa: E402,F401  registers `markers_seen` (R27)
 
 #: Items a real robot has (proprioception and sensors). A task whose `obs:` uses
 #: only these is "sensors only" (`obs_kind`, R39); plugin terms count as privileged.
-SENSOR_TERMS = frozenset({"gravity", "ang_vel", "lin_vel", "rangefinder", "camera"})
+SENSOR_TERMS = frozenset({"gravity", "ang_vel", "lin_vel", "rangefinder", "camera", "markers_seen"})
 
 
 class ObsItemError(ValueError):

@@ -28,6 +28,7 @@ import math
 import mujoco
 import numpy as np
 
+from ... import markers
 from ...floor import DEFAULT_FRICTION, TILE_THICKNESS, Rect
 from ...schema import Field, SchemaError
 from ..base import Part
@@ -67,6 +68,9 @@ class FloorPart(Part):
 
 
 class FloorTile(FloorPart):
+    marked = True
+    marker_anchor = "/tile"
+    marker_faces = markers.FACES_FLAT
     stateful = True
     state_keys = ("cur",)
     fields = (
@@ -88,6 +92,9 @@ class FloorTile(FloorPart):
         Field("tilt_speed", "float", 10.0, unit="deg/s", min=0.5, max=90.0, runtime=True),
         Field("height_speed", "float", 0.05, unit="m/s", min=0.005, max=0.5, runtime=True),
     )
+
+    def marker_face_size(self, face):
+        return float(min(self.cfg["size"]))
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)

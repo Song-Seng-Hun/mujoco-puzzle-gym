@@ -38,6 +38,7 @@ import math
 import mujoco
 import numpy as np
 
+from ... import markers
 from ...schema import Field, SchemaError
 from ..base import Part
 
@@ -50,6 +51,9 @@ RGBA_OK = (0.25, 0.75, 0.35, 1.0)
 
 class Receptacle(Part):
     role = "sensor"
+    marked = True
+    marker_anchor = "/base"
+    marker_faces = markers.FACES_FLAT
     stage = "input"
     suffixes = (".ok", ".count", ".wrong")
     state_keys = ("ok", "inside", "progress", "wrong_in", "locked", "closed", "fail")
@@ -73,6 +77,10 @@ class Receptacle(Part):
         Field("eject_speed", "float", 1.0, unit="m/s", min=0.1, max=5.0),
         Field("close_on_ok", "bool", False),
     )
+
+    def marker_face_size(self, face):
+        wall = 2 * float(self.cfg["wall_thickness"]) if self.cfg["shape"] == "box" else 0.0
+        return float(min(self.cfg["size"])) - wall
 
     def __init__(self, name, cfg):
         cfg = dict(cfg)

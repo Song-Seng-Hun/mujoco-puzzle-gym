@@ -21,6 +21,7 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 
+from ... import markers
 from ...schema import Field
 from ..base import TRIGGERS, Part
 from ._sense import candidates, in_rect
@@ -32,6 +33,9 @@ KINDS = ("momentary", "oneshot", "toggle")
 
 class Button(Part):
     role = "switch"
+    marked = True
+    marker_anchor = "/plate"
+    marker_faces = markers.FACES_FLAT
     stage = "input"
     emits = True
     state_keys = ("on", "prev")
@@ -45,6 +49,9 @@ class Button(Part):
         Field("max_height", "float", 0.2, unit="m", min=0.01, max=1.0,
               doc="objects press it when their centre is lower than this"),
     )
+
+    def marker_face_size(self, face):
+        return float(min(self.cfg["size"]))
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)

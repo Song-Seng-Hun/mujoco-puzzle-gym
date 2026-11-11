@@ -17,6 +17,7 @@ import math
 import mujoco
 import numpy as np
 
+from ... import markers
 from ...layout import Segment
 from ...schema import Field
 from .door import OPEN_FRACTION, Opening
@@ -24,6 +25,9 @@ from .door import OPEN_FRACTION, Opening
 
 class SwingDoor(Opening):
     role = "gate"
+    marked = True
+    marker_anchor = "/panel"
+    marker_faces = markers.FACES_PANEL
     state_keys = ("q", "goal", "latched")
     fields = (
         Field("width", "float", 0.5, unit="m", min=0.1, max=2.0, doc="opening the panel spans"),
@@ -36,6 +40,9 @@ class SwingDoor(Opening):
         Field("speed", "float", None, unit="deg/s", min=5.0, max=1000.0,
               doc="opening speed (default: as fast as the motor turns it)"),
     )
+
+    def marker_face_size(self, face):
+        return float(min(self.cfg["width"], self.cfg["height"]))
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)

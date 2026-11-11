@@ -27,6 +27,11 @@ State (R6): `save_state` / `load_state` copy the attributes named in
 Planning (R6a): `plan_values` gives the channels this part writes when the
 input parts in `on` are on (logic parts compute through, see logic.py).
 
+Markers (R26): `marked` classes get an ArUco marker unless room.yaml says
+`marker: none`; `marker_anchor` names the geom (suffix of `body_name`) it sits
+on, `marker_faces` the faces allowed (first = default) and `marker_face_size`
+the side of the square that fits on a face (markers/__init__.py).
+
 Settings (R3): each class lists its values as `fields` (`schema.Field`); the
 class schema is the union over its base classes (`full_schema`). The checked
 values, defaults filled in, are `self.cfg`; an out-of-range value raises
@@ -82,6 +87,8 @@ class World:
     requests: list[tuple] = field(default_factory=list)
     #: Sim time until which a warped body / object ignores warp pads (R14 `cooldown`).
     warp_until: dict[Any, float] = field(default_factory=dict)
+    #: The walking body's adapter (its eye for the gaze sensor, R27).
+    body: Any = None
 
     def kind_of(self, model: mujoco.MjModel, body_id: int) -> str | None:
         return self.kinds.get(int(model.body_rootid[body_id]))
@@ -102,6 +109,10 @@ class Part:
     has_body: ClassVar[bool] = True      # False: no MuJoCo body (logic parts)
     kind: ClassVar[str | None] = None    # body kind for sensors ("object", "npc")
     state_keys: ClassVar[tuple[str, ...]] = ()  # attributes saved in snapshots (R6)
+    marked: ClassVar[bool] = False       # gets a marker unless `marker: none` (R26)
+    marker_anchor: ClassVar[str] = ""    # geom (suffix of body_name) the marker sits on
+    marker_faces: ClassVar[tuple[str, ...]] = ()   # allowed faces; first is the default
+    marker = None                        # markers.Marker, set when the room loads
     #: Values this class adds to its base classes' schema (R3).
     fields: ClassVar[tuple[Field, ...]] = (
         Field("pos", "vec", length=2, unit="m", doc="position [x, y] on the floor"),
@@ -114,6 +125,8 @@ class Part:
         Field("in", "list", [], doc="channels this part reads (R1)"),
         Field("out", "list", None, doc="channels this part writes (default: its name if it emits)"),
         Field("enable", "str", None, doc="power channel; off (<= 0.5) freezes the part's output"),
+        Field("marker", "any", None,
+              doc="ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one"),
     )
 
     @classmethod
@@ -148,6 +161,10 @@ class Part:
     def add_room_parts(cls, parts: dict[str, "Part"]) -> None:
         """Room load hook, once per part class in the room: add helper parts
         (coin groups, R36). Runs before the channels are wired."""
+
+    def marker_face_size(self, face: str) -> float:
+        """Side [m] of the largest square marker (white margin included) on `face`."""
+        return 0.0
 
     def needs_body(self, *caps: str) -> None:
         """Add capabilities this part needs whatever room.yaml says (R2b)."""
