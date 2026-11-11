@@ -36,3 +36,13 @@ markers = [
     "slow: long simulation runs (full 20-seed checks); run with `pytest -m slow` or `-m ''`",
 ]
 addopts = "-m 'not slow'"
+
+# Linux: take the CPU build of torch (the default Linux wheel pulls CUDA and triton,
+# several GB, and triton segfaults on machines without a GPU). macOS wheels are CPU already.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
