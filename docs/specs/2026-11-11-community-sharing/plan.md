@@ -55,7 +55,7 @@ Branch: feat/community (main 9420f09에서). PR 하나에 spec.md, plan.md, 코�
   - 바뀐 파일이 없으면 첫 단계에서 바로 성공으로 끝낸다. 워크플로 전체의 `paths` 필터는 쓰지 않는다. 다른 잡까지 꺼지기 때문이다.
   - 파일 검사 → OSMesa, uv 설치, 자산 받기(지금 `tests` 잡과 같음) → 방마다 `timeout 600 uv run mpg check --community --seeds 20 --json <방>`을 돌리고, 결과의 `ok`가 하나라도 false면 실패한다.
   - `timeout-minutes: 30`. 권한은 워크플로 최상위의 `contents: read`를 그대로 쓴다.
-- 예제 제출 `community/rooms/Song-Seng-Hun/`: `README.md`와 방 하나(switch_door 변형)를 넣는다. 이 PR에서 통과하는 경로를 CI로 증명하는 용도이고, 새 사용자가 보고 따라 할 본보기다.
+- 예제 제출 `community/rooms/Song-Seng-Hun/`(`README.md`와 switch_door 변형 방 하나)은 이 PR이 머지된 뒤 후속 PR로 올린다. 새 사용자가 보고 따라 할 본보기이고, R3의 통과·실패 증명도 그 PR에서 한다(아래 Risks의 변경).
 - `tests/test_community.py`에 `check_community_files.py`의 거절 사례(확장자, 크기, 폴더 깊이)를 더한다.
 
 ### Step 4. R5 ONNX 내보내기와 평가
@@ -96,17 +96,17 @@ Branch: feat/community (main 9420f09에서). PR 하나에 spec.md, plan.md, 코�
 
 ## Risks
 - `--trust`를 환경 변수로 넘기므로 셸에서 `MPG_TRUST=1`을 켜 두면 늘 통과한다. 이건 사용자가 직접 켜는 것이라 막지 않고, 문서에만 적는다.
-- 방 PR이 `community/` 밖의 코드(검사기 자체)도 함께 고치면 CI가 고친 검사기로 돈다. 이건 막지 않고 리뷰에서 본다. PR 템플릿 점검표에 "community/ 밖 파일 없음"을 넣는다.
-- R3의 실패 경로 증명: spec은 "실패하는 방 PR의 CI 결과"를 요구한다. 이 PR 안에서 일부러 나쁜 방을 넣은 커밋을 한 번 올려 CI 실패를 확인하고, 다음 커밋에서 지운다. 따로 PR을 만들지 않아서 남는 브랜치가 없다. 대신 커밋 2개가 기록에 남는다.
+- 방 PR이 `community/` 밖의 코드(검사기 자체)도 함께 고치면 CI가 고친 검사기로 돈다. 처음 계획은 리뷰로 막는 것이었다. 보안 리뷰(2026-11-11)에서 spec R3 문구와 어긋난다는 지적을 받아 사용자가 "추천대로"(A안)를 골랐다. 그래서 `community/`와 그 밖의 파일을 함께 바꾼 PR은 파일 검사 단계에서 실패시킨다. 같은 리뷰에 따라 작성자 자기 폴더만 허용, `git diff -z`와 안전한 파일 이름, YAML alias 금지, 방 이름의 경로 문자 금지도 더했다.
+- R3의 실패 경로 증명: 이 PR은 `community/`와 코드를 함께 바꾸므로 예제 방을 넣을 수 없다. 머지 후 후속 PR(예제 방만)에서 통과 1회를 보고, 일부러 나쁜 방을 넣은 커밋으로 실패 1회를 본 뒤 그 커밋을 되돌린다. 후속 PR 브랜치는 머지 때 지워진다.
 - SB3 정책 내부 구조(`policy.actor` 등)는 SB3 버전에 따라 바뀔 수 있다. test_onnx가 예측 일치를 직접 비교하므로, 바뀌면 테스트가 잡는다.
 - 새 의존성 `onnx`가 추가된다(선택 설치 묶음과 dev 그룹). `uv lock`과 설치가 필요하므로, 이 계획을 승인하면 그것까지 포함해 승인하는 것으로 본다.
 
 ## Proof per R
 | R | 증거 |
 |---|---|
-| R1 | `tests/test_community.py`의 파일 검사 사례 + 이 PR에서 일부러 넣은 나쁜 파일 커밋의 CI 실패 기록 |
+| R1 | `tests/test_community.py`의 파일 검사 사례(섞인 PR 거절 포함) + 후속 PR에서 일부러 넣은 나쁜 파일 커밋의 CI 실패 기록 |
 | R2 | `tests/test_community.py`의 거절 6가지 + 예제 방 통과, `mpg check --community examples/rooms/doors.yaml --json` 출력 |
-| R3 | 이 PR의 CI: 예제 제출 방으로 `community` 잡 통과 1회, 나쁜 방 커밋으로 실패 1회. community/를 안 바꾸는 PR에서는 첫 단계에서 끝나는 기록 |
+| R3 | 후속 PR의 CI: 예제 방으로 `community` 잡 통과 1회, 나쁜 방 커밋으로 실패 1회. 이 PR(community/ 안 바꿈)에서는 첫 단계에서 끝나는 기록 |
 | R4 | 머지 후 따로 승인을 받고 저장소 설정을 바꾼다. Discussions 탭 화면으로 확인 |
 | R5 | `tests/test_onnx.py`(1e-5 일치, eval --onnx, Dict 거절) |
 | R6 | `tests/test_trust.py` |

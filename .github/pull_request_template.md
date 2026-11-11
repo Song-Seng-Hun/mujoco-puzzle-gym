@@ -2,7 +2,7 @@
 
 ## Room submission
 
-- [ ] Files are only in `community/rooms/<my GitHub user name>/` (nothing outside `community/`)
+- [ ] Files are only in `community/rooms/<my GitHub user name>/` (CI fails a PR that also changes files outside `community/`)
 - [ ] Only room files (`*.yaml`, 64 KB or less each) and an optional `README.md`
 - [ ] No plugin code, `*.pkl`, `*.zip` or policy files (share policies as ONNX links in Discussions)
 - [ ] `uv run mpg check --community --seeds 20 --json <room>` printed `"ok": true` for every room

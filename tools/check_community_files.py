@@ -6,7 +6,9 @@
 Accepted: `community/rooms/<user>/<name>.yaml` and `community/rooms/<user>/README.md`,
 each at most 64 KB, names of letters, digits, `.`, `_` and `-` only (no spaces:
 the CI loop splits the room list on lines). With `--author`, `<user>` must be the
-PR author. With `--base`, the paths come from `git diff -z` against that commit.
+PR author. With `--base`, the paths come from `git diff -z` against that commit,
+and a PR that changes community/ must change nothing else: CI runs the PR's own
+checker and `mpg`, so a room PR that also edits them could pass itself.
 Prints one line per problem and exits 1 when there is any; `--rooms-out` gets the
 accepted room files, one per line.
 """
@@ -23,11 +25,20 @@ MAX_BYTES = 64 * 1024
 SAFE = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
 
 
-def changed(base: str) -> list[str]:
-    out = subprocess.run(["git", "diff", "-z", "--name-only", "--diff-filter=ACMRT",
-                          f"{base}...HEAD", "--", "community/"],
+def _diff(base: str, *spec: str, filt: str = "ACMRT") -> list[str]:
+    out = subprocess.run(["git", "diff", "-z", "--name-only", f"--diff-filter={filt}",
+                          f"{base}...HEAD", "--", *spec],
                          check=True, capture_output=True).stdout
     return [p.decode("utf-8", "surrogateescape") for p in out.split(b"\0") if p]
+
+
+def changed(base: str) -> list[str]:
+    return _diff(base, "community/")
+
+
+def outside(base: str) -> list[str]:
+    """Files the PR changes (deletions included) outside community/."""
+    return _diff(base, ".", ":(exclude)community/", filt="ACDMRT")
 
 
 def problems(paths: list[str], root: Path = Path("."), author: str | None = None) -> list[str]:
@@ -68,6 +79,12 @@ def main(argv: list[str]) -> int:
     for p in paths:
         print(f"changed: {p!r}")
     found = problems(paths, author=args.author)
+    if args.base and paths:
+        # the checks below run this PR's own code; a room PR must not change it
+        other = outside(args.base)
+        if other:
+            found.append(f"this PR changes community/ and {len(other)} file(s) outside it "
+                         f"(e.g. {other[0]!r}); send rooms in a PR of their own")
     for line in found:
         print(line)
     if args.rooms_out:

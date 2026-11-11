@@ -23,7 +23,7 @@ A room file cannot carry code. YAML is read with `yaml.safe_load`, and logic exp
    ```
 
    The result must be `"ok": true`.
-4. Open a PR. Include only files inside `community/`. Fill in the checklist in the PR template.
+4. Open a PR. Include only files inside your own folder `community/rooms/<your name>/`. If the PR also touches another person's folder or any file outside `community/`, CI fails. CI runs the checker from the PR itself, so this keeps a room PR from editing the checker too. Fill in the checklist in the PR template.
 
 When the PR opens, the CI job `community` runs the same check on every changed room (10 minutes per room, 30 minutes in total). If everything passes, a maintainer reads it and merges. Nothing is merged automatically.
 

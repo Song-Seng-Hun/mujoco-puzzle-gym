@@ -147,7 +147,34 @@ def test_files_too_big_and_symlink(tmp_path):
 
 def test_repo_community_folder_is_clean():
     files = [str(p.relative_to(ROOT)) for p in (ROOT / "community").rglob("*") if p.is_file()]
-    assert files and _files_tool().problems(files, root=ROOT) == []
+    assert _files_tool().problems(files, root=ROOT) == []
+
+
+def _git(cwd, *args):
+    import subprocess
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd,
+                   check=True, capture_output=True)
+
+
+def test_room_pr_must_not_change_other_files(tmp_path, monkeypatch, capsys):
+    tool = _files_tool()
+    _git(tmp_path, "init", "-q", "-b", "main")
+    (tmp_path / "tool.py").write_text("x = 1\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "base")
+    d = tmp_path / "community/rooms/alice"
+    d.mkdir(parents=True)
+    (d / "r.yaml").write_text("name: r\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "room")
+    monkeypatch.chdir(tmp_path)
+    assert tool.main(["--base", "main~1", "--author", "alice", "--rooms-out", "rooms.txt"]) == 0
+    assert (tmp_path / "rooms.txt").read_text() == "community/rooms/alice/r.yaml\n"
+    (tmp_path / "tool.py").write_text("x = 2\n")      # the PR also edits code
+    _git(tmp_path, "commit", "-qam", "edit tool")
+    assert tool.main(["--base", "main~2", "--author", "alice", "--rooms-out", "rooms.txt"]) == 1
+    assert "outside it" in capsys.readouterr().out
+    assert (tmp_path / "rooms.txt").read_text() == ""
 
 
 def test_yaml_aliases_rejected(tmp_path):
