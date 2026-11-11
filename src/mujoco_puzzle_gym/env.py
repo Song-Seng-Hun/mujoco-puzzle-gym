@@ -13,6 +13,8 @@
   never opened): evidence for `mpg diagnose`.
 - `env.command_scale` != 1 multiplies the body command and turns off the
   body's command clipping; only for deliberately broken tasks.
+- A part whose `failed()` is True ends the episode (`info["failed"]` names it).
+- Parts that override `Part.substep` run after every physics step (R5).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ import numpy as np
 from .bodies import DEFAULT_BODY, BodyState, make_body
 from .layout import Grid
 from .logic import free_mask, solution_order
+from .parts.base import Part, World
 from .registry import OBS, REWARDS
 from .room import Room
 from .task import TaskError, load_task
@@ -52,6 +55,15 @@ class PuzzleEnv(gym.Env):
         self.data = mujoco.MjData(self.model)
         for p in self.parts.values():
             p.bind(self.model, self.data)
+        self.world = self._make_world()
+        self.signals.dt = self.body.control_dt
+        subs = [p for p in self.parts.values() if type(p).substep is not Part.substep]
+        self._on_substep = None
+        if subs:
+            def on_substep(model, data, subs=subs):
+                for p in subs:
+                    p.substep(model, data)
+            self._on_substep = on_substep
 
         hz = float(self.task["env"]["hz"])
         ratio = 1.0 / (hz * self.body.control_dt)
@@ -80,6 +92,18 @@ class PuzzleEnv(gym.Env):
         dim = self._obs().shape[0]
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(dim,), dtype=np.float32)
 
+    def _make_world(self) -> World:
+        world = World(dt=self.body.control_dt)
+        world.kinds[int(self.model.body_rootid[self.body.root_body_id(self.model)])] = "body"
+        for p in self.parts.values():
+            if p.kind:
+                for rid in p.root_body_ids(self.model):
+                    world.kinds[int(self.model.body_rootid[rid])] = p.kind
+                    world.objects[int(self.model.body_rootid[rid])] = p
+        for p in self.parts.values():
+            p.world = world
+        return world
+
     # ---- layout and state ---------------------------------------------------
     def sample_layout(self, rng: np.random.Generator | None) -> dict[str, Any]:
         """Spawn pose and part positions; `rng=None` gives the nominal layout."""
@@ -93,6 +117,7 @@ class PuzzleEnv(gym.Env):
         layout = layout or self.sample_layout(rng)
         self.layout = layout
         mujoco.mj_resetData(self.model, self.data)
+        self.world.held.clear()
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
         self.body.reset(self.data, layout["spawn"])
@@ -146,7 +171,7 @@ class PuzzleEnv(gym.Env):
     def advance(self, cmd) -> bool:
         """Run one env step of body steps with command `cmd`; False if the sim blew up."""
         for _ in range(self.body_steps):
-            self.body.step(self.data, cmd)
+            self.body.step(self.data, cmd, on_substep=self._on_substep)
             self.signals.step(self.model, self.data, self.body.state(self.data))
         self.body_state = self.body.state(self.data)
         return bool(np.isfinite(self.data.qpos).all() and np.isfinite(self.data.qvel).all()
@@ -177,15 +202,18 @@ class PuzzleEnv(gym.Env):
             progress = 0.0
         success = any(p.role == "goal" and p.satisfied() for p in self.parts.values())
         fallen = bool(self.body_state.fallen) or not sane
+        failed = [n for n, p in self.parts.items() if p.failed()]
         self.events = {"progress": float(progress), "new_on": len(on_after - on_before),
                        "success": success, "fallen": fallen}
         terms = {name: weight * float(fn(self)) for name, fn, weight in self.reward_terms}
         reward = float(sum(terms.values()))
-        terminated = (success and self.term_success) or (fallen and self.term_fall) or not sane
+        terminated = ((success and self.term_success) or (fallen and self.term_fall) or not sane
+                      or bool(failed))
         truncated = (not terminated) and self.steps >= self.max_steps
         info = self._info()
         info.update(reward_terms=terms, command=cmd.tolist(), nan=not sane,
-                    switches_on=len(on_after), contradiction=self._contradiction(info, success))
+                    switches_on=len(on_after), contradiction=self._contradiction(info, success),
+                    failed=failed)
         obs = self._obs()
         if not sane:
             obs = np.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
