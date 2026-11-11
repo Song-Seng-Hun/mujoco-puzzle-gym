@@ -21,6 +21,7 @@ OPEN_FRACTION = 0.9   # state above this counts as open
 
 class Door(Part):
     role = "gate"
+    state_keys = ("q",)
     fields = (
         Field("width", "float", 0.5, unit="m", min=0.1, max=2.0, doc="opening the panel spans"),
         Field("axis", "enum", "y", choices=("x", "y"), doc="direction the panel lies along"),

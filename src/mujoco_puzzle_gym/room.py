@@ -130,6 +130,12 @@ class Room:
                 raise RoomError(str(exc)) from None
         if not any(p.role == "goal" for p in parts.values()):
             raise RoomError("the room needs at least one part with role goal (e.g. type: goal)")
+        flags: dict[int, str] = {}
+        for n, p in parts.items():
+            if p.role == "checkpoint":
+                if p.order in flags:
+                    raise RoomError(f"checkpoints {flags[p.order]!r} and {n!r} both have order {p.order}")
+                flags[p.order] = n
         for i, link in enumerate(self.links):
             src, dst = link.get("from"), link.get("to")
             for end, ref in (("from", src), ("to", dst)):

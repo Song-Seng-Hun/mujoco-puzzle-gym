@@ -14,6 +14,10 @@
 - `env.command_scale` != 1 multiplies the body command and turns off the
   body's command clipping; only for deliberately broken tasks.
 - A part whose `failed()` is True ends the episode (`info["failed"]` names it).
+- Checkpoints (R6): when a flag turns on, `advance` saves a snapshot at that
+  body step. With task `env.respawn: checkpoint`, a fall or a failure restores
+  the last one instead of ending the episode (`info["respawned"]`, reward term
+  `respawn_penalty`, default weight -1); without a flag reached yet it ends as usual.
 - Parts that override `Part.substep` run after every physics step (R5).
 """
 
@@ -26,6 +30,7 @@ import gymnasium as gym
 import mujoco
 import numpy as np
 
+from . import snapshot
 from .bodies import DEFAULT_BODY, BodyState, make_body
 from .layout import Grid
 from .logic import free_mask, solution_order
@@ -37,6 +42,8 @@ from .task import TaskError, load_task
 # A gate counts as having let the body through once its state passed this
 # (a half-open door already leaves a gap wider than the body).
 GATE_PASSABLE = 0.3
+RESPAWN = ("start", "checkpoint")
+RESPAWN_PENALTY = -1.0
 
 
 class PuzzleEnv(gym.Env):
@@ -64,6 +71,8 @@ class PuzzleEnv(gym.Env):
                 for p in subs:
                     p.substep(model, data)
             self._on_substep = on_substep
+        self._model0 = snapshot.model_values(self.model)
+        self.checkpoint_snap: snapshot.Snapshot | None = None
 
         hz = float(self.task["env"]["hz"])
         ratio = 1.0 / (hz * self.body.control_dt)
@@ -83,6 +92,11 @@ class PuzzleEnv(gym.Env):
         self.term_fall = bool(self.task["termination"].get("fall", True))
         self.term_success = bool(self.task["termination"].get("success", True))
         self.command_scale = float(self.task["env"].get("command_scale", 1.0))
+        self.respawn = self.task["env"].get("respawn", "start")
+        if self.respawn not in RESPAWN:
+            raise TaskError(f"env.respawn must be one of {RESPAWN}, got {self.respawn!r}")
+        if self.respawn == "checkpoint" and "respawn_penalty" not in self.task["reward"]:
+            self.reward_terms.append(("respawn_penalty", REWARDS["respawn_penalty"], RESPAWN_PENALTY))
         if self.command_scale != 1.0:
             self.body.clip_commands = False
 
@@ -100,9 +114,22 @@ class PuzzleEnv(gym.Env):
                 for rid in p.root_body_ids(self.model):
                     world.kinds[int(self.model.body_rootid[rid])] = p.kind
                     world.objects[int(self.model.body_rootid[rid])] = p
+        world.checkpoints = [p for p in self.parts.values() if p.role == "checkpoint"]
         for p in self.parts.values():
             p.world = world
         return world
+
+    # ---- snapshots (R6) -------------------------------------------------------
+    def save_snapshot(self, **meta) -> snapshot.Snapshot:
+        return snapshot.save(self.model, self.data, self.parts, self.signals, self.body,
+                             held=sorted(self.world.held), **meta)
+
+    def restore_snapshot(self, snap: snapshot.Snapshot) -> None:
+        snapshot.restore(snap, self.model, self.data, self.parts, self.signals, self.body)
+        self.world.held = set(snap.meta.get("held", []))
+        self.body_state = self.body.state(self.data)
+        self.stage = self._stage()
+        self.prev_dist = self.target_distance()
 
     # ---- layout and state ---------------------------------------------------
     def sample_layout(self, rng: np.random.Generator | None) -> dict[str, Any]:
@@ -116,8 +143,10 @@ class PuzzleEnv(gym.Env):
     def _reset_sim(self, rng: np.random.Generator | None, layout: dict | None = None) -> None:
         layout = layout or self.sample_layout(rng)
         self.layout = layout
+        snapshot.load_model_values(self.model, self._model0)
         mujoco.mj_resetData(self.model, self.data)
         self.world.held.clear()
+        self.checkpoint_snap = None
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
         self.body.reset(self.data, layout["spawn"])
@@ -133,7 +162,8 @@ class PuzzleEnv(gym.Env):
         self.stage = self._stage()
         self.prev_dist = self.target_distance()
         self.steps = 0
-        self.events = {"progress": 0.0, "new_on": 0, "success": False, "fallen": False}
+        self.events = {"progress": 0.0, "new_on": 0, "success": False, "fallen": False,
+                       "respawned": False}
         self._gates_opened: set[str] = set()
 
     def _stage(self) -> int:
@@ -173,6 +203,10 @@ class PuzzleEnv(gym.Env):
         for _ in range(self.body_steps):
             self.body.step(self.data, cmd, on_substep=self._on_substep)
             self.signals.step(self.model, self.data, self.body.state(self.data))
+            for cp in self.world.checkpoints:
+                if cp.pending_snapshot:
+                    cp.pending_snapshot = False
+                    self.checkpoint_snap = self.save_snapshot(checkpoint=cp.name)
         self.body_state = self.body.state(self.data)
         return bool(np.isfinite(self.data.qpos).all() and np.isfinite(self.data.qvel).all()
                     and self.data.warning[mujoco.mjtWarning.mjWARN_BADQACC].number == 0)
@@ -203,8 +237,13 @@ class PuzzleEnv(gym.Env):
         success = any(p.role == "goal" and p.satisfied() for p in self.parts.values())
         fallen = bool(self.body_state.fallen) or not sane
         failed = [n for n, p in self.parts.items() if p.failed()]
+        respawned = False
+        if (sane and (fallen or failed) and self.respawn == "checkpoint"
+                and self.checkpoint_snap is not None):
+            self.restore_snapshot(self.checkpoint_snap)
+            respawned, fallen, failed = True, False, []
         self.events = {"progress": float(progress), "new_on": len(on_after - on_before),
-                       "success": success, "fallen": fallen}
+                       "success": success, "fallen": fallen, "respawned": respawned}
         terms = {name: weight * float(fn(self)) for name, fn, weight in self.reward_terms}
         reward = float(sum(terms.values()))
         terminated = ((success and self.term_success) or (fallen and self.term_fall) or not sane
@@ -213,7 +252,7 @@ class PuzzleEnv(gym.Env):
         info = self._info()
         info.update(reward_terms=terms, command=cmd.tolist(), nan=not sane,
                     switches_on=len(on_after), contradiction=self._contradiction(info, success),
-                    failed=failed)
+                    failed=failed, respawned=respawned)
         obs = self._obs()
         if not sane:
             obs = np.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)

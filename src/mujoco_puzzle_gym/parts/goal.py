@@ -12,6 +12,7 @@ from .base import Part
 class Goal(Part):
     role = "goal"
     stage = "input"
+    state_keys = ("reached",)
     fields = (
         Field("radius", "float", 0.15, unit="m", min=0.03, max=1.0, doc="reach distance"),
     )

@@ -21,6 +21,7 @@ class Switch(Part):
     role = "switch"
     stage = "input"
     emits = True
+    state_keys = ("on",)
     fields = (
         Field("size", "vec", [0.25, 0.25], length=2, unit="m", min=0.05, max=2.0,
               doc="plate size [x, y]"),

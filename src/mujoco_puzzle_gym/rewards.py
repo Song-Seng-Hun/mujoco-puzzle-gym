@@ -5,7 +5,8 @@ Terms read `env.events`, filled once per env step:
   toward the current target this step;
 - new_on:   switches that turned on this step;
 - success:  a goal was reached;
-- fallen:   the body fell.
+- fallen:   the body fell;
+- respawned: a fall or failure went back to the last checkpoint (R6).
 """
 
 from __future__ import annotations
@@ -31,3 +32,9 @@ def success(env):
 @register_reward("fall", replace=True)
 def fall(env):
     return float(env.events["fallen"])
+
+
+@register_reward("respawn_penalty", replace=True)
+def respawn_penalty(env):
+    """1 when the body went back to a checkpoint this step; the default weight is -1."""
+    return float(env.events.get("respawned", False))
