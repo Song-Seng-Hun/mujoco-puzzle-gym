@@ -3,13 +3,13 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../assets/banner-dark.svg">
-    <img src="../assets/banner-light.svg" width="640" alt="Pixel-art banner. As Claude types room.yaml line by line at a terminal, pieces sparkle into a top-view room on the right: walls with an opening in the divider, a yellow floor switch, a brown door, a blue goal circle and the signal link from the switch to the door. After a green check, a small duck robot walks onto the switch; the switch turns green and the door slides open. The duck walks through to the goal, sparkles pop, the terminal prints success 0.99 and Claude nods.">
+    <img src="../assets/banner-light.svg" width="640" alt="Pixel-art banner. As Claude types room.yaml line by line at a terminal, pieces sparkle into a top-view room on the right: walls with an opening in the divider, a yellow floor switch, a brown door, a blue goal circle and the signal link from the switch to the door. After a green check, a small duck robot walks onto the switch; the switch turns green and the door slides open. The duck walks through to the goal, sparkles pop, the terminal prints success 0.99 and Claude nods. The duck is driven by the trained policy, not by Claude.">
   </picture>
 </p>
 
 # mujoco-puzzle-gym — a puzzle lab that agents build
 
-A framework in which AI agents build puzzle rooms inside a MuJoCo physics simulation and train a robot body in them. A puzzle is a program, not a fixed scene. You build a room whose state changes by wiring floor switches, doors, signals and logic together in YAML, and when a part is missing you register one more Python class. The agent runs the loop itself: build a room, check that it can be solved, train briefly, and when training fails, get a diagnosis and fix the room.
+A framework in which AI coding agents build puzzle rooms inside a MuJoCo physics simulation and train a robot body in them. The robot is driven by a policy trained with reinforcement learning in those rooms; the agent never steers the robot directly. A puzzle is a program, not a fixed scene. You build a room whose state changes by wiring floor switches, doors, signals and logic together in YAML, and when a part is missing you register one more Python class. The agent runs the loop itself: build a room, check that it can be solved, train briefly, and when training fails, get a diagnosis and fix the room.
 
 <p align="center"><img src="../assets/demo.gif" width="480" alt="Microduck simulation driven by a trained policy. The duck robot starts on the left of a room split by a wall, walks to a yellow floor switch and steps on it; the switch turns green and the door in the divider opens. The duck walks through the open door and reaches the blue goal circle on the right."></p>
 <p align="center"><sub>A policy trained for 15 minutes steps on the switch, opens the door and reaches the goal on a layout it has not seen. Robot model: Pollen Robotics Microduck (CC BY-NC-SA 4.0).</sub></p>
