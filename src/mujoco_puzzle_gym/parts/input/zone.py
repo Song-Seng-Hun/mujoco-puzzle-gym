@@ -59,6 +59,7 @@ class Zone(Part):
         self.leave_margin = float(c["leave_margin"])
         if self.names or "body" not in TRIGGERS[self.trigger]:
             self.role = "sensor"
+        self.needs_body("walk" if self.role == "switch" else "beak_grab")
         self.stateful = self.rearm == "leave" or self.direction is not None
         self._clear()
 

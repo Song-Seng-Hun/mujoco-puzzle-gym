@@ -54,6 +54,7 @@ class Button(Part):
         self.max_height = float(self.cfg["max_height"])
         if "body" not in TRIGGERS[self.trigger]:
             self.role = "sensor"            # the planner cannot press it by walking
+        self.needs_body("walk" if "body" in TRIGGERS[self.trigger] else "beak_grab")
         self.stateful = self.kind_ != "momentary"
         self.on = False
         self.prev = False

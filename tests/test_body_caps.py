@@ -62,3 +62,37 @@ def test_missing_capability_fails_check(asset_dir, repo_root, tmp_path):
     assert res["body"]["missing"] == {"goal": ["grip"]}
     assert "'goal'" in res["body"]["reason"] and "grip" in res["body"]["reason"]
     assert res["solver"]["successes"] == 0 and "skipped" in res["solver"]
+
+
+# M2 parts declare what they need from the body, using only Microduck capabilities.
+M2_PARTS = [
+    ({"type": "button", "pos": [0, 0]}, ["walk"]),
+    ({"type": "button", "pos": [0, 0], "trigger": "object"}, ["beak_grab"]),
+    ({"type": "zone", "pos": [0, 0]}, ["walk"]),
+    ({"type": "laser", "pos": [0, -0.3], "to": [0, 0.3]}, ["walk"]),
+    ({"type": "pressure", "pos": [0, 0]}, ["beak_grab"]),
+    ({"type": "receptacle", "pos": [0, 0]}, ["beak_grab"]),
+    ({"type": "checkpoint", "pos": [0, 0]}, ["walk"]),
+    ({"type": "gate", "expr": "1"}, []),
+    ({"type": "counter", "up": "p"}, []),
+    ({"type": "transmitter", "pos": [0, 0], "in": ["p"], "band": "x"}, []),
+]
+
+
+@pytest.mark.parametrize("cfg, needs", M2_PARTS, ids=[c["type"] for c, _ in M2_PARTS])
+def test_m2_parts_need_microduck_capabilities(asset_dir, cfg, needs):
+    from mujoco_puzzle_gym.registry import get_part
+    part = get_part(cfg["type"])("p", {k: v for k, v in cfg.items() if k != "type"})
+    assert part.requires_body == needs
+    assert make_body().capabilities.missing(part.requires_body) == []
+
+
+def test_m2_parts_merge_declared_capabilities(asset_dir, repo_root, tmp_path):
+    def edit(raw):
+        raw["parts"].append({"name": "chk", "type": "checkpoint", "pos": [-0.7, -0.6],
+                             "requires_body": ["grip"]})
+    env = PuzzleEnv(room=_variant(repo_root, tmp_path, edit))
+    assert env.parts["chk"].requires_body == ["walk", "grip"]
+    res = check_body(env)
+    assert not res["ok"] and res["missing"] == {"chk": ["grip"]}
+    env.close()

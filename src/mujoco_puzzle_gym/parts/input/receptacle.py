@@ -96,6 +96,7 @@ class Receptacle(Part):
         self.wrong_mode = c["wrong"]
         self.close_on_ok = c["close_on_ok"]
         self.stateful = True
+        self.needs_body("beak_grab")          # objects get in by being carried (R18)
         self._clear()
 
     def _clear(self):

@@ -127,7 +127,7 @@ class Part:
         self.xy = self.base_xy.copy()
         self.sources: list[Part] = []          # filled from room links (gates)
         self.require = cfg["require"]
-        self.requires_body: list[str] = cfg["requires_body"]
+        self.requires_body: list[str] = list(cfg["requires_body"])
         self.inputs: list[str] = list(cfg["in"])
         out = cfg["out"]
         self.outputs: list[str] = list(out) if out is not None else ([name] if self.emits else [])
@@ -137,6 +137,10 @@ class Part:
         self.world: World | None = None        # set by the env
         self.pending_snapshot = False          # checkpoint asks the env for a snapshot
         self._bid = -1
+
+    def needs_body(self, *caps: str) -> None:
+        """Add capabilities this part needs whatever room.yaml says (R2b)."""
+        self.requires_body = list(dict.fromkeys([*caps, *self.requires_body]))
 
     @property
     def body_name(self) -> str:

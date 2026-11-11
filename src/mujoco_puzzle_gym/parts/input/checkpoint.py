@@ -43,6 +43,7 @@ class Checkpoint(Part):
         self.radius = float(self.cfg["radius"])
         self.skip = self.cfg["skip"]
         self.reached = self.fail = self.was_inside = False
+        self.needs_body("walk")
 
     def build(self, spec):
         body = super().build(spec)
