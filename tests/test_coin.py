@@ -243,3 +243,40 @@ def test_example_room_check(asset_dir, repo_root):
     assert res["ok"], res
     assert res["order"]["order"] == ["coins", "door_b", "goal"]
     assert res["solver"]["successes"] >= 18
+
+
+def test_coins_on_map_and_stage_rooms(asset_dir, repo_root, tmp_path):
+    """Coins in a letter-map room (R37) and in the next zone of a `stages:` room (R14)."""
+    raw = yaml.safe_load((repo_root / "examples/rooms/two_rooms_map.yaml").read_text())
+    raw["parts"] = [{"name": "coin_a", "type": "coin", "pos": [-0.75, -0.4]},
+                    {"name": "lock", "type": "coin_lock", "pos": [-0.2, 0.4]},
+                    {"name": "door", "type": "door", "pos": [-0.05, 0.05], "width": 0.5, "axis": "y",
+                     "in": ["lock.reached"]},
+                    {"name": "goal", "type": "goal", "pos": [0.65, 0.35], "radius": 0.12}]
+    (tmp_path / "map.yaml").write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(room=tmp_path / "map.yaml")
+    assert check_order(env)["order"] == ["coins", "door", "goal"]
+    env.close()
+    raw["parts"][0]["pos"] = [0.95, -0.5]                # a cliff cell: no floor
+    (tmp_path / "map.yaml").write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(room=tmp_path / "map.yaml")
+    assert "coin_a' at (0.95, -0.50) has no floor under it" in check_order(env)["reason"]
+    env.close()
+
+    second = {"name": "second", "size": [1.6, 1.2], "spawn": {"pos": [-0.5, 0.0], "yaw": 0.0},
+              "walls": [{"from": [0.0, -0.6], "to": [0.0, -0.2]}, {"from": [0.0, 0.2], "to": [0.0, 0.6]}],
+              "parts": [{"name": "coin_a", "type": "coin", "pos": [-0.5, 0.4]},
+                        {"name": "lock", "type": "coin_lock", "pos": [-0.3, 0.4]},
+                        {"name": "d2", "type": "door", "pos": [0.0, 0.0], "width": 0.4,
+                         "in": ["lock.reached"]},
+                        {"name": "goal", "type": "goal", "pos": [0.5, 0.0], "radius": 0.12}]}
+    first = {"name": "first", "size": [1.6, 1.2], "spawn": {"pos": [-0.5, 0.0], "yaw": 0.0},
+             "stages": ["second.yaml"],
+             "parts": [{"name": "w", "type": "warp", "pos": [0.4, 0.0], "to": "next_stage"}]}
+    (tmp_path / "second.yaml").write_text(yaml.safe_dump(second))
+    (tmp_path / "first.yaml").write_text(yaml.safe_dump(first))
+    env = PuzzleEnv(room=tmp_path / "first.yaml")
+    res = check_order(env)
+    assert res["ok"], res
+    assert res["order"] == ["w", "coins", "d2", "goal"]
+    env.close()

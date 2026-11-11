@@ -194,10 +194,20 @@ def test_pin_down_when_tipped(make):
 
 
 # ---- presets ----------------------------------------------------------------------------
-@pytest.mark.parametrize("name", ["mini_soccer", "color_sort", "bowling"])
+@pytest.mark.parametrize("name", ["mini_soccer", "color_sort", "bowling", "ball_ramp"])
 def test_presets_pass_static_checks(asset_dir, name):
     env = PuzzleEnv(room=PRESETS / f"{name}.yaml")
     assert check_parts(env)["ok"] and check_order(env)["ok"]
+    env.close()
+
+
+def test_ball_rests_on_raised_floor(asset_dir):
+    """ball_ramp: the ball starts on the 3 cm platform, not inside it."""
+    env = PuzzleEnv(room=PRESETS / "ball_ramp.yaml")
+    env.reset(seed=0, options={"layout": env.sample_layout(None)})
+    ball = env.parts["ball"]
+    assert ball.floor_z == pytest.approx(0.03)
+    assert ball.pos(env.data)[2] == pytest.approx(0.03 + ball.radius, abs=1e-6)
     env.close()
 
 
@@ -206,3 +216,41 @@ def test_mini_soccer_check():
     res = check(MINI_SOCCER)
     assert res["ok"], res
     assert res["solver"]["successes"] >= 18
+
+
+def test_ball_on_map_and_stage_rooms(asset_dir, tmp_path):
+    """Ball and net in a letter-map room (R37) and in the next zone of a `stages:` room (R14)."""
+    import yaml
+
+    raw = yaml.safe_load((ROOT / "examples/rooms/two_rooms_map.yaml").read_text())
+    raw["spawn"] = {"pos": [-0.9, -0.4], "yaw": 0.0}
+    raw["parts"] = [{"name": "ball", "type": "ball", "pos": [-0.65, 0.0]},
+                    {"name": "net", "type": "goal_net", "pos": [-0.65, 0.48], "width": 0.4,
+                     "depth": 0.2, "facing": -90},
+                    {"name": "door", "type": "door", "pos": [-0.05, 0.05], "width": 0.5, "axis": "y",
+                     "in": ["net"]},
+                    {"name": "goal", "type": "goal", "pos": [0.65, 0.35], "radius": 0.12}]
+    (tmp_path / "map.yaml").write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(room=tmp_path / "map.yaml")
+    assert check_parts(env)["ok"]
+    assert check_order(env)["order"] == ["net", "door", "goal"]
+    free = env.stage_free(0, inflate=env.body.footprint_radius)
+    assert not free[env.grid.cell((0.95, -0.5))]         # the cliff is off the pusher's plan
+    act = Pusher(env).act(env.parts["net"])
+    assert np.isfinite(act).all()
+    env.close()
+
+    second = {"name": "second", "size": [1.6, 1.2], "spawn": {"pos": [-0.5, -0.3], "yaw": 0.0},
+              "parts": [{"name": "ball", "type": "ball", "pos": [0.0, 0.0]},
+                        {"name": "net", "type": "goal_net", "pos": [0.0, 0.45], "width": 0.4,
+                         "depth": 0.2, "facing": -90},
+                        {"name": "goal", "type": "goal", "pos": [0.5, -0.3], "radius": 0.12}]}
+    first = {"name": "first", "size": [1.6, 1.2], "spawn": {"pos": [-0.5, 0.0], "yaw": 0.0},
+             "stages": ["second.yaml"],
+             "parts": [{"name": "w", "type": "warp", "pos": [0.4, 0.0], "to": "next_stage"}]}
+    (tmp_path / "second.yaml").write_text(yaml.safe_dump(second))
+    (tmp_path / "first.yaml").write_text(yaml.safe_dump(first))
+    env = PuzzleEnv(room=tmp_path / "first.yaml")
+    res = check_parts(env)
+    assert res["ok"], res
+    env.close()

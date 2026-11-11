@@ -74,6 +74,7 @@ class FreeObject(Part):
     kind = "object"
     object_kind = "object"
     stage = "device"
+    floor_z = 0.0          # floor top under `pos`, set by the env before reset (R10/R37 heights)
 
     def _rest_z(self) -> float:
         raise NotImplementedError
@@ -88,7 +89,7 @@ class FreeObject(Part):
         self.xy = np.asarray(xy, dtype=float)
 
     def reset(self, model, data):
-        self.put(data, [*self.xy, self._rest_z()])
+        self.put(data, [*self.xy, self.floor_z + self._rest_z()])
 
     def put(self, data, xyz, vel=None) -> None:
         """Move the object upright to `xyz` with linear velocity `vel` (call mj_forward after)."""
@@ -152,18 +153,17 @@ class Ball(FreeObject):
     def check_static(self, env) -> list[str]:
         """Static reasons the ball cannot be pushed (R38): outside the room, in a
         wall, or where the body cannot get next to it with every gate open."""
-        from ...logic import free_mask
+        from ...logic import reach_with_warps
 
         x, y = self.base_xy
-        hx, hy = env.room.size[0] / 2, env.room.size[1] / 2
         where = f"ball {self.name!r} at [{x:g}, {y:g}]"
-        if abs(x) > hx - self.radius or abs(y) > hy - self.radius:
+        if not any(r.contains(self.base_xy, -self.radius) for r in env.room.zone_extents()):
             return [f"{where} is outside the room"]
         grid = env.grid
         if grid.blocked(env.walls, inflate=self.radius)[grid.cell(self.base_xy)]:
             return [f"{where} is inside a wall"]
         switches = {p.name for p in env.parts.values() if p.role == "switch"}
-        reach = grid.flood(free_mask(grid, env.walls, env.parts, switches), env.room.spawn_pos)
+        reach = reach_with_warps(grid, env.walls, env.parts, switches, env.room.spawn_pos)
         if not (grid.disk(self.base_xy, self.radius + 0.15) & reach).any():
             return [f"{where} is out of the body's reach"]
         return []

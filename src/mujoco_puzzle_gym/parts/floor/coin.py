@@ -265,18 +265,19 @@ def unreachable_coins(env: Any, order: list[str], start) -> list[str]:
     """Static check (R36): reasons for coins the body cannot reach (empty = fine).
 
     Reachability from `start` uses the room grid with walls and closed gates grown by the
-    body footprint (as the scripted solver plans): every coin must be reachable
+    body footprint (as the scripted solver plans), also through warp pads (R14):
+    every coin must be reachable
     with every switch of `order` on, and a group in `order` must have `need`
     coins reachable with only the switches before it on.
     """
-    from ...logic import free_mask
+    from ...logic import reach_with_warps
     from ...solver import CLEARANCE
 
     grid, walls, parts = env.grid, env.walls, env.parts
     inflate = env.body.footprint_radius + CLEARANCE
 
     def reach(on: set[str]) -> np.ndarray:
-        return grid.flood(free_mask(grid, walls, parts, on, inflate), start)
+        return reach_with_warps(grid, walls, parts, on, start, inflate)
 
     why = []
     final = reach(set(order))

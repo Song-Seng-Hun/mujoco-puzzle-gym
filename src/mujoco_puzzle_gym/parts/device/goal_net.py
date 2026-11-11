@@ -180,8 +180,7 @@ class GoalNet(Part):
             why.append(f"goal net {self.name!r}: needs {self.need} accepted balls that fit its "
                        f"mouth (width {self.width:g} m, height {self.height:g} m), has {len(fits)}"
                        + (f"; too big: {', '.join(big)}" if big else ""))
-        hx, hy = env.room.size[0] / 2, env.room.size[1] / 2
-        if (np.abs(self.xy) > [hx, hy]).any():
+        if not any(r.contains(self.xy) for r in env.room.zone_extents()):
             why.append(f"goal net {self.name!r} at {self.xy.tolist()} is outside the room")
         elif not (self.target_mask(env.grid) & ~env.grid.blocked(env.walls)).any():
             why.append(f"goal net {self.name!r}: its mouth faces a wall")

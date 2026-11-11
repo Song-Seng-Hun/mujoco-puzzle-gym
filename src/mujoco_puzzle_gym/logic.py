@@ -89,6 +89,19 @@ def _take_warp(grid: Grid, parts: dict[str, Any], on: set[str], reach: np.ndarra
     return None
 
 
+def reach_with_warps(grid: Grid, walls: list[Segment], parts: dict[str, Any], on: set[str],
+                     start_xy, inflate: float = 0.0) -> np.ndarray:
+    """Cells reachable from `start_xy` with the inputs in `on`, also through warp pads
+    (R14: a `stages:` room's next zone, a pad to another spot) found on the way."""
+    free = free_mask(grid, walls, parts, on, inflate)
+    reach = grid.flood(free, start_xy)
+    used: set[str] = set()
+    while (warp := _take_warp(grid, parts, on, reach, used)) is not None:
+        used.add(warp[0].name)
+        reach |= grid.flood(free, warp[1])
+    return reach
+
+
 def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
                    start_xy) -> dict[str, Any]:
     """Find an order of switches (and the gates they open) that reaches a goal.
