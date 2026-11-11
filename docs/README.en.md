@@ -85,11 +85,14 @@ uv run mpg check my_room.yaml
 
 All commands, training settings, adding parts and rewards, and swapping the body are in the [guide](guide.en.md).
 
-## Status and limits
+## Progress
 
-- **Milestone 1 done**: the full loop of building, checking, training, diagnosing and evaluating a switch → door → goal puzzle works. The built-in parts are still three: switch, door and goal. Other devices can be added as plugins.
-- **Next (milestone 2)**: a part catalog is being designed: buttons, sensors, logic gates, counters, warps, traps, beak grabbing, self-moving robots, tow ropes, checkpoints and curriculum training.
-- **After that (milestone 3)**: puzzle parts for other bodies, such as arms and wheeled robots.
+- [x] **Milestone 1**: the full loop of building, checking, training, diagnosing and evaluating a switch → door → goal puzzle. The built-in parts are switch, door and goal; other devices can be added as plugins.
+- [ ] **Milestone 2**: a part catalog of buttons, sensors, logic gates, counters, coins, warps, traps, beak grabbing, checkpoints and curriculum training (in progress)
+- [ ] **Milestone 3**: puzzle parts for other bodies, such as arms and wheeled robots
+
+## Limits
+
 - The high-level policy uses privileged observations that read the puzzle state directly. There is no policy yet that solves puzzles from real sensors (camera, distance sensor) alone.
 - The official walking policy is used frozen. It cannot walk backward and walks forward at about 0.12–0.22 m/s. Room sizes and time limits have to fit this speed.
 - Simulation only. Transfer to the real robot (sim2real) is out of scope.
