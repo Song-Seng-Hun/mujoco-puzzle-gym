@@ -9,6 +9,9 @@ Two measurements:
   worker processes through gymnasium's AsyncVectorEnv. This includes walls,
   doors, part logic, obs and rewards and inter-process transfer, but not the
   learner's own compute (PPO updates share the same CPU).
+- camera (R39, OQ11): the same env runs with a 64x64 head `camera` item added
+  to the default obs, once per mode (`rgb`, `depth`), single and parallel; the
+  camera renders once per env step. `--no-camera` skips it.
 """
 
 from __future__ import annotations
@@ -30,6 +33,8 @@ HIGH_LEVEL_HZ = 10.0
 BENCH_CMD = (0.3, 0.0, 0.0)
 DEFAULT_ROOM = Path(__file__).resolve().parents[2] / "examples" / "switch_door.yaml"
 TWO_HOURS = 7200
+CAMERA_MODES = ("rgb", "depth")
+CAMERA_SIZE = [64, 64]
 
 
 def _make():
@@ -104,16 +109,21 @@ def machine() -> dict[str, Any]:
     return info
 
 
-def _make_env(room: str):
+def _make_env(room: str, obs: list | None = None):
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     from .env import PuzzleEnv
-    return PuzzleEnv(room=room)
+    return PuzzleEnv(task={"obs": obs} if obs is not None else None, room=room)
 
 
-def env_single(room: str, seconds: float) -> dict[str, Any]:
+def camera_obs(mode: str) -> list:
+    from .task import DEFAULTS
+    return [*DEFAULTS["obs"], {"item": "camera", "mode": mode, "size": list(CAMERA_SIZE)}]
+
+
+def env_single(room: str, seconds: float, obs: list | None = None) -> dict[str, Any]:
     import numpy as np
 
-    env = _make_env(room)
+    env = _make_env(room, obs)
     rng = np.random.default_rng(0)
     env.reset(seed=0)
     steps = episodes = 0
@@ -128,14 +138,15 @@ def env_single(room: str, seconds: float) -> dict[str, Any]:
         if steps % 10 == 0 and time.perf_counter() >= end:
             break
     wall = time.perf_counter() - t0
+    env.close()
     return {"steps_per_s": round(steps / wall, 1), "episodes_ended": episodes}
 
 
-def env_parallel(room: str, n: int, seconds: float) -> dict[str, Any]:
+def env_parallel(room: str, n: int, seconds: float, obs: list | None = None) -> dict[str, Any]:
     import numpy as np
     from gymnasium.vector import AsyncVectorEnv
 
-    venv = AsyncVectorEnv([functools.partial(_make_env, room) for _ in range(n)], context="spawn")
+    venv = AsyncVectorEnv([functools.partial(_make_env, room, obs) for _ in range(n)], context="spawn")
     try:
         venv.reset(seed=0)
         rng = np.random.default_rng(0)
@@ -153,17 +164,27 @@ def env_parallel(room: str, n: int, seconds: float) -> dict[str, Any]:
     return {"procs": n, "steps_per_s": round(vec_steps * n / wall, 1)}
 
 
-def run_env(room: str | Path, seconds: float, procs: list[int]) -> dict[str, Any]:
+def run_env(room: str | Path, seconds: float, procs: list[int], camera: bool = True) -> dict[str, Any]:
     room = str(Path(room).resolve())
     single = env_single(room, seconds)
     parallel = [env_parallel(room, n, seconds) for n in procs]
     best = max([single["steps_per_s"]] + [p["steps_per_s"] for p in parallel])
-    return {"room": room, "actions": "uniform random", "single": single, "parallel": parallel,
-            "best_steps_per_s": best, "steps_in_2h": int(best * TWO_HOURS)}
+    out = {"room": room, "actions": "uniform random", "single": single, "parallel": parallel,
+           "best_steps_per_s": best, "steps_in_2h": int(best * TWO_HOURS)}
+    if camera:
+        out["camera"] = {"size": list(CAMERA_SIZE), "renders": "once per env step"}
+        for mode in CAMERA_MODES:
+            obs = camera_obs(mode)
+            cs = env_single(room, seconds, obs)
+            cp = [env_parallel(room, n, seconds, obs) for n in procs]
+            cbest = max([cs["steps_per_s"]] + [p["steps_per_s"] for p in cp])
+            out["camera"][mode] = {"single": cs, "parallel": cp, "best_steps_per_s": cbest,
+                                   "vs_privileged": round(cbest / best, 3)}
+    return out
 
 
 def run(seconds: float = 5.0, procs: list[int] | None = None,
-        room: str | Path | None = DEFAULT_ROOM) -> dict[str, Any]:
+        room: str | Path | None = DEFAULT_ROOM, camera: bool = True) -> dict[str, Any]:
     body, model, data = _make()
     control_dt = body.control_dt
     physics_per_body_step = round(control_dt / model.opt.timestep)
@@ -189,5 +210,5 @@ def run(seconds: float = 5.0, procs: list[int] | None = None,
     result["best_high_level_steps_per_s"] = best
     result["high_level_steps_in_2h"] = int(best * TWO_HOURS)
     if room is not None:
-        result["env"] = run_env(room, seconds, procs or [])
+        result["env"] = run_env(room, seconds, procs or [], camera=camera)
     return result

@@ -3,7 +3,12 @@
 - Action: Box [-1, 1]^3 = (forward, lateral, turn), mapped to a body command by
   the body adapter (`BodyAdapter.command_from_action`, which knows the walker's
   dead zones). One env step = `1 / hz` seconds = several body steps.
-- Observation: concatenation of the task's `obs` terms (registry.OBS).
+- Observation: concatenation of the task's `obs` items (registry.OBS), a Box as
+  in M1. With a `camera` item or task `critic_obs` it is a Dict (R39):
+  `vector` (the non-image items), `image` (uint8 C x H x W, camera only) and
+  `critic` (the `critic_obs` items, noise-free; for the value function only).
+  Item `noise` (R35 `body` layer, times task `randomize.body`) is drawn from the
+  env's seeded RNG. A camera renders once per env step, not per body step.
 - Reward: sum of weight * term over the task's `reward` terms (registry.REWARDS);
   per-term weighted values in `info["reward_terms"]`.
 - Episode ends on success or fall (task `termination`), or is truncated after
@@ -46,7 +51,8 @@ from .bodies import DEFAULT_BODY, BodyState, make_body
 from .layout import Grid
 from .logic import free_mask, solution_order
 from .parts.base import Part, World
-from .registry import OBS, REWARDS
+from .obs import make_items
+from .registry import REWARDS
 from .room import Room
 from .task import TaskError, load_task
 
@@ -70,6 +76,11 @@ class PuzzleEnv(gym.Env):
         self.parts = self.room.make_parts()
         self.signals = self.parts.bus
         self.mj_spec = self.room.build_spec(self.body, self.parts)
+        # Obs items (R39) go in before compiling: sensors add sites to the spec.
+        self.noise_scale = float((self.task.get("randomize") or {}).get("body", 1.0))
+        self.obs_items = make_items(self, self.mj_spec, self.task["obs"], "obs")
+        crit = self.task.get("critic_obs")
+        self.critic_items = make_items(self, self.mj_spec, crit, "critic") if crit is not None else None
         self.model = self.mj_spec.compile()
         self.data = mujoco.MjData(self.model)
         for p in self.parts.values():
@@ -107,7 +118,6 @@ class PuzzleEnv(gym.Env):
 
         self.grid: Grid = self.room.grid(body_values=dict(self.body.capabilities.values))
         self.walls = self.room.walls()
-        self.obs_terms = [(n, OBS[n]) for n in self.task["obs"]]
         self.reward_terms = [(n, REWARDS[n], float(w)) for n, w in self.task["reward"].items()]
         self.term_fall = bool(self.task["termination"].get("fall", True))
         self.term_success = bool(self.task["termination"].get("success", True))
@@ -123,8 +133,7 @@ class PuzzleEnv(gym.Env):
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(3,), dtype=np.float32)
         self._renderer = None
         self._reset_sim(np.random.default_rng(0))
-        dim = self._obs().shape[0]
-        self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(dim,), dtype=np.float32)
+        self.observation_space = self._obs_space(self._obs())
 
     def _make_world(self) -> World:
         world = World(dt=self.body.control_dt)
@@ -292,9 +301,44 @@ class PuzzleEnv(gym.Env):
         self.prev_dist = self.target_distance()
         self.prev_key = self._target_key()
 
-    def _obs(self) -> np.ndarray:
-        return np.concatenate([np.asarray(fn(self), dtype=np.float64).ravel()
-                               for _, fn in self.obs_terms]).astype(np.float32)
+    @property
+    def dict_obs(self) -> bool:
+        return self.critic_items is not None or any(it.image for it in self.obs_items)
+
+    def _vector(self, items, noisy: bool) -> np.ndarray:
+        parts = []
+        for it in items:
+            if it.image:
+                continue
+            v = np.asarray(it.fn(self), dtype=np.float64).ravel()
+            std = it.noise * self.noise_scale
+            if noisy and std > 0:
+                v = v + self.np_random.normal(0.0, std, v.shape)
+            parts.append(v)
+        return (np.concatenate(parts) if parts else np.zeros(0)).astype(np.float32)
+
+    def _obs(self):
+        vec = self._vector(self.obs_items, noisy=True)
+        if not self.dict_obs:
+            return vec
+        out = {}
+        if vec.size or not any(it.image for it in self.obs_items):
+            out["vector"] = vec
+        for it in self.obs_items:
+            if it.image:
+                out["image"] = np.asarray(it.fn(self), dtype=np.uint8)
+        if self.critic_items is not None:
+            out["critic"] = self._vector(self.critic_items, noisy=False)
+        return out
+
+    @staticmethod
+    def _obs_space(obs) -> gym.spaces.Space:
+        if not isinstance(obs, dict):
+            return gym.spaces.Box(-np.inf, np.inf, shape=obs.shape, dtype=np.float32)
+        return gym.spaces.Dict({
+            k: (gym.spaces.Box(0, 255, shape=v.shape, dtype=np.uint8) if k == "image"
+                else gym.spaces.Box(-np.inf, np.inf, shape=v.shape, dtype=np.float32))
+            for k, v in obs.items()})
 
     # ---- stepping -----------------------------------------------------------
     def advance(self, cmd) -> bool:
@@ -363,7 +407,8 @@ class PuzzleEnv(gym.Env):
                     stage_changed=self._warp_events["stage_changed"], zone=self.zone)
         obs = self._obs()
         if not sane:
-            obs = np.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
+            clean = lambda a: np.nan_to_num(a, nan=0.0, posinf=0.0, neginf=0.0)  # noqa: E731
+            obs = {k: clean(v) for k, v in obs.items()} if isinstance(obs, dict) else clean(obs)
         return obs, reward, terminated, truncated, info
 
     def _contradiction(self, info: dict[str, Any], success: bool) -> bool:
@@ -405,6 +450,9 @@ class PuzzleEnv(gym.Env):
         return self._renderer.render()
 
     def close(self):
+        for it in self.obs_items:
+            if hasattr(it.fn, "close"):
+                it.fn.close()
         if self._renderer is not None:
             self._renderer.close()
             self._renderer = None

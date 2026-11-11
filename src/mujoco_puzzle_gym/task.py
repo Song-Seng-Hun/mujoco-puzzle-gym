@@ -6,7 +6,10 @@ task is saved as `task.resolved.yaml` next to a run.
     env: {hz: 10, episode_seconds: 40, command_scale: 1.0}   # scale > 1: unclipped
                                                             # commands (broken tests)
     plugins: [my_terms]           # modules imported first (here and in every worker)
-    obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
+    obs: [gravity, ang_vel, lin_vel, part_pos, part_state]   # items may take
+                                  # parameters: {item: coins, k: 5} (R39, obs.py)
+    critic_obs: [part_pos, part_state]   # optional: value function only (R39)
+    randomize: {body: 1.0}        # optional: scales obs-item `noise` (R35 body layer)
     reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
     termination: {success: true, fall: true}
     algo: ppo
@@ -25,7 +28,7 @@ from typing import Any
 
 import yaml
 
-from .registry import OBS, REWARDS, load_builtins
+from .registry import REWARDS, load_builtins
 
 RESOLVED_NAME = "task.resolved.yaml"
 HZ_RANGE = (5.0, 25.0)
@@ -110,9 +113,25 @@ def validate(task: dict[str, Any]) -> None:
         raise TaskError("env.episode_seconds must be > 0")
     if float(task["env"]["command_scale"]) <= 0:
         raise TaskError("env.command_scale must be > 0")
-    unknown = [o for o in task["obs"] if o not in OBS]
-    if unknown:
-        raise TaskError(f"unknown obs terms {unknown}; registered: {sorted(OBS)}")
+    from .obs import ObsItemError, check_items
+
+    try:
+        check_items(task["obs"], "obs")
+        if task.get("critic_obs") is not None:
+            critic = check_items(task["critic_obs"], "critic_obs")
+            if not critic:
+                raise ObsItemError("`critic_obs` must not be empty (leave it out instead)")
+            if any(n == "camera" for n, _ in critic):
+                raise ObsItemError("`critic_obs` cannot hold a camera item")
+    except ObsItemError as exc:
+        raise TaskError(str(exc)) from None
+    rnd = task.get("randomize")
+    if rnd is not None:
+        if not isinstance(rnd, dict):
+            raise TaskError("`randomize` must be a mapping, e.g. {body: 1.0}")
+        body = rnd.get("body", 1.0)
+        if isinstance(body, bool) or not isinstance(body, (int, float)) or body < 0:
+            raise TaskError(f"randomize.body must be a number >= 0, got {body!r}")
     if not isinstance(task["reward"], dict) or not task["reward"]:
         raise TaskError("`reward` must map term names to weights")
     unknown = [r for r in task["reward"] if r not in REWARDS]
