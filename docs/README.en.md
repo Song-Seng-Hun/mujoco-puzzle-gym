@@ -18,8 +18,10 @@ A framework in which AI agents build puzzle rooms inside a MuJoCo physics simula
 
 - **Puzzles are built like programs.** A room is one `room.yaml`: walls, part positions, how far each episode shakes them, and the signal links between parts. A new device is one Python class.
 - **It checks a room can be solved first.** Before you spend time training, it checks in seconds that a solution order exists, that the physics is stable, and that a scripted solver that knows the answer solves it.
-- **It trains, and tells you why training fails.** On failure it names the cause (environment bug, falling, not enough exploration, reward hacking) with evidence and a fix direction. Every command prints JSON, so an AI agent can run this loop without a person.
+- **It trains, and tells you why training fails.** On failure it names the cause (environment bug, falling, not enough exploration, reward hacking) with evidence and a fix direction. An AI agent can run this loop without a person.
 - **It designs rewards too.** Rewards are terms with weights in `task.yaml` (progress, stage, success, falling and so on). When diagnose reports reward hacking or poor exploration, the agent changes the weights or registers a new reward term as one Python function, and trains again.
+
+The agent is not included: you have the AI coding agent you already use (Claude Code, for example) edit the YAML and Python files and run the `mpg` commands. A person can use the same commands directly.
 
 The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) by Pollen Robotics. Its published walking policy is used as is, and only "where to walk and how fast" is learned on top.
 
@@ -29,7 +31,7 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 - **The agent designs puzzles by assembling parts.** Pick parts, place them and wire them with signal links (`links`), and you have a puzzle. Simple rooms like switch → door → goal and rooms with stacked conditions, such as a door that opens only when several switches are all on (`require: all`), are built the same way. A missing part can be written and plugged in.
 - **Randomization is supported.** Today, part positions and the start position and heading are shaken within set ranges every episode, so a policy solves the puzzle instead of memorising the layout. Placing anywhere inside a region, picking one of several candidates, and changing the room structure itself come in milestone 2.
 - **Baseline environments are included.** The example room, a verified PPO training config, a pretrained policy (`mpg demo`), a random-policy comparison on the same seeds (`mpg eval --policy random`), and a set of deliberately broken configs ([`examples/broken/`](../examples/broken/)) give a starting point to compare new rooms or new algorithms against.
-- **The body can be swapped.** The puzzle code does not know the body; a body adapter (`BodyAdapter`) takes movement commands and drives the body. Another robot trains in the same rooms once you write one new adapter. The only body included today is Microduck.
+- **The body can be swapped.** The puzzle code does not know the body; a body adapter takes movement commands and drives the body. Build a new body adapter and another robot trains in the same rooms (how: [guide](guide.en.md#body-adapter)). The only body included today is Microduck.
 
 ## Install
 
@@ -83,13 +85,18 @@ links:
 uv run mpg check my_room.yaml
 ```
 
+To train on this room, copy [`examples/task_ppo.yaml`](../examples/task_ppo.yaml) to `my_task.yaml`, set `room: my_room.yaml` and run `uv run mpg train my_task.yaml --minutes 15 --id my-room`. The room path is resolved from the folder of the training config.
+
 All commands, training settings, adding parts and rewards, and swapping the body are in the [guide](guide.en.md).
 
-## Status and limits
+## Progress
 
-- **Milestone 1 done**: the full loop of building, checking, training, diagnosing and evaluating a switch → door → goal puzzle works. The built-in parts are still three: switch, door and goal. Other devices can be added as plugins.
-- **Next (milestone 2)**: a part catalog is being designed: buttons, sensors, logic gates, counters, warps, traps, beak grabbing, self-moving robots, tow ropes, checkpoints and curriculum training.
-- **After that (milestone 3)**: puzzle parts for other bodies, such as arms and wheeled robots.
+- [x] **Milestone 1**: the full loop of building, checking, training, diagnosing and evaluating a switch → door → goal puzzle. The built-in parts are switch, door and goal; other devices can be added as plugins.
+- [ ] **Milestone 2**: a part catalog of buttons, sensors, logic gates, counters, coins, warps, traps, beak grabbing, checkpoints and curriculum training (in progress)
+- [ ] **Milestone 3**: puzzle parts for other bodies, such as arms and wheeled robots
+
+## Limits
+
 - The high-level policy uses privileged observations that read the puzzle state directly. There is no policy yet that solves puzzles from real sensors (camera, distance sensor) alone.
 - The official walking policy is used frozen. It cannot walk backward and walks forward at about 0.12–0.22 m/s. Room sizes and time limits have to fit this speed.
 - Simulation only. Transfer to the real robot (sim2real) is out of scope.
