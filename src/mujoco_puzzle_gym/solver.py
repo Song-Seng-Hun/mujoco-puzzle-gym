@@ -24,17 +24,18 @@ FACING = 0.4           # |heading error| [rad] below which it walks at full spee
 class ScriptedSolver:
     def __init__(self, env):
         self.env = env
-        self._fields: dict[int, np.ndarray] = {}
+        self._fields: dict[tuple, np.ndarray] = {}
 
     def reset(self) -> None:
         self._fields = {}
 
     def field(self, stage: int) -> np.ndarray:
-        if stage not in self._fields:
-            env = self.env
+        env = self.env
+        key = (stage, env.targets[stage].target_key())
+        if key not in self._fields:
             free = env.stage_free(stage, inflate=env.body.footprint_radius + CLEARANCE)
-            self._fields[stage] = env.grid.distance(free, env.targets[stage].target_mask(env.grid))
-        return self._fields[stage]
+            self._fields[key] = env.grid.distance(free, env.targets[stage].target_mask(env.grid))
+        return self._fields[key]
 
     def act(self) -> np.ndarray:
         env = self.env

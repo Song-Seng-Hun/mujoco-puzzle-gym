@@ -55,6 +55,7 @@ from .task import TaskError, load_task
 GATE_PASSABLE = 0.3
 RESPAWN = ("start", "checkpoint")
 RESPAWN_PENALTY = -1.0
+_NOW = object()    # target_field: the target's current key
 
 
 class PuzzleEnv(gym.Env):
@@ -208,7 +209,7 @@ class PuzzleEnv(gym.Env):
         self.world.requests.clear()
         self.body_state = self.read_body()
         self.stage = self._stage()
-        self.prev_dist = self.target_distance()
+        self._mark_target()
 
     # ---- layout and state ---------------------------------------------------
     def sample_layout(self, rng: np.random.Generator | None) -> dict[str, Any]:
@@ -242,9 +243,9 @@ class PuzzleEnv(gym.Env):
         self.plan = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2])
         self.targets = [self.parts[n] for n in self.plan["targets"]] if self.plan["ok"] else \
             [p for p in self.parts.values() if p.role in ("switch", "goal")]
-        self._fields: dict[int, np.ndarray] = {}
+        self._fields: dict[tuple, np.ndarray] = {}
         self.stage = self._stage()
-        self.prev_dist = self.target_distance()
+        self._mark_target()
         self.steps = 0
         self.events = {"progress": 0.0, "new_on": 0, "success": False, "fallen": False,
                        "respawned": False}
@@ -265,18 +266,29 @@ class PuzzleEnv(gym.Env):
         on = {t.name for t in self.targets[:stage]}
         return free_mask(self.grid, self.walls, self.parts, on, inflate)
 
-    def target_field(self, stage: int | None = None) -> np.ndarray | None:
+    def target_field(self, stage: int | None = None, key: Any = _NOW) -> np.ndarray | None:
+        """Distance field to the target of `stage`; `key` picks a cached field of an
+        earlier `target_key` (a coin group's field before a coin was picked)."""
         stage = self.stage if stage is None else stage
         if stage >= len(self.targets):
             return None
-        if stage not in self._fields:
-            self._fields[stage] = self.grid.distance(self.stage_free(stage),
-                                                     self.targets[stage].target_mask(self.grid))
-        return self._fields[stage]
+        t = self.targets[stage]
+        k = (stage, t.target_key() if key is _NOW else key)
+        if k not in self._fields:
+            self._fields[k] = self.grid.distance(self.stage_free(stage), t.target_mask(self.grid))
+        return self._fields[k]
 
-    def target_distance(self, stage: int | None = None) -> float:
-        field = self.target_field(stage)
+    def target_distance(self, stage: int | None = None, key: Any = _NOW) -> float:
+        field = self.target_field(stage, key)
         return 0.0 if field is None else self.grid.lookup(field, self.body_state.pos[:2])
+
+    def _target_key(self) -> Any:
+        t = self.current_target()
+        return t.target_key() if t is not None else None
+
+    def _mark_target(self) -> None:
+        self.prev_dist = self.target_distance()
+        self.prev_key = self._target_key()
 
     def _obs(self) -> np.ndarray:
         return np.concatenate([np.asarray(fn(self), dtype=np.float64).ravel()
@@ -313,11 +325,11 @@ class PuzzleEnv(gym.Env):
         on_after = {n for n, p in self.parts.items() if p.role == "switch" and p.satisfied()}
 
         stage_before = self.stage
-        dist_old_target = self.target_distance(stage_before)
+        dist_old_target = self.target_distance(stage_before, self.prev_key)
         progress = self.prev_dist - dist_old_target
         self.stage = self._stage()
-        if self.stage != stage_before:
-            self.prev_dist = self.target_distance()
+        if self.stage != stage_before or self._target_key() != self.prev_key:
+            self._mark_target()
         else:
             self.prev_dist = dist_old_target
         if not np.isfinite(progress):

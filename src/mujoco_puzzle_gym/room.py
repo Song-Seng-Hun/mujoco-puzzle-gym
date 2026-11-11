@@ -232,6 +232,11 @@ class Room:
             except (ValueError, TypeError) as exc:
                 raise RoomError(str(exc)) from None
             parts[name].zone = self.part_zones[i] if i < len(self.part_zones) else 0
+        for kind in {type(p): None for p in list(parts.values())}:
+            try:
+                kind.add_room_parts(parts)
+            except (ValueError, TypeError) as exc:
+                raise RoomError(str(exc)) from None
         spawns = self.zone_spawns()
         for n, p in parts.items():
             if p.role == "warp":
