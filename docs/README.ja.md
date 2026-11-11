@@ -121,6 +121,7 @@ uv run mpg check my_room.yaml
 ## もっと見る
 
 - [使い方ガイド](guide.ja.md): 動作サイクル、コマンド、学習設定、拡張、体のアダプター
+- [部屋とポリシーを共有する](community.ja.md): 作った部屋をPRで送る、ポリシーをONNXで共有する、他人のpickleを開かない理由
 - [部品の一覧と属性](parts.ja.md): いま入っている部品とその属性
 - [学習の記録](training-log.md): 学習結果と、わざと壊した設定に対する診断
 - [速度の測定](bench.md)

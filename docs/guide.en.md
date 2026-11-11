@@ -40,15 +40,18 @@ Every command accepts `--json` and exits non-zero on failure.
 |---|---|
 | `mpg fetch-assets` | Download the robot model and walking policy from pinned commits and verify hashes |
 | `mpg build <room.yaml>` | Make the body + room MJCF and a top-view PNG |
-| `mpg check <room.yaml>` | Check the static phase (values, signals, overlaps, solution order) and the dynamic phase (physics stability, scripted-solver success). `--static` runs only the static phase |
+| `mpg check <room.yaml>` | Check the static phase (values, signals, overlaps, solution order) and the dynamic phase (physics stability, scripted-solver success). `--static` runs only the static phase; `--community` adds the limits for shared rooms ([Sharing rooms and policies](community.en.md)) |
 | `mpg parts` | Registered parts, value schemas and the preset list (`--json`), value tables (`--markdown`) |
 | `mpg train <task.yaml> --minutes N` | Train for a set time; results in `runs/<id>/` |
 | `mpg diagnose runs/<id>` | Classify the failure cause, with evidence numbers and a failure video |
-| `mpg eval runs/<id>` | Success rate and mean time on held-out layouts (`--policy random` for a baseline) |
+| `mpg eval runs/<id>` | Success rate and mean time on held-out layouts (`--policy random` for a baseline). `--onnx policy.onnx --task task.yaml` evaluates an exported policy without pickle |
+| `mpg export-onnx runs/<id>` | Export the policy as `policy.onnx` and `policy.json` (for sharing) |
 | `mpg render runs/<id>` | MP4 of a success episode |
 | `mpg demo` | Video of the bundled trained policy solving the example room (`demo.mp4`) |
 | `mpg bench` | Measure simulation speed of the walking body and the environment |
 | `mpg version` | Print the version |
+
+`train`, `eval`, `diagnose`, `render` and `export-onnx` don't open run folders or checkpoint saves outside `runs/` in the current folder. These files are pickles and can run code when opened. Open only files you made yourself, with `--trust`.
 
 ## Building a puzzle room
 

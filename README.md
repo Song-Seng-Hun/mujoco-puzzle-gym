@@ -121,6 +121,7 @@ uv run mpg check my_room.yaml
 ## 더 보기
 
 - [사용 안내](docs/guide.md): 동작 흐름, 명령, 학습 설정, 확장, 몸 어댑터
+- [방과 정책 나누기](docs/community.md): 만든 방을 PR로 올리기, 정책을 ONNX로 나누기, 다른 사람의 pickle을 열지 않는 이유
 - [부품 목록과 속성](docs/parts.md): 지금 들어 있는 부품과 각 속성
 - [학습 기록](docs/training-log.md): 학습 결과와 일부러 망가뜨린 설정에 대한 진단
 - [속도 측정](docs/bench.md)
