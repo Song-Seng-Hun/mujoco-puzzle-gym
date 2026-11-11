@@ -19,6 +19,13 @@
   the last one instead of ending the episode (`info["respawned"]`, reward term
   `respawn_penalty`, default weight -1); without a flag reached yet it ends as usual.
 - Parts that override `Part.substep` run after every physics step (R5).
+- Tile floors (R10): `fallen` is measured from the top of the floor tile under
+  the body (`Room.floor_map`); over a hole (open trapdoor, no floor) the body
+  has fallen once its trunk is below the rim.
+- Warps (R14): parts append requests to `World.requests`; `advance` carries
+  them out after the body step (teleport, `reset` to the last checkpoint or the
+  episode start, `next_stage`). `info["warped"]` names the pads used this env
+  step and `info["stage_changed"]` is True after a `next_stage` warp.
 """
 
 from __future__ import annotations
@@ -63,6 +70,13 @@ class PuzzleEnv(gym.Env):
         for p in self.parts.values():
             p.bind(self.model, self.data)
         self.world = self._make_world()
+        self.world.data = self.data
+        self.floor = self.room.floor_map(self.parts)
+        self.zone_spawns = self.room.zone_spawns()
+        self._needs_start = any(p.role == "warp" for p in self.parts.values())
+        self.start_snap: snapshot.Snapshot | None = None
+        self.zone = 0
+        self._warp_events: dict[str, Any] = {"warped": [], "stage_changed": False}
         self.signals.dt = self.body.control_dt
         subs = [p for p in self.parts.values() if type(p).substep is not Part.substep]
         self._on_substep = None
@@ -122,12 +136,72 @@ class PuzzleEnv(gym.Env):
     # ---- snapshots (R6) -------------------------------------------------------
     def save_snapshot(self, **meta) -> snapshot.Snapshot:
         return snapshot.save(self.model, self.data, self.parts, self.signals, self.body,
-                             held=sorted(self.world.held), **meta)
+                             held=sorted(self.world.held), zone=self.zone, **meta)
+
+    # ---- floor (R10) ----------------------------------------------------------
+    def floor_height(self, xy) -> tuple[float | None, float]:
+        """(top of the floor under `xy` or None over a hole, rim height); 0 on the plane."""
+        return (0.0, 0.0) if self.floor is None else self.floor.height_at(xy)
+
+    def read_body(self):
+        """Body state with `fallen` measured from the floor under the body (R10)."""
+        if self.floor is None:
+            return self.body.state(self.data)
+        top, rim = self.floor.height_at(self.body.state(self.data).pos[:2])
+        z = top if top is not None else rim - self.body.fall_height
+        return self.body.state(self.data, floor_z=z)
+
+    def _place_body(self, pose) -> None:
+        """Teleport the body onto the floor at `pose` (raised floors, R10/R37)."""
+        top, rim = self.floor_height(pose[:2])
+        self.body.teleport(self.data, tuple(pose), z=top if top is not None else rim)
+
+    # ---- warps (R14) ----------------------------------------------------------
+    def _run_requests(self) -> None:
+        reqs, self.world.requests = list(self.world.requests), []
+        for req in reqs:
+            if req[0] != "warp":
+                continue
+            _, part, key, dest = req
+            self._warp_events["warped"].append(part.name)
+            if dest == "reset":
+                snap = self.checkpoint_snap or self.start_snap
+                if snap is not None:
+                    self.restore_snapshot(snap)
+                return
+            if dest == "next_stage":
+                self.zone = part.zone + 1
+                pose = self.zone_spawns[self.zone]
+                self._warp_events["stage_changed"] = True
+            else:
+                pose = (*dest["pos"], dest["yaw"])
+            self.warp(key, pose)
+            self.world.warp_until[key] = self.data.time + part.cooldown
+        self.body_state = self.read_body()
+
+    def warp(self, key, pose) -> None:
+        """Move the walking body (key "body") or a free body (root body id) to `pose`."""
+        if key == "body":
+            self._place_body(pose)
+            return
+        m, d = self.model, self.data
+        rid = int(key)
+        jnt = int(m.body_jntadr[rid])
+        qa, va = int(m.jnt_qposadr[jnt]), int(m.jnt_dofadr[jnt])
+        old = d.qpos[qa:qa + 3].copy()
+        top_old, rim_old = self.floor_height(old[:2])
+        top_new, rim_new = self.floor_height(pose[:2])
+        z = (top_new if top_new is not None else rim_new) + old[2] - (top_old if top_old is not None else rim_old)
+        d.qpos[qa:qa + 3] = [pose[0], pose[1], z]
+        d.qvel[va:va + 6] = 0.0
+        mujoco.mj_forward(m, d)
 
     def restore_snapshot(self, snap: snapshot.Snapshot) -> None:
         snapshot.restore(snap, self.model, self.data, self.parts, self.signals, self.body)
         self.world.held = set(snap.meta.get("held", []))
-        self.body_state = self.body.state(self.data)
+        self.zone = int(snap.meta.get("zone", 0))
+        self.world.requests.clear()
+        self.body_state = self.read_body()
         self.stage = self._stage()
         self.prev_dist = self.target_distance()
 
@@ -146,15 +220,20 @@ class PuzzleEnv(gym.Env):
         snapshot.load_model_values(self.model, self._model0)
         mujoco.mj_resetData(self.model, self.data)
         self.world.held.clear()
+        self.world.requests.clear()
+        self.world.warp_until.clear()
         self.checkpoint_snap = None
+        self.zone = 0
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
         self.body.reset(self.data, layout["spawn"])
+        if self.floor is not None:
+            self._place_body(layout["spawn"])
         self.signals.reset()
         for p in self.parts.values():
             p.reset(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
-        self.body_state: BodyState = self.body.state(self.data)
+        self.body_state: BodyState = self.read_body()
         self.plan = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2])
         self.targets = [self.parts[n] for n in self.plan["targets"]] if self.plan["ok"] else \
             [p for p in self.parts.values() if p.role in ("switch", "goal")]
@@ -165,6 +244,7 @@ class PuzzleEnv(gym.Env):
         self.events = {"progress": 0.0, "new_on": 0, "success": False, "fallen": False,
                        "respawned": False}
         self._gates_opened: set[str] = set()
+        self.start_snap = self.save_snapshot(start=True) if self._needs_start else None
 
     def _stage(self) -> int:
         for i, t in enumerate(self.targets):
@@ -202,12 +282,14 @@ class PuzzleEnv(gym.Env):
         """Run one env step of body steps with command `cmd`; False if the sim blew up."""
         for _ in range(self.body_steps):
             self.body.step(self.data, cmd, on_substep=self._on_substep)
-            self.signals.step(self.model, self.data, self.body.state(self.data))
+            self.signals.step(self.model, self.data, self.read_body())
+            if self.world.requests:
+                self._run_requests()
             for cp in self.world.checkpoints:
                 if cp.pending_snapshot:
                     cp.pending_snapshot = False
                     self.checkpoint_snap = self.save_snapshot(checkpoint=cp.name)
-        self.body_state = self.body.state(self.data)
+        self.body_state = self.read_body()
         return bool(np.isfinite(self.data.qpos).all() and np.isfinite(self.data.qvel).all()
                     and self.data.warning[mujoco.mjtWarning.mjWARN_BADQACC].number == 0)
 
@@ -219,6 +301,7 @@ class PuzzleEnv(gym.Env):
 
     def step(self, action):
         on_before = {n for n, p in self.parts.items() if p.role == "switch" and p.satisfied()}
+        self._warp_events = {"warped": [], "stage_changed": False}
         cmd = self.body.command_from_action(action) * self.command_scale
         sane = self.advance(cmd)
         self.steps += 1
@@ -252,7 +335,8 @@ class PuzzleEnv(gym.Env):
         info = self._info()
         info.update(reward_terms=terms, command=cmd.tolist(), nan=not sane,
                     switches_on=len(on_after), contradiction=self._contradiction(info, success),
-                    failed=failed, respawned=respawned)
+                    failed=failed, respawned=respawned, warped=self._warp_events["warped"],
+                    stage_changed=self._warp_events["stage_changed"], zone=self.zone)
         obs = self._obs()
         if not sane:
             obs = np.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)

@@ -18,7 +18,7 @@ from typing import Any, Sequence
 
 REQUIRED = object()   # default for fields that have no default
 
-KINDS = ("float", "int", "bool", "str", "enum", "vec", "list")
+KINDS = ("float", "int", "bool", "str", "enum", "vec", "list", "any")
 
 
 class SchemaError(ValueError):
@@ -30,7 +30,8 @@ class Field:
     """One setting of a part.
 
     kind: float | int | bool | str | enum (one of `choices`) | vec (`length`
-    numbers, each in [min, max]) | list (of str).
+    numbers, each in [min, max]) | list (of str) | any (structured value the part
+    checks itself, e.g. a warp's `to` / `routes`).
     runtime: may be changed while running (R13 setters); size and shape may not.
     """
 
@@ -113,6 +114,8 @@ class Field:
             if not all(self._in_range(v) for v in out):
                 raise self._out_of_range(owner, out)
             return out
+        if k == "any":
+            return value
         # list of str; a single string is accepted as a one-element list
         if isinstance(value, str):
             value = [value]

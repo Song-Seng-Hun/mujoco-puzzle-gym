@@ -108,6 +108,7 @@ class MicroduckAdapter(BodyAdapter):
     cmd_limits = ((-0.4, 0.4), (-0.3, 0.3), (-1.0, 1.0))   # velstand twist ranges
     control_dt = TIMESTEP * DECIMATION
     timestep = TIMESTEP
+    fall_height = FALL_HEIGHT
     footprint_radius = 0.11   # collision geoms span x -0.08..0.11, y +-0.11 m around the trunk
     # R2b. beak_grab: weld grab at the `mouth_tip` site (spec R18); max_lift_mass
     # is the conservative pre-measurement default from spec R18.
@@ -325,7 +326,7 @@ class MicroduckAdapter(BodyAdapter):
             if on_substep is not None:
                 on_substep(model, data)
 
-    def state(self, data: mujoco.MjData) -> BodyState:
+    def state(self, data: mujoco.MjData, floor_z: float = 0.0) -> BodyState:
         q, v = self._root_qpos, self._root_qvel
         quat = data.qpos[q + 3:q + 7]
         yaw = yaw_from_quat(quat)
@@ -339,5 +340,5 @@ class MicroduckAdapter(BodyAdapter):
             lin_vel=np.array([c * vw[0] + s * vw[1], -s * vw[0] + c * vw[1], vw[2]]),
             ang_vel=data.qvel[v + 3:v + 6].copy(),
             gravity=gravity,
-            fallen=bool(gravity[2] > FALL_GRAVITY_Z or pos[2] < FALL_HEIGHT),
+            fallen=bool(gravity[2] > FALL_GRAVITY_Z or pos[2] - floor_z < FALL_HEIGHT),
         )

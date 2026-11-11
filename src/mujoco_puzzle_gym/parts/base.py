@@ -76,6 +76,12 @@ class World:
     objects: dict[int, "Part"] = field(default_factory=dict)
     held: set[int] = field(default_factory=set)
     checkpoints: list["Part"] = field(default_factory=list)
+    #: The env's MjData (floor parts read joint positions for the fall rule, R10).
+    data: Any = None
+    #: Requests parts make of the env this body step, e.g. ("warp", part, key, dest) (R14).
+    requests: list[tuple] = field(default_factory=list)
+    #: Sim time until which a warped body / object ignores warp pads (R14 `cooldown`).
+    warp_until: dict[Any, float] = field(default_factory=dict)
 
     def kind_of(self, model: mujoco.MjModel, body_id: int) -> str | None:
         return self.kinds.get(int(model.body_rootid[body_id]))
@@ -166,6 +172,15 @@ class Part:
     def root_body_ids(self, model: mujoco.MjModel) -> list[int]:
         """Free bodies this part owns, classified as `kind` for sensors."""
         return [self._bid] if self.kind and self._bid >= 0 else []
+
+    @classmethod
+    def shift_cfg(cls, cfg: dict[str, Any], dx: float, dy: float) -> dict[str, Any]:
+        """`cfg` moved by (dx, dy): a `stages:` room placed in its zone (R14). Parts with
+        other world coordinates in their settings shift those too."""
+        out = copy.deepcopy(cfg)
+        if isinstance(out.get("pos"), (list, tuple)) and len(out["pos"]) == 2:
+            out["pos"] = [float(out["pos"][0]) + dx, float(out["pos"][1]) + dy]
+        return out
 
     def sample_xy(self, rng: np.random.Generator) -> np.ndarray:
         return self.base_xy + rng.uniform(-self.random, self.random)

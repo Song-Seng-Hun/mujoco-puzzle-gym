@@ -66,6 +66,9 @@ class BodyAdapter(ABC):
     clip_commands: bool = True
     #: What this body can do (R2b); parts' `requires_body` is checked against it.
     capabilities: Capabilities = Capabilities()
+    #: Trunk height [m] above the floor below which the body counts as fallen (R10 uses
+    #: it for holes: over a hole the env passes `floor_z = rim - fall_height`).
+    fall_height: float = 0.07
 
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:
@@ -85,8 +88,9 @@ class BodyAdapter(ABC):
         """
 
     @abstractmethod
-    def state(self, data: mujoco.MjData) -> BodyState:
-        """Read the body state from `data`."""
+    def state(self, data: mujoco.MjData, floor_z: float = 0.0) -> BodyState:
+        """Read the body state from `data`. `fallen` measures the trunk height from
+        `floor_z`, the top of the floor under the body (R10 tile floors)."""
 
     @abstractmethod
     def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:

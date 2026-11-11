@@ -11,6 +11,10 @@ fed by gates, counters, transceivers or delays opens when the inputs behind
 them are on (time functions taken as "eventually": a delay passes its input,
 a counter of a reachable button reaches its target). It assumes every `enable`
 is on and that Python logic plugins can turn on when any input is on.
+
+Warp pads (R14): when no reachable switch opens a gate, a reachable warp pad
+whose destination lies outside the reached area is taken: it joins the order
+(the body must step on it) and the search goes on from its destination.
 """
 
 from __future__ import annotations
@@ -72,6 +76,19 @@ def _grow(mask: np.ndarray) -> np.ndarray:
     return out
 
 
+def _take_warp(grid: Grid, parts: dict[str, Any], on: set[str], reach: np.ndarray,
+               used: set[str]):
+    """A reachable, unused warp pad leading out of `reach`: (part, destination xy) or None."""
+    vals = plan_channels(parts, on)
+    for p in parts.values():
+        if p.role != "warp" or p.name in used or not (_grow(p.target_mask(grid)) & reach).any():
+            continue
+        dest = p.plan_dest(lambda ch: vals.get(ch, 0.0))
+        if dest is not None and not reach[grid.cell(dest)]:
+            return p, dest
+    return None
+
+
 def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
                    start_xy) -> dict[str, Any]:
     """Find an order of switches (and the gates they open) that reaches a goal.
@@ -84,6 +101,7 @@ def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
     on: set[str] = set()
     order: list[str] = []
     opened: set[str] = set()
+    warps_used: set[str] = set()
     switches = [p for p in parts.values() if p.role == "switch"]
     gates = [p for p in parts.values() if p.role == "gate"]
     goals = [p for p in parts.values() if p.role == "goal"]
@@ -113,6 +131,12 @@ def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
                         needed |= added
                     break
         if not newly_open:
+            warp = _take_warp(grid, parts, on, reach, warps_used)
+            if warp is not None:
+                order.append(warp[0].name)
+                warps_used.add(warp[0].name)
+                start_xy = warp[1]
+                continue
             closed = [g for g in gates if g.name not in opened]
             why = []
             for g in closed:

@@ -24,13 +24,15 @@ class Segment:
 
 
 class Grid:
-    def __init__(self, size: tuple[float, float], res: float = DEFAULT_RES):
+    def __init__(self, size: tuple[float, float], res: float = DEFAULT_RES,
+                 center: tuple[float, float] = (0.0, 0.0)):
         self.size = (float(size[0]), float(size[1]))
         self.res = res
+        self.origin = (float(center[0]), float(center[1]))   # centre of the grid area
         self.nx = int(math.ceil(self.size[0] / res))
         self.ny = int(math.ceil(self.size[1] / res))
-        self.x0 = -self.nx * res / 2
-        self.y0 = -self.ny * res / 2
+        self.x0 = self.origin[0] - self.nx * res / 2
+        self.y0 = self.origin[1] - self.ny * res / 2
         xs = self.x0 + (np.arange(self.nx) + 0.5) * res
         ys = self.y0 + (np.arange(self.ny) + 0.5) * res
         self.X, self.Y = np.meshgrid(xs, ys)          # shape (ny, nx)
