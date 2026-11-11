@@ -271,6 +271,15 @@ class Part:
         """Segments that block walking; gates return theirs while not open."""
         return []
 
+    def hole_mask(self, grid: Grid, get) -> np.ndarray | None:
+        """Planning: cells with no floor (open trapdoor, pit) once channels read
+        `get(channel)`; the planner keeps the body off them. None: solid floor."""
+        return None
+
+    def hole_now(self, grid: Grid) -> np.ndarray | None:
+        """`hole_mask` from the part's state now (the scripted solver's `demo:` walks)."""
+        return None
+
     def target_key(self) -> Any:
         """Changes when `target_mask` changes (coin groups, R36); distance fields are cached per key."""
         return None

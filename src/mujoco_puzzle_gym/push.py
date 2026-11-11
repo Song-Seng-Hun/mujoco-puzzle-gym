@@ -1,8 +1,9 @@
-"""Scripted pushing (R38 `push <ball> to <target>`), used by the scripted solver.
+"""Scripted pushing: the `demo:` sub-goal `push <ball> to <target>` (R20, R38).
 
-When the current target part has `push_target(env)` (goal nets, pins), the
-solver pushes the nearest ball the target `push_accepts` that is not already
-counted by it:
+The scripted solver runs it for a `push` entry of the room's `demo:`, and for
+a grid-plan target with `push_target(env)` (goal nets, pins) when the demo is
+over or absent; then it pushes the nearest ball the target `push_accepts`
+that is not already counted by it:
 
 1. approach: walk around the ball (planned on the room grid, the ball a round
    obstacle) to the point `BEHIND` metres behind it on the ball -> target line;
@@ -10,8 +11,6 @@ counted by it:
 3. push: walk forward aiming a little beyond the ball on the (recomputed)
    ball -> target line. If the ball gets more than `LOST_ANGLE` off the
    body's way, or too far ahead, it goes back to 1.
-
-The minimal stand-in for the `demo:` sub-goal executor of plan step 6.
 """
 
 from __future__ import annotations
@@ -86,9 +85,10 @@ class Pusher:
             return goal
         return env.grid.descend(self._field, s.pos[:2], 0.25)
 
-    def act(self, target) -> np.ndarray:
+    def act(self, target, ball=None) -> np.ndarray:
+        """Action pushing `ball` (default: `pick_ball(target)`) toward `target`."""
         env = self.env
-        ball = self.pick_ball(target)
+        ball = ball if ball is not None else self.pick_ball(target)
         if ball is None:                       # nothing left to push: stand
             return np.array([-1.0, 0.0, 0.0], dtype=np.float32)
         s = env.body_state
