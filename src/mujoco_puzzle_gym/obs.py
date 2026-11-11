@@ -55,3 +55,28 @@ def target_pos(env):
 def counters(env):
     """Every counter's count over its target (R8b), room order (1 per counter)."""
     return np.array([p.ratio() for p in env.parts.values() if hasattr(p, "ratio")], dtype=float)
+
+
+BALLS_K = 3   # nearest balls in the `balls` term
+
+
+@register_obs("balls", replace=True)
+def balls(env):
+    """Nearest `BALLS_K` balls (R38): position and velocity relative to the body,
+    heading frame, plus a present flag; empty slots are zeros (5 per slot)."""
+    s = env.body_state
+    c, sn = np.cos(s.yaw), np.sin(s.yaw)
+    rows = []
+    for p in env.parts.values():
+        if getattr(p, "object_kind", None) != "ball":
+            continue
+        pos = p.pos(env.data)[:2]
+        v = p.vel(env.data)[:2]
+        v = np.array([c * v[0] + sn * v[1], -sn * v[0] + c * v[1]]) - s.lin_vel[:2]
+        rows.append((float(np.linalg.norm(pos - s.pos[:2])),
+                     np.concatenate([_to_body_frame(env, pos), v, [1.0]])))
+    rows.sort(key=lambda r: r[0])
+    out = np.zeros((BALLS_K, 5))
+    for i, (_, row) in enumerate(rows[:BALLS_K]):
+        out[i] = row
+    return out.ravel()
