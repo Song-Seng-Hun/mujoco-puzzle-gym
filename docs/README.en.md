@@ -23,6 +23,14 @@ A framework in which AI agents build puzzle rooms inside a MuJoCo physics simula
 
 The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) by Pollen Robotics. Its published walking policy is used as is, and only "where to walk and how fast" is learned on top.
 
+## Features
+
+- **A part is a bundle of attributes.** Each part is a type (`type`) plus attributes: position, size, whether it stays on once stepped on, which way it opens, how far each episode shakes it, and so on. The parts and their attributes are listed in a separate [parts document](parts.en.md).
+- **The agent designs puzzles by assembling parts.** Pick parts, place them and wire them with signal links (`links`), and you have a puzzle. Simple rooms like switch → door → goal and rooms with stacked conditions, such as a door that opens only when several switches are all on (`require: all`), are built the same way. A missing part can be written and plugged in.
+- **Randomization is supported.** Today, part positions and the start position and heading are shaken within set ranges every episode, so a policy solves the puzzle instead of memorising the layout. Placing anywhere inside a region, picking one of several candidates, and changing the room structure itself come in milestone 2.
+- **Baseline environments are included.** The example room, a verified PPO training config, a pretrained policy (`mpg demo`), a random-policy comparison on the same seeds (`mpg eval --policy random`), and a set of deliberately broken configs ([`examples/broken/`](../examples/broken/)) give a starting point to compare new rooms or new algorithms against.
+- **The body can be swapped.** The puzzle code does not know the body; a body adapter (`BodyAdapter`) takes movement commands and drives the body. Another robot trains in the same rooms once you write one new adapter. The only body included today is Microduck.
+
 ## Install
 
 On macOS or Linux, one line does it. It installs everything needed (uv, Python 3.12, dependencies, the robot model and walking policy, about 22 MB) and checks the example room to confirm the setup.
@@ -101,6 +109,7 @@ The planning, design documents, code, tests and training experiments in this rep
 ## More
 
 - [Guide](guide.en.md): the loop, commands, training settings, extending, body adapter
+- [Parts and attributes](parts.en.md): the parts available now and their attributes
 - [Training log](training-log.md): training results and diagnoses of broken settings
 - [Speed measurements](bench.md)
 - [Design documents](specs/)
