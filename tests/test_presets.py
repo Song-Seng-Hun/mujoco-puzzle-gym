@@ -25,6 +25,7 @@ SOLO = {
     "input/laser_beam": {"to": [0.5, -0.3]},
     "device/elevator": {"in": ["a"]}, "trap/cannon_turret": {"in": ["a"]},
     "device/setter": {"in": ["a"], "target": "sp.velocity", "value": [0.0, 0.0, 1.0]},
+    "npc/lure": {"bait": "b"}, "npc/seek_button": {"button": "a"},
 }
 EXTRA = {   # a partner part some presets need
     "logic/receiver": {"name": "tx", "preset": "logic/transmitter", "in": ["a"]},

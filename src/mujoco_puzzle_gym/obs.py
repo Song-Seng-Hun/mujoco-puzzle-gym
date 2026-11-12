@@ -137,6 +137,23 @@ def balls(env, k: int = BALLS_K):
     return out.ravel()
 
 
+@register_obs("npcs", replace=True)
+def npcs(env):
+    """NPC robots (R29), room order: position and velocity relative to the body
+    (heading frame), moving (0/1) and acting (its rule reacting now, 0/1); 6 per robot."""
+    s = env.body_state
+    c, sn = np.cos(s.yaw), np.sin(s.yaw)
+    rows = []
+    for p in env.parts.values():
+        if not getattr(p, "planar", False):
+            continue
+        v = p.vel(env.data)
+        v = np.array([c * v[0] + sn * v[1], -sn * v[0] + c * v[1]]) - s.lin_vel[:2]
+        rows.append(np.concatenate([_to_body_frame(env, p.pos(env.data)), v,
+                                    [float(p.moving(env.data)), float(p.acting)]]))
+    return np.concatenate(rows) if rows else np.zeros(0)
+
+
 # ---- obs items with parameters (R39) ---------------------------------------------
 from . import sensors  # noqa: E402,F401  registers `rangefinder` and `camera`
 from . import gaze  # noqa: E402,F401  registers `markers_seen` (R27)

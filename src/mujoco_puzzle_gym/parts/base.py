@@ -372,6 +372,11 @@ class Part:
         (`mpg check` stage `parts`); empty when fine."""
         return []
 
+    def check_warnings(self, env) -> list[str]:
+        """Things `mpg check` stage `parts` reports without failing (an NPC as fast
+        as the body, R29); empty when none."""
+        return []
+
     def blockers(self, is_open: bool) -> list[Segment]:
         """Segments that block walking; gates return theirs while not open."""
         return []

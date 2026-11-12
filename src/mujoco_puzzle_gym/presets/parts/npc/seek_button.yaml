@@ -1,0 +1,5 @@
+# Helper robot (R29): when its inputs turn on (`in`) it drives onto `button` and
+# stays there; off, it stops. A co-op device: it holds a button for the body.
+# Set: pos, button, in.
+type: npc
+behavior: seek_button

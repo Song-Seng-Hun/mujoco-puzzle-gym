@@ -1,0 +1,7 @@
+# Fleeing robot (R29): runs straight away from the body within `sense`, slides
+# along walls when blocked. Herd it onto a button (`demo: herd <name> <button>`).
+# Set: pos, leash, speed (below the body's 0.16 m/s), sense.
+type: npc
+behavior: flee
+speed: 0.08
+sense: 0.4

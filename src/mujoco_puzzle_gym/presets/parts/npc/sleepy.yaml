@@ -1,0 +1,8 @@
+# Sleepy robot (R29): drives round `path` for `awake` seconds, then stands still
+# for `asleep` seconds, again and again. For timing puzzles.
+# Set: pos, path, awake, asleep.
+type: npc
+behavior: sleepy
+path: [[0.0, 0.0], [0.4, 0.0]]
+awake: 2.0
+asleep: 2.0

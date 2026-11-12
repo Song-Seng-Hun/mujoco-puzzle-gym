@@ -5,6 +5,9 @@ component of the contact forces between the plate and the bodies `trigger`
 counts (default objects only, so standing on it does not solve a weight
 puzzle), divided by g. Objects the walking body holds do not count.
 
+NPC robots (R29) have no vertical joint and press nothing on the floor, so a
+robot whose centre is over the plate adds its `mass` when `trigger` counts npc.
+
 It reads the forces at `update` time, not the peak over the physics steps in
 between: a peak reads a 30 g cube dropped from 5 cm as 0.35 kg (spec R5), so
 it does not use the `substep` hook.
@@ -18,6 +21,7 @@ import numpy as np
 from ... import markers
 from ...schema import Field
 from ..base import TRIGGERS, Part
+from ._sense import in_rect
 
 THICK = 0.004        # plate top above the floor [m]
 OFF_RGBA = (0.55, 0.55, 0.6, 1.0)
@@ -87,7 +91,12 @@ class PressurePlate(Part):
             mujoco.mj_contactForce(model, data, i, self._f)
             force = c.frame.reshape(3, 3).T @ self._f[:3]
             total += abs(force[2])
-        return total / abs(model.opt.gravity[2])
+        total /= abs(model.opt.gravity[2])
+        if "npc" in kinds:
+            for rid, owner in world.objects.items():
+                if world.kinds.get(rid) == "npc" and in_rect(data.xpos[rid], self.xy, self.half):
+                    total += owner.mass
+        return total
 
     def update(self, model, data, body):
         self.mass = self.load_mass(model, data)

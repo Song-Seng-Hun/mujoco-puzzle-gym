@@ -1,0 +1,7 @@
+# Following robot (R29): within `sense` it comes towards the body and stops
+# `keep` short. Lead it onto a button (`demo: herd <name> <button>`).
+# Set: pos, leash, sense, keep.
+type: npc
+behavior: follow
+sense: 0.8
+keep: 0.3
