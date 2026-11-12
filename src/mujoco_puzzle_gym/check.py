@@ -14,6 +14,12 @@ parts:     no part reports a static problem (`Part.check_static`: a ball too big
 overlap:   at the nominal layout no solid part geometry sits in a wall or in
            another part (`OVERLAP_DEPTH`; floor pads and doors in their wall gap
            do not count);
+actions:   the task actions cover what the plan needs (R19): `grab` when a cube
+           must be carried (a `grab` sub-goal in `demo:`, or an input in the
+           solution order that only a cube sets off), `head` when a wall button
+           the plan presses sits wholly below the level beak tip (the body's
+           `beak_height`); without them a policy can never do it. Checked after
+           `order`, on its solution order;
 (a) order: a signal path to a goal exists: a switch/door order that reaches a
            goal (link graph on the room grid), and every coin is reachable (R36);
            in letter-map rooms (R37) also: parts, spawn and their random ranges lie on
@@ -43,13 +49,15 @@ from .env import PuzzleEnv
 from .logic import free_mask, solution_order
 from .parts.base import BODY_PREFIX
 from .parts.floor.coin import unreachable_coins
+from .parts.object.cube import Cube, takes
+from .parts.base import TRIGGERS
 from . import community as community_mod
 from .room import RoomError
 from .solver import ScriptedSolver, run_episode
 
 STABILITY_SECONDS = 10.0
 LOAD_STAGES = ("values", "channels", "demo")
-STATIC = ("community", *LOAD_STAGES, "body", "parts", "overlap", "order")   # community: --community only
+STATIC = ("community", *LOAD_STAGES, "body", "parts", "overlap", "order", "actions")   # community: --community only
 DYNAMIC = ("stability", "solver")
 STAGES = STATIC + DYNAMIC
 OVERLAP_DEPTH = 0.005    # [m] penetration that counts as an overlap
@@ -247,6 +255,31 @@ def check_solver(env: PuzzleEnv, seeds: int = 20, need: int = 18,
     return res
 
 
+def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
+    """Static: task actions the plan needs (R19). `grab`: a `grab` sub-goal, or a part
+    in `order` that a cube sets off and the body cannot; `head`: a wall button in
+    `order` (or a `press` sub-goal) whose top edge is below the level beak tip."""
+    demo = list(getattr(env.room, "demo", []) or [])
+    cubes = [p for p in env.parts.values() if isinstance(p, Cube)]
+    why = []
+    if "grab" not in env.actions:
+        need = [e[1] for e in demo if e[0] == "grab"]
+        need += [n for n in order if any(takes(env.parts[n], c) for c in cubes)
+                 and "body" not in TRIGGERS.get(getattr(env.parts[n], "trigger", None), ())]
+        if need:
+            why.append(f"{sorted(set(need))} need the beak grab but the task actions {env.actions} "
+                       "have no `grab`")
+    level = env.body.capabilities.values.get("beak_height")
+    if "head" not in env.actions and level is not None:
+        pressed = set(order) | {e[1] for e in demo if e[0] == "press"}
+        low = [n for n in sorted(pressed) if getattr(env.parts[n], "mount", None) == "wall"
+               and env.parts[n].cfg["height"] + env.parts[n].half[1] < level]
+        if low:
+            why.append(f"wall buttons {low} are below the level beak tip ({level} m) but the task "
+                       f"actions {env.actions} have no `head`")
+    return {"ok": not why, "actions": list(env.actions), **({"reason": "; ".join(why)} if why else {})}
+
+
 def check_static(env: PuzzleEnv) -> dict[str, Any]:
     """The static stages after the room loaded (values, channels and demo passed)."""
     out: dict[str, Any] = {k: {"ok": True} for k in LOAD_STAGES}
@@ -254,6 +287,7 @@ def check_static(env: PuzzleEnv) -> dict[str, Any]:
     out["parts"] = check_parts(env)
     out["overlap"] = check_overlap(env)
     out["order"] = check_order(env)
+    out["actions"] = check_actions(env, out["order"]["order"])
     return out
 
 
@@ -308,7 +342,7 @@ def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
             result["solver"] = check_solver(env, seeds, need, snap_dir)
         else:
             why = {"order": "no solution order (a)", "body": "missing body capabilities",
-                   "parts": "part static check"}.get(failed[0], f"static stage {failed[0]} failed")
+                   "parts": "part static check", "actions": "task actions miss what the plan needs"}.get(failed[0], f"static stage {failed[0]} failed")
             result["solver"] = {**skipped, "skipped": why}
     _summary(result)
     result["wall_seconds"] = round(time.perf_counter() - t0, 1)

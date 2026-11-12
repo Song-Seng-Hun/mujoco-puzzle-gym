@@ -23,6 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SWITCH_DOOR = ROOT / "examples/switch_door.yaml"
 MINI_SOCCER = ROOT / "examples/rooms/mini_soccer.yaml"
 EXAMPLES = [SWITCH_DOOR, *sorted((ROOT / "examples/rooms").glob("*.yaml"))]
+#: Example rooms that need task actions beyond `move` (check stage `actions`, R19).
+TASKS = {"cube_plate": ROOT / "examples/task_cube_plate.yaml"}
 
 
 def write_room(tmp_path, raw, name="room.yaml") -> Path:
@@ -63,7 +65,7 @@ def test_broken_room_through_cli(asset_dir):
 # ---- static phase -----------------------------------------------------------------------
 @pytest.mark.parametrize("room", EXAMPLES, ids=lambda p: p.stem)
 def test_example_rooms_pass_static_phase(asset_dir, room):
-    res = check(room, static_only=True)
+    res = check(room, task=TASKS.get(room.stem), static_only=True)
     assert res["ok"] and res["static"] == {"ok": True, "failed": []}, res
     assert res["dynamic"]["skipped"] and "solver" not in res
 
@@ -214,6 +216,6 @@ def test_trapdoor_over_the_only_way_fails_order(asset_dir, tmp_path):
 @pytest.mark.slow
 @pytest.mark.parametrize("room", EXAMPLES, ids=lambda p: p.stem)
 def test_example_rooms_pass_check(asset_dir, room):
-    res = check(room)
+    res = check(room, task=TASKS.get(room.stem))
     assert res["ok"] and res["static"]["ok"] and res["dynamic"]["ok"], res
     assert res["solver"]["seeds"] == 20 and res["solver"]["successes"] >= 18

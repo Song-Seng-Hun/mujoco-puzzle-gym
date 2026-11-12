@@ -255,6 +255,11 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
    - `lure` 계획과 다른 점:
      - 미끼가 잡을 수 있는 물체(손잡이가 있는 부품)인 `lure`만 몰 수 있다(`behaviors.can_herd`). 아니면 `herd`를 거절하고 로봇용 입력도 발판으로 올리지 않는다.
      - 몰기에서 `lure`는 몸이 아니라 문 미끼가 이끄는 점으로 가고, 기다릴 때 로봇 쪽으로 돌지 않고 선다(돌면 미끼가 휘둘림). `follow`·`lure` 모두 로봇이 `sense` 밖으로 처지면 그쪽으로 걸어 돌아간다(전에는 서서 기다려 끝나지 않았다).
+   - 14–16단계 리뷰 반영 (2026-11-12, 사용자 승인 5건, 빠른 714 passed·1 skipped, slow `grab|button|cube|npc|examples|check2` 21 passed):
+     - 워프(R14): 몸이 워프할 때 물고 있는 큐브도 머리에 대한 자세를 지켜 함께 옮기고 속도를 0으로 둔다(`env.warp`, 위치 지정·`next_stage` 공통). 시험: 잡은 채 워프 → 함께 옮겨지고 계속 잡혀 있음.
+     - 행동(R19, R20): 16단계의 "스크립트 해답이 머리·잡기를 env에 직접 넣는다"를 없앴다. 기본 `actions: [move]`로는 정책이 큐브를 잡을 수 없는데 `mpg check`는 통과했기 때문이다. 정적 단계 `actions`를 더해 큐브를 옮겨야 하는데 `grab`이 없거나, 풀이가 누르는 벽 버튼 판 윗변이 머리를 든 부리 끝(몸 값 `beak_height` 0.21 m)보다 낮은데 `head`가 없으면 실패한다. `cube_plate`는 `examples/task_cube_plate.yaml`(`[move, head, grab]`)로 점검한다. 이 task로 돌리니 해답이 16/20이었다(옛 코드에 같은 task를 줘도 16/20). 놓은 뒤 제자리 오른쪽 돌기가 시작되지 않아 멈췄다(seed 11). 물러날 때 천천히 걸으며 돌게 고쳐(`carry._walk_off`) 20/20.
+     - 벽 버튼(R4): 판 앞은 6 cm, 판 뒤는 판 두께 + 1 cm까지만 눌림으로 센다. 얇은 벽 건너편 부리 끝은 누르지 못한다(시험 추가).
+     - 큐브 시험을 spec R17 Check대로 `tests/test_cube.py`로 옮겼다(15단계 "계획과 다른 점" 첫 줄은 이제 맞지 않음). 리셋하면 잡기가 풀리는 시험(`eq_active`, `World.held`, `beak.holding`)을 더했다.
 16b. 부리 기믹 프리셋(R28): 집을 물체 6종, 부리 장치 8종, `demo:`에 turn·pull 하위 목표 추가. 뒤로 걷지 않는 제약에 맞춰 당기기 방향을 정한다. `lever`와 `receptacle`의 걸이·바구니 프리셋도 여기서 만든다. 예제 `turret.yaml`. (7b단계에서 넘어온 일: `demo:`에 `look` 명령을 더해 `.seen` 문이 있는 방도 풀이가 통과하게 한다. 지금은 그런 방이 `order` 단계에서 실패한다.)
 16c. 애드온 장착대(R30): 먼저 공식 바퀴 모델과 합친 모델에서 `roller.onnx`를 나란히 돌려 OQ7을 정한다(자산 추가 받기는 사용자 승인 후). 그다음 장착대, 모드 전환, `crouch` 행동, 예제 `roller_rink.yaml`. `set_addon` 순서와 리셋·복원 경로, `crouch` 최소 속도, 바퀴 퍼즐 조립 프리셋 9종, 예제 `roller_route.yaml`.
 16d. 견인 끈(R31): 먼저 OQ9를 잰다(빈 방에서 썰매 질량·마찰을 올려 가며 velstand 넘어짐과 속도, 장력 기록). 그다음 `rope.py`(매듭, tendon, `connect` 구속, 채널), 부리 묶기·풀기, 끊어짐, `hitch_station`, 저장본·리셋 경로, 정적 점검 경고(문 폭, 꺾임, 질량), `tow`/`untow` 하위 목표, 프리셋 8종, 예제 `tow_yard.yaml`. 구속은 사이트 두 개 `connect`, 붙이기는 매듭 이동·속도 0 → `eq_active` 순서. 워프는 끈 묶음 전체, 고정 끝 끈은 먼저 풂. 매듭 고리 손잡이. NPC 목줄은 구동 이득 0. 매듭 20 g 이상·바닥만 충돌·트리거 제외, `reel_speed`, 순간이동·`set_addon` 전 끈 처리, `rope_door`.  NPC 끈 워프는 평면 관절 값으로, 이득·활동 영역은 끈 상태에서 다시 계산. `attach_failed`.

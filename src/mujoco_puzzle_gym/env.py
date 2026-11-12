@@ -63,6 +63,7 @@ import mujoco
 import numpy as np
 
 from . import curriculum, snapshot
+from .grab import BEAK_PART
 from .bodies import DEFAULT_BODY, BodyState, make_body
 from .layout import Grid
 from .logic import free_mask, solution_order
@@ -254,9 +255,27 @@ class PuzzleEnv(gym.Env):
             d.qvel[va + 3:va + 6] = 0.0
 
     def warp(self, key, pose) -> None:
-        """Move the walking body (key "body") or a free body (root body id) to `pose`."""
+        """Move the walking body (key "body") or a free body (root body id) to `pose`.
+        A cube the beak holds goes along, keeping its pose to the head (R14, R18)."""
         if key == "body":
+            beak = self.parts.get(BEAK_PART)
+            held = beak.objects[beak.held] if beak is not None and beak.held is not None else None
+            if held is None:
+                self._place_body(pose)
+                return
+            d, h, b = self.data, beak._head, held._bid
+            rot_h = d.xmat[h].reshape(3, 3)
+            rel = rot_h.T @ (d.xpos[b] - d.xpos[h])
+            q_rel = np.zeros(4)
+            mujoco.mju_mulQuat(q_rel, np.array([d.xquat[h][0], *-d.xquat[h][1:]]), d.xquat[b])
             self._place_body(pose)
+            mujoco.mj_forward(self.model, d)
+            jnt = int(self.model.body_jntadr[b])
+            qa, va = int(self.model.jnt_qposadr[jnt]), int(self.model.jnt_dofadr[jnt])
+            d.qpos[qa:qa + 3] = d.xpos[h] + d.xmat[h].reshape(3, 3) @ rel
+            mujoco.mju_mulQuat(d.qpos[qa + 3:qa + 7], d.xquat[h].copy(), q_rel)
+            d.qvel[va:va + 6] = 0.0
+            mujoco.mj_forward(self.model, d)
             return
         owner = self.world.objects.get(int(key))
         if getattr(owner, "planar", False):          # NPC robot: its slide joints (R29)
@@ -458,15 +477,11 @@ class PuzzleEnv(gym.Env):
 
     def scripted_action(self, move, head: float = -1.0, grab: float = -1.0) -> np.ndarray:
         """The env action for a scripted move (3 values) with head / grab values in
-        action units; those the task has no action for are set directly."""
+        action units; those the task has no action for are dropped, so the solver
+        can do only what a policy can (`mpg check` stage `actions`)."""
         extra = {"head": head, "grab": grab}
-        out = np.array([*np.asarray(move, dtype=np.float32)[:3],
-                        *[extra[n] for n in self.actions[1:]]], dtype=np.float32)
-        if "head" not in self.actions:
-            self.body.set_head((head + 1.0) / 2.0)
-        if "grab" not in self.actions:
-            self.world.grab = float(grab)
-        return out
+        return np.array([*np.asarray(move, dtype=np.float32)[:3],
+                         *[extra[n] for n in self.actions[1:]]], dtype=np.float32)
 
     def step(self, action):
         on_before = {n for n, p in self.parts.items() if p.role == "switch" and p.satisfied()}

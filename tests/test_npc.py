@@ -428,7 +428,7 @@ def test_herd_leads_a_lure_robot_with_the_held_bait(asset_dir, tmp_path):
            "demo": ["grab bait", "herd bot pad"]}
     path = tmp_path / "lure_herd.yaml"
     path.write_text(yaml.safe_dump(raw))
-    env = PuzzleEnv(room=path)
+    env = PuzzleEnv(task={"actions": ["move", "head", "grab"]}, room=path)
     assert env.parts["pad"].role == "switch"
     for seed in range(3):
         res = run_episode(env, seed, ScriptedSolver(env))

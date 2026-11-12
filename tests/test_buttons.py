@@ -124,6 +124,16 @@ def test_wall_plate_too_high_or_beside_is_not_pressed(make):
     assert env2.signals.get("btn") == 0
 
 
+def test_wall_plate_not_pressed_from_behind_a_thin_wall(make):
+    """R4: behind the face only plate thickness + 1 cm counts (the plate faces -x)."""
+    env = make([wall_button(0.21)])
+    on, _ = wall_spots(env)                             # tip 1 cm in front of the wall face
+    stand_at(env, on[0] + 0.015, on[1])                 # tip 0.5 cm into the wall: pressed
+    assert env.signals.get("btn") == 1
+    stand_at(env, on[0] + 0.04, on[1])                  # tip 3 cm behind: across a thin wall
+    assert env.signals.get("btn") == 0
+
+
 @pytest.mark.slow
 def test_solver_lowers_the_head_to_press_a_low_wall_plate(tmp_path, asset_dir):
     """R19: plate centre 0.15 m up (the level tip is at 0.21 m), `head` in the actions."""

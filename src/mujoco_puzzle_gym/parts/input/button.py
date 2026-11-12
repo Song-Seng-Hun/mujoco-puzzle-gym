@@ -16,7 +16,8 @@ press held while power returns is not a new press).
 `height` above the floor at `pos` (a point on the wall face), facing `facing`
 degrees (0 = +x, the side the body stands on). It is pressed while the beak
 tip (`BodyAdapter.grab_site`) is over the plate and at most PRESS_DEPTH in
-front of it (or up to PRESS_DEPTH behind its face: the tip may sink into it);
+front of it, or behind its face by no more than the plate thickness + BEHIND
+(the tip may sink into it, but a tip behind a thin wall does not press);
 `trigger` does not apply. The plate does not collide. Planning: the body
 stands STAND in front of it; the scripted solver walks up to it facing the
 wall and lowers the head to the plate height (solver.py). Measured (OQ2,
@@ -41,7 +42,8 @@ OFF_RGBA = (0.9, 0.35, 0.2, 1.0)
 ON_RGBA = (0.2, 0.8, 0.3, 1.0)
 KINDS = ("momentary", "oneshot", "toggle")
 THICK = 0.006        # [m] wall plate: how far it stands off the wall
-PRESS_DEPTH = 0.06   # [m] wall plate: the beak tip this far in front of (or behind) its face presses it
+PRESS_DEPTH = 0.06   # [m] wall plate: the beak tip this far in front of its face presses it
+BEHIND = 0.01        # [m] wall plate: ... and this far behind the wall face (plate thickness + BEHIND behind its face)
 STAND = 0.12         # [m] wall plate: body centre this far in front of it (planning)
 
 
@@ -139,7 +141,7 @@ class Button(Part):
         out = float(d @ self.normal)
         side = float(d @ np.array([-self.normal[1], self.normal[0]]))
         top = float(data.xpos[self._bid][2]) + float(self.cfg["height"])
-        return (-PRESS_DEPTH <= out - THICK <= PRESS_DEPTH and abs(side) <= self.half[0]
+        return (-(THICK + BEHIND) <= out - THICK <= PRESS_DEPTH and abs(side) <= self.half[0]
                 and abs(tip[2] - top) <= self.half[1])
 
     def stand_xy(self) -> np.ndarray:

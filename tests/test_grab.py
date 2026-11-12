@@ -1,5 +1,5 @@
-"""R18 beak grab (weld) and the `beak` obs item, R17 cube with pressure plate and socket,
-R6 snapshot while holding.
+"""R18 beak grab (weld) and the `beak` obs item, R6 snapshot while holding, R14 warp
+and reset while holding. The cube's own tests (R17) are in test_cube.py.
 
 The cube is put with a handle at the beak tip (or near it) instead of walking
 up to it; the scripted `grab` sub-goal is tested with the example room (slow).
@@ -9,8 +9,6 @@ import mujoco
 import numpy as np
 import pytest
 from rooms import body_steps, open_room
-
-from mujoco_puzzle_gym.room import RoomError
 
 
 @pytest.fixture
@@ -44,46 +42,6 @@ def grab(env, on=True, seconds=0.04):
 
 
 CUBE = {"name": "c", "type": "cube", "pos": [0.8, 0.8]}
-
-
-# ---- R17 cube -----------------------------------------------------------------------------
-def test_cube_mass_and_handles(make):
-    env = make([{**CUBE, "mass": 0.04, "handles": ["+x", "+z"]}])
-    m, c = env.model, env.parts["c"]
-    assert m.body_subtreemass[c._bid] == pytest.approx(0.04)
-    names = {m.geom(i).name for i in range(m.ngeom) if m.geom(i).name.startswith("part/c/handle")}
-    assert names == {"part/c/handle+x", "part/c/handle+z"}
-    pts = c.handle_points(env.data) - c.pos(env.data)
-    assert pts[0][0] > 0.02 and pts[1][2] > 0.02          # +x knob sticks out along x, +z up
-
-
-def test_cube_rejects_unknown_face(tmp_path, asset_dir):
-    with pytest.raises(RoomError, match="handles"):
-        open_room(tmp_path, [{**CUBE, "handles": ["+q"]}])
-
-
-@pytest.mark.parametrize("mass, on", [(0.02, 0), (0.04, 1)])
-def test_pressure_plate_with_cube(make, mass, on):
-    env = make([{"name": "plate", "type": "pressure", "pos": [0.5, 0.0], "size": [0.2, 0.2],
-                 "min_mass": 0.03}, {**CUBE, "mass": mass}])
-    env.parts["c"].put(env.data, [0.5, 0.0, 0.05])
-    body_steps(env, 0.6)
-    assert env.signals.get("plate") == on
-
-
-def test_socket_takes_the_cube_once_let_go(make):
-    env = make([{"name": "s", "type": "receptacle", "shape": "plate", "pos": [0.6, 0.0],
-                 "size": [0.12, 0.12], "tolerance": 0.04, "accept": ["c"]}, CUBE])
-    to_beak(env, "c")
-    grab(env)
-    assert env.signals.get("beak.holding") == 1
-    c = env.parts["c"]
-    hold = c.pos(env.data)
-    env.parts["s"].place(env.model, hold[:2])            # the socket right under the held cube
-    body_steps(env, 0.3)
-    assert env.signals.get("s.ok") == 0                    # held: not in (R5)
-    grab(env, on=False, seconds=0.8)
-    assert env.signals.get("s.ok") == 1
 
 
 # ---- R18 grab --------------------------------------------------------------------------
@@ -166,3 +124,31 @@ def test_beak_obs_item(make):
     to_beak(env, "c")
     grab(env)
     assert beak(env)[:2].tolist() == [1.0, 1.0]                # holding a cube (kind 1)
+
+
+def test_warp_carries_the_held_cube(make):
+    """R14: a body warp takes the held cube along at the same pose to the head."""
+    env = make([CUBE])
+    to_beak(env, "c")
+    grab(env)
+    c, head = env.parts["c"], env.parts["_beak"]._head
+    def rel(e):
+        return e.data.xmat[head].reshape(3, 3).T @ (c.pos(e.data) - e.data.xpos[head])
+    r0 = rel(env)
+    env.warp("body", (0.6, -0.5, 1.2))
+    assert np.allclose(rel(env), r0, atol=1e-6)
+    assert np.hypot(*(c.pos(env.data)[:2] - [0.6, -0.5])) < 0.15
+    body_steps(env, 1.0)
+    assert env.signals.get("beak.holding") == 1 and np.all(np.isfinite(env.data.qpos))
+    assert np.linalg.norm(rel(env) - r0) < 0.02 and not env.body_state.fallen
+
+
+def test_reset_clears_the_hold(make):
+    env = make([CUBE])
+    to_beak(env, "c")
+    grab(env)
+    eq = env.parts["_beak"]._eq[0]
+    assert env.data.eq_active[eq] == 1
+    env.reset(seed=1)
+    assert env.data.eq_active[eq] == 0 and env.world.held == set()
+    assert env.parts["_beak"].held is None and env.signals.get("beak.holding") == 0

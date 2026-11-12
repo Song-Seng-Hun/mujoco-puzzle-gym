@@ -52,3 +52,35 @@ def test_head_and_grab_values_reach_the_body_and_beak(make):
 def test_bad_actions_are_rejected(asset_dir, repo_root, actions):
     with pytest.raises(TaskError, match="actions"):
         PuzzleEnv(task={"actions": actions}, room=repo_root / ROOM)
+
+
+# ---- `mpg check` stage `actions`: the task must have what the plan needs ----------------
+def test_check_asks_for_grab_in_a_cube_room(asset_dir, repo_root):
+    from mujoco_puzzle_gym.check import check
+
+    res = check(repo_root / ROOM, static_only=True)
+    assert res["failed"] == ["actions"] and "`grab`" in res["actions"]["reason"]
+    res = check(repo_root / ROOM, task=repo_root / "examples/task_cube_plate.yaml", static_only=True)
+    assert res["ok"], res
+
+
+@pytest.mark.parametrize("height, actions, ok", [(0.15, ["move"], False), (0.15, ["move", "head"], True),
+                                                 (0.21, ["move"], True)])
+def test_check_asks_for_head_for_a_low_wall_button(asset_dir, tmp_path, height, actions, ok):
+    import yaml
+
+    from mujoco_puzzle_gym.check import check
+
+    room = {"name": "wall_low", "size": [2.6, 1.8], "wall": {"thickness": 0.06, "height": 0.25},
+            "walls": [{"from": [0.3, -0.9], "to": [0.3, -0.2]}, {"from": [0.3, 0.2], "to": [0.3, 0.9]}],
+            "spawn": {"pos": [-0.6, 0.0], "yaw": 3.14},
+            "parts": [{"name": "btn", "type": "button", "mount": "wall", "pos": [-1.27, 0.0], "facing": 0,
+                       "height": height, "size": [0.12, 0.06], "kind": "oneshot"},
+                      {"name": "door", "type": "door", "pos": [0.3, 0.0], "width": 0.4, "axis": "y",
+                       "in": ["btn"]},
+                      {"name": "goal", "type": "goal", "pos": [0.9, 0.0], "radius": 0.12}]}
+    (tmp_path / "wall_low.yaml").write_text(yaml.safe_dump(room))
+    res = check(tmp_path / "wall_low.yaml", task={"actions": actions}, static_only=True)
+    assert res["actions"]["ok"] is ok and res["ok"] is ok, res
+    if not ok:
+        assert "`head`" in res["actions"]["reason"]

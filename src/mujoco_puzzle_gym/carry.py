@@ -182,7 +182,9 @@ class Carrier:
         if np.linalg.norm(off) > dist:
             return None
         c, s = math.cos(0.5), math.sin(0.5)              # a little to the left: no dithering at err = pi
-        return self.steer(here + np.array([c * off[0] - s * off[1], s * off[0] + c * off[1]]), 1.0)
+        act = self.steer(here + np.array([c * off[0] - s * off[1], s * off[0] + c * off[1]]), 1.0)
+        act[0] = max(act[0], SLOW)      # turn while walking slowly: an in-place turn may not start
+        return act                      # from the stance after letting go (cube_plate seed 11)
 
     def off_wall(self) -> np.ndarray | None:
         """After a wall press: walk off the wall (the planner cannot start against it)."""
