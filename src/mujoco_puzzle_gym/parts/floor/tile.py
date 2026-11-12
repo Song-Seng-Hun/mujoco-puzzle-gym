@@ -14,8 +14,9 @@ With `in` channels the tile moves between these (off) values and `on_friction`
 / `on_tilt` / `on_height` (on) values while the inputs are on, at
 `friction_rate` [1/s], `tilt_speed` [deg/s] and `height_speed` [m/s]. Tilt is a
 hinge joint and height a slide joint, each with a position actuator; a tile
-whose tilt and height never change has no joints. Friction is set on the geom
-directly.
+whose tilt and height never change (no signal, setter or bind on them, R13) has
+no joints. Friction is set on the geom directly. A setter or bind changing a
+value moves the tile to it at the same rates.
 
 The top height under a point (fall rule, R10) comes from these values (the
 joints' current positions), not from rays.
@@ -36,6 +37,8 @@ from ..base import Part
 MAX_TILT = 13.0      # deg; OQ5: walking down 15 deg fell 3/5, up to 13 deg none
 MAX_HEIGHT = 0.1     # m
 TILE_MASS = 2.0      # kg, with gravity compensation (the actuators hold loads only)
+KEYS = ("friction", "tilt", "height")
+RATES = {"friction": "friction_rate", "tilt": "tilt_speed", "height": "height_speed"}
 
 
 class FloorPart(Part):
@@ -99,15 +102,34 @@ class FloorTile(FloorPart):
     def __init__(self, name, cfg):
         super().__init__(name, cfg)
         c = self.cfg
-        self.off = {"friction": np.asarray(c["friction"], float), "tilt": float(c["tilt"]),
-                    "height": float(c["height"])}
-        self.on = {k: (np.asarray(c["on_" + k], float) if k == "friction" else float(c["on_" + k]))
-                   if c["on_" + k] is not None else self.off[k] for k in self.off}
-        self.rate = {"friction": float(c["friction_rate"]), "tilt": float(c["tilt_speed"]),
-                     "height": float(c["height_speed"])}
-        self.moves = {k: bool(self.inputs) and not np.allclose(self.on[k], self.off[k]) for k in self.off}
+        # A value gets a joint when the signal changes it, or a setter or bind may (R13).
+        self.moves = {k: (bool(self.inputs) and c["on_" + k] is not None
+                          and not np.allclose(c["on_" + k], c[k])) or k in self.binds
+                      for k in KEYS}
         self.axis = c["tilt_axis"]
         self.cur = {k: np.array(v, float) for k, v in self.off.items()}
+
+    # Off / on values and rates read the run-time values (R13 setters may change them).
+    @property
+    def off(self) -> dict[str, object]:
+        return {"friction": np.asarray(self.live["friction"], float), "tilt": float(self.live["tilt"]),
+                "height": float(self.live["height"])}
+
+    @property
+    def on(self) -> dict[str, object]:
+        off = self.off
+        return {k: (off[k] if self.live["on_" + k] is None else
+                    np.asarray(self.live["on_" + k], float) if k == "friction" else float(self.live["on_" + k]))
+                for k in KEYS}
+
+    @property
+    def rate(self) -> dict[str, float]:
+        return {k: float(self.live[r]) for k, r in RATES.items()}
+
+    def claim_value(self, key):
+        for k in KEYS:
+            if key in (k, "on_" + k):
+                self.moves[k] = True
 
     # ---- scene ------------------------------------------------------------------
     def _hinge_axis(self) -> list[float]:
@@ -167,14 +189,15 @@ class FloorTile(FloorPart):
 
     # ---- runtime ----------------------------------------------------------------
     def update(self, model, data, body):
-        if not self.enabled() or not self.inputs:
+        if not self.enabled():
             return
-        want = self.on if self.inputs_on() else self.off
+        want = self.on if self.inputs and self.inputs_on() else self.off
+        rate = self.rate
         dt = self.bus.dt
-        for key in self.off:
-            if not self.moves[key]:
+        for key in KEYS:
+            if key != "friction" and key not in self._j:
                 continue
-            cur, tgt, step = self.cur[key], np.asarray(want[key], float), self.rate[key] * dt
+            cur, tgt, step = self.cur[key], np.asarray(want[key], float), rate[key] * dt
             d = tgt - cur
             self.cur[key] = np.where(np.abs(d) <= step, tgt, cur + np.sign(d) * step)
             if key == "friction":
@@ -203,10 +226,11 @@ class FloorTile(FloorPart):
 
     def state(self):
         fr = []
-        for key in self.off:
-            if self.moves[key]:
-                span = np.abs(np.asarray(self.on[key]) - np.asarray(self.off[key])).max()
-                fr.append(float(np.abs(self.cur[key] - self.off[key]).max() / span))
+        on, off = self.on, self.off
+        for key in KEYS:
+            span = np.abs(np.asarray(on[key]) - np.asarray(off[key])).max()
+            if self.moves[key] and span > 0:
+                fr.append(float(np.abs(self.cur[key] - off[key]).max() / span))
         return float(np.clip(np.mean(fr), 0.0, 1.0)) if fr else 0.0
 
     def save_state(self):

@@ -84,3 +84,20 @@ def tick(env):
     mujoco.mj_forward(env.model, env.data)
     env.body_state = env.body.state(env.data)
     env.signals.step(env.model, env.data, env.body_state)
+
+
+def body_steps(env, seconds, cmd=None, every=None):
+    """Body steps for `seconds` as `env.advance` runs them (requests included);
+    `every(env)` after each. Returns True if the body fell at some step."""
+    cmd = np.zeros(3) if cmd is None else cmd
+    fell = False
+    for _ in range(int(round(seconds / env.body.control_dt))):
+        env.body.step(env.data, cmd, on_substep=env._on_substep)
+        env.signals.step(env.model, env.data, env.read_body())
+        if env.world.requests:
+            env._run_requests()
+        env.body_state = env.read_body()
+        fell |= bool(env.body_state.fallen)
+        if every is not None:
+            every(env)
+    return fell

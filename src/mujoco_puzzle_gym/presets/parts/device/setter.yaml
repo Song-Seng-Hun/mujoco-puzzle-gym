@@ -1,0 +1,5 @@
+# Setter (R13): on the rising edge of its inputs sets `target: <part>.<value>`
+# to `value` (revert: true puts it back when they turn off). Only run-time
+# values (`mpg parts`: 실행 중 변경). Set: in, target, value.
+type: setter
+revert: false

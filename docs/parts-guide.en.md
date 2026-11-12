@@ -7,7 +7,7 @@ A puzzle room is assembled from parts. This document covers how parts connect th
 ## Parts, presets and assembly presets
 
 - A **part** is one line in `parts:` of `room.yaml`. It is made of a type (`type`) and its values. Each type fixes the values it accepts with their units, defaults and allowed ranges (the value schema); `mpg build` and `mpg check` reject out-of-range values and give the reason and the range.
-- A **part preset** is one part type with a set of default values. It has no code. Presets live in `src/mujoco_puzzle_gym/presets/parts/<category>/<name>.yaml`, and the categories are `input` (buttons, sensors), `logic` (gates, counters, transceivers), `device` (doors, warps, goal nets), `floor`, `trap`, `object`, `beak` and `npc`. `beak` and `npc` are still empty.
+- A **part preset** is one part type with a set of default values. It has no code. Presets live in `src/mujoco_puzzle_gym/presets/parts/<category>/<name>.yaml`, and the categories are `input` (buttons, sensors), `logic` (gates, counters, transceivers), `device` (doors, warps, goal nets, platforms, pillars, turntables, conveyors, springs, setters), `floor`, `trap`, `object`, `beak` and `npc`. `beak` and `npc` are still empty.
 - An **assembly preset** bundles several parts, or is a whole room. Assembly presets live in `presets/puzzles/<topic>/<name>.yaml`.
 
 `mpg parts --json` lists the registered parts, their value schemas and the presets. To include your own parts, add `--plugin my_parts`.
@@ -70,6 +70,15 @@ Parts send and receive signals through named channels.
 
 What expressions can use: channel names (a dotted name like `laps.count` is also one channel), numbers, `and or not xor`, comparisons (`< <= > >= == !=`), parentheses, and the functions `delay(x, s)`, `hold(x, s)`, `pulse(x)`, `latch(set, reset)`, `count(x)` and `timer(x)`. Arithmetic, attribute access, calls to other functions and strings are rejected when the room is loaded. Expressions are parsed with `ast`, checked against an allow list and evaluated by this package itself, so opening a room file someone else made does not run any code.
 
+## Moving devices and setters
+
+- Platform (`platform`, presets `device/moving_platform`, `device/elevator`): follows `path: [[dx, dy, z], ...]`, measured from `pos` (z is the top face height), at `speed`. `mode` is `loop`, `pingpong` or `once`; `run` is `always`, `while_signal` (while the signal is on) or `on_signal` (one trip per turn-on). It moves on slide joints with position actuators, so objects on it ride along.
+- Lift pillar (`pillar`), turntable (`turntable`), conveyor (`conveyor`): while the signal is on they rise, spin, or move the body and objects on the belt at belt speed. The conveyor belt is drawn on the floor, so its friction is the floor's.
+- Spring (`spring`, preset `device/spring_pad`): gives what is on the pad the velocity `velocity` [vx, vy, vz]. The preset launches objects only (`trigger: object`).
+- Setter (`setter`): when the signal turns on it sets `target: <part>.<value>` to `value`; with `revert: true` it puts the old value back when the signal turns off. Only values marked "yes" under "Runtime change" in the tables below can be targets; size values such as a door's width are rejected when the room loads.
+- Value binding `bind`: a value every part takes. `bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}` maps a channel linearly onto a number value that can change while running, clipped to the value's range every body step. A value changed by both a `bind` and a setter is rejected.
+- Solution orders and the solver keep off platform and turntable cells and off pillars that will rise. Whether the body stays up riding them is outside what the walking policy learned, so it is only recorded. Record of 2026-11-12: no fall in 3 s on a platform at 0.1 and 0.3 m/s and on a belt at 0.1 and 0.2 m/s.
+
 ## Assembly examples
 
 All of these pass the solver stage of `mpg check` at least 18 times out of 20.
@@ -84,6 +93,7 @@ All of these pass the solver stage of `mpg check` at least 18 times out of 20.
 | `puzzles/ball/ball_ramp` | Push a ball on a high platform down a ramp (3.4°) into the goal net. The ramp is from the text map, within the walking body's 5° slope limit | text map |
 | `puzzles/ball/bowling` | Knocking down one of three pins with the ball (`<pin>.down`) opens the door | `ball`, `pin` |
 | `puzzles/ball/color_sort` | Sort balls into two goal nets by colour; a counter opens the door | `ball`, `goal_net`, `counter` |
+| [`examples/rooms/lift_spring.yaml`](../examples/rooms/lift_spring.yaml) | One button opens the door, sends the elevator up, and through a setter turns on the spring so a ball starts hopping | `device/elevator`, `device/spring_pad`, `device/setter`, `device/sliding_door` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | Two rooms, and stairs and a ramp, drawn as text maps | `button`, `door` |
 
 The ball assembly presets are whole rooms, so you can pass one to `mpg check` as is, or lay it down with `preset: puzzles/ball/bowling` and change values.
@@ -171,6 +181,7 @@ Below is the output of `mpg parts --markdown`. When parts change, replace this p
 | `out` | list |  | — |  |  | channels this part writes (default: its name if it emits) |
 | `enable` | str |  | — |  |  | power channel; off (<= 0.5) freezes the part's output |
 | `marker` | any |  | — |  |  | ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one |
+| `bind` | any |  | — |  |  | R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, applied every body step, clipped to the value's range |
 
 ### `ball`
 
@@ -243,6 +254,18 @@ Role `prop`, update stage `logic`.
 | `persist` | bool |  | `False` |  |  | keep the count when a snapshot is restored |
 | `group` | str |  | `coins` |  |  | coin group whose picks it counts |
 | `need` | int |  | — | [1, 10000] |  | coins needed to reach; `all` (default) = every coin of the group |
+
+### `conveyor`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.8, 0.3]` | [0.1, 5] |  | belt size [x, y] |
+| `axis` | enum |  | `x` | `x`, `y` |  | direction the belt runs along |
+| `speed` | float | m/s | `0.1` | [-0.5, 0.5] | yes | belt speed (+: toward +axis) |
+| `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it carries |
+| `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
 
 ### `counter`
 
@@ -340,6 +363,17 @@ Role `switch`, update stage `input`.
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
 
+### `pillar`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `mode` | enum |  | `follow` | `follow`, `oneshot` |  | follow: open while the signal is on; oneshot: stay open once opened |
+| `size` | vec | m | `[0.1, 0.4]` | [0.03, 2] |  | footprint [x, y] |
+| `height` | float | m | `0.25` | [0.05, 1] |  | top height when up |
+| `speed` | float | m/s | `0.2` | [0.01, 2] | yes | rising speed |
+
 ### `pin`
 
 Role `switch`, update stage `input`.
@@ -351,6 +385,19 @@ Role `switch`, update stage `input`.
 | `mass` | float | kg | `0.03` | [0.005, 2] |  |  |
 | `down_angle` | float | deg | `45.0` | [5, 90] |  | tilt from upright that counts as down |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
+
+### `platform`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `path` | any |  | required |  |  | [[dx, dy, z], ...] from `pos`: points the top centre follows (2 or more) |
+| `size` | vec | m | `[0.3, 0.3]` | [0.05, 2] |  | slab size [x, y] |
+| `thickness` | float | m | `0.03` | [0.01, 0.2] |  |  |
+| `speed` | float | m/s | `0.1` | [0.01, 1] | yes | speed along the path |
+| `mode` | enum |  | `pingpong` | `loop`, `pingpong`, `once` |  | loop: closed loop; pingpong: back and forth; once: to the end and stop |
+| `run` | enum |  | `always` | `always`, `while_signal`, `on_signal` |  | always; while_signal: while `in` is on; on_signal: one trip per rising edge |
 
 ### `pressure`
 
@@ -393,6 +440,29 @@ Role `sensor`, update stage `input`.
 | `wrong` | enum |  | `ignore` | `ignore`, `eject`, `lock`, `fail` |  |  |
 | `eject_speed` | float | m/s | `1.0` | [0.1, 5] |  |  |
 | `close_on_ok` | bool |  | `False` |  |  |  |
+
+### `setter`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | unused (a setter has no body) |
+| `target` | str |  | required |  |  | <part>.<value>: the run-time value to change |
+| `value` | any |  | required |  |  | new value (checked against the target value's schema) |
+| `revert` | bool |  | `False` |  |  | put the old value back when the signal turns off |
+
+### `spring`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.2, 0.2]` | [0.05, 2] |  | pad size [x, y] |
+| `velocity` | vec | m/s | `[0.0, 0.0, 1.5]` | [-5, 5] | yes | launch velocity [vx, vy, vz] (world frame) |
+| `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it launches |
+| `cooldown` | float | s | `1.0` | [0.1, 60] |  | time a launched body or object ignores this spring |
+| `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
 
 ### `swing_door`
 
@@ -443,6 +513,16 @@ Role `prop`, update stage `device`.
 | `hinge_side` | enum |  | `-x` | `-x`, `+x`, `-y`, `+y` |  | edge the tile hangs from |
 | `speed` | float | deg/s | `180.0` | [10, 2000] |  | opening speed |
 
+### `turntable`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `radius` | float | m | `0.25` | [0.05, 1.5] |  |  |
+| `height` | float | m | `0.008` | [0.004, 0.1] |  | top face above the floor |
+| `speed` | float | deg/s | `45.0` | [-360, 360] | yes | spin rate while on (+: counter-clockwise) |
+
 ### `warp`
 
 Role `warp`, update stage `device`.
@@ -474,12 +554,19 @@ Role `switch`, update stage `input`.
 
 | Preset | Part type | Values |
 |---|---|---|
+| `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
+| `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
+| `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
+| `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
+| `device/setter` | `setter` | `revert: False` |
 | `device/sliding_door` | `door` | `mode: follow`, `width: 0.5`, `axis: y` |
+| `device/spring_pad` | `spring` | `size: [0.2, 0.2]`, `velocity: [0.0, 0.0, 1.5]`, `trigger: object` |
 | `device/swing_door` | `swing_door` | `mode: follow`, `width: 0.5`, `axis: y`, `angle: 90.0` |
 | `device/trapdoor` | `trapdoor` | `size: [0.3, 0.3]`, `hinge_side: -x` |
+| `device/turntable` | `turntable` | `radius: 0.25`, `speed: 45.0` |
 | `floor/coin` | `coin` | `radius: 0.08`, `group: coins` |
 | `floor/rising_step` | `floor_tile` | `size: [0.3, 0.3]`, `height: 0.0`, `on_height: 0.01` |
 | `floor/tilt_bridge` | `floor_tile` | `size: [0.4, 0.3]`, `tilt: 0.0`, `on_tilt: 5.0` |

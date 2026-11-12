@@ -2,7 +2,8 @@
 
 from ..registry import register_part
 from .base import Part
-from .device import Door, GoalNet, SwingDoor, Trapdoor, Warp
+from .device import (Conveyor, Door, GoalNet, Pillar, Platform, Setter, Spring, SwingDoor,
+                     Trapdoor, Turntable, Warp)
 from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
@@ -34,8 +35,15 @@ register_part("coin_lock", CoinLock, replace=True)
 register_part("ball", Ball, replace=True)
 register_part("pin", Pin, replace=True)
 register_part("goal_net", GoalNet, replace=True)
+register_part("platform", Platform, replace=True)
+register_part("pillar", Pillar, replace=True)
+register_part("turntable", Turntable, replace=True)
+register_part("conveyor", Conveyor, replace=True)
+register_part("spring", Spring, replace=True)
+register_part("setter", Setter, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
            "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
            "SwingDoor", "Trapdoor", "Warp", "FloorTile", "Coin", "CoinGroup", "CoinLock",
-           "Ball", "Pin", "GoalNet"]
+           "Ball", "Pin", "GoalNet", "Platform", "Pillar", "Turntable", "Conveyor", "Spring",
+           "Setter"]

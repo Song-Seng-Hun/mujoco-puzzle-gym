@@ -45,7 +45,6 @@ class PressurePlate(Part):
     def __init__(self, name, cfg):
         super().__init__(name, cfg)
         self.half = np.asarray(self.cfg["size"], dtype=float) / 2
-        self.min_mass = float(self.cfg["min_mass"])
         self.trigger = self.cfg["trigger"]
         if "body" in TRIGGERS[self.trigger]:
             self.role = "switch"
@@ -94,7 +93,7 @@ class PressurePlate(Part):
         self.mass = self.load_mass(model, data)
         if not self.enabled():
             return
-        on = self.mass >= self.min_mass
+        on = self.mass >= self.live["min_mass"]
         if on != self.on:
             self.on = on
             model.geom_rgba[self._gid] = ON_RGBA if on else OFF_RGBA

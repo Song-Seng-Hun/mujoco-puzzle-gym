@@ -1,0 +1,7 @@
+# Lift pillar (R12): a block that rises out of the floor while its inputs are
+# on and becomes a wall (mode: oneshot keeps it up). Set: pos, size, in.
+type: pillar
+size: [0.1, 0.4]
+height: 0.25
+speed: 0.2
+mode: follow

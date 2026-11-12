@@ -1,0 +1,7 @@
+# Spring pad (R15): launches objects on it with `velocity` [vx, vy, vz] m/s
+# (while its inputs are on, if it has any). Objects only: a launched walking
+# body leaves the walking policy's training (set trigger: any to allow it).
+type: spring
+size: [0.2, 0.2]
+velocity: [0.0, 0.0, 1.5]
+trigger: object

@@ -14,6 +14,8 @@
 - A loop of channels through stateless parts only has no evaluation order and
   is rejected; a loop through a stateful part (delay, latch) is allowed, since
   the stateful part's output does not depend on this step's input.
+- A part's `bind` sources (R13, `Part.watch`) are reads too: the bus applies
+  them (`Part.apply_binds`) right before the part's update.
 - M1 `links: [{from, to}]` are channels: the link adds the source's channel to
   the target's `in` (room.py).
 
@@ -68,6 +70,8 @@ class SignalBus:
     def step(self, model: "mujoco.MjModel", data: "mujoco.MjData", body: "BodyState") -> None:
         """One body step: update every part once in evaluation order."""
         for part in self.order:
+            if part.binds:
+                part.apply_binds(model, data)
             part.update(model, data, body)
 
     def snapshot(self) -> dict[str, float]:
@@ -78,7 +82,7 @@ class SignalBus:
 
 
 def _reads(part: "Part") -> list[str]:
-    return list(part.inputs) + ([part.enable] if part.enable else [])
+    return list(part.inputs) + ([part.enable] if part.enable else []) + list(part.watch)
 
 
 def _find_stateless_cycle(parts: dict[str, "Part"], edges: dict[str, list[str]]) -> list[str] | None:
