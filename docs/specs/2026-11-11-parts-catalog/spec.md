@@ -1,5 +1,5 @@
 # Spec: mujoco-puzzle-gym 마일스톤 2 (부품 카탈로그, 신호, 체크포인트, 단계별 학습)
-Status: approved 2026-11-12 (E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
+Status: approved 2026-11-12 (E3b-2 measurements: R28 `dial` pushed by spokes, `drawer` opened by a strap and in-place turn: "승인"; E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
 View (read-only copy): (아직 없음)
 
 근거
@@ -281,8 +281,8 @@ View (read-only copy): (아직 없음)
   - 부리로 다루는 장치 (`device`):
     - `wall_button_beak`: 부리 높이 벽 버튼. 높이에 따라 `low`(머리를 숙여야 함)와 `mid`(서서 닿음) 두 가지.
     - `pull_cord`: 천장이나 벽에서 늘어진 줄 끝 손잡이. 집고 정한 거리만큼 멀어지면 켜진다. 줄은 1D flexcomp로 만든다.
-    - `dial`: 바닥 다이얼. 손잡이를 집고 옆걸음과 회전을 섞어(vy+wz) 다이얼 둘레를 돌면 각도가 채널로 나간다. 다이얼 축이 오리 중심 아래에 있지 않아 제자리 회전으로는 손잡이가 빠지기 때문이다. 목표 각도 범위 안이면 1.
-    - `drawer`: 벽과 나란히 미끄러져 열리는 서랍. 손잡이를 집고 옆걸음(vy)으로 열린다. 안에 물체를 넣어 둘 수 있다.
+    - `dial`: 바닥 다이얼. 축에서 뻗은 살(높이 0.07–0.12 m, 발은 아래로 지나감)을 몸이 축 옆 약 0.10 m 선으로 앞으로 걸어 지나가며 밀면 한 칸(살 4개면 90°)씩 한 방향으로 돈다. 다시 돌리려면 시계 방향으로 걸어 돌아와 같은 쪽으로 다시 지나간다. 칸 번호가 `angle` 채널로 나가고, 목표 칸 범위 안이면 1. (E3b-2 측정: 물고 vy+wz로 도는 방식은 0.14–1초 만에 손잡이가 빠져 바꿨다.)
+    - `drawer`: 받침 높이(0.17 m)의 서랍. 앞판에 무게 없는 띠(약 6 cm)와 손잡이가 달려 있어, 손잡이를 물고 제자리에서 시계 방향으로 돌면 열린다. 다 열리면 열린 채로 걸리고 띠 손잡이는 더 잡히지 않는다. 안의 물체는 서랍과 함께 나와 부리 높이에 온다. (E3b-2 측정: 옆걸음으로 여는 방식은 9% 넘게 열지 못해 바꿨다.)
     - `hook`: 물체를 걸면 켜지는 걸이. `receptacle`(R5)의 프리셋이다.
     - `basket`: 넣은 물체의 개수나 무게를 채널로 낸다. 빨래 바구니 퍼즐에 쓴다. `receptacle`(R5)의 프리셋이다.
     - `lever`: 한 축으로 도는 레버. 각도를 `<이름>.angle`(-1~1)로 낸다.
@@ -300,7 +300,7 @@ View (read-only copy): (아직 없음)
     - `scale`: 올린 질량을 수로 내는 저울. 압력판(R5)의 수 출력판이다.
   - 걸음 제약 반영:
     - 현재 위층 행동은 뒤로 걷지 않는다(M1 어댑터, vx 0.25–0.4).
-    - 그래서 "당기는" 장치중 `pull_cord`는 집은 뒤 제자리에서 돌아 앞으로 걸어가며 당긴다(줄은 휘어서 따라온다). 미끄럼 축이 고정된 `drawer`는 돌지 않고 옆걸음으로 연다.
+    - 그래서 "당기는" 장치중 `pull_cord`는 집은 뒤 제자리에서 돌아 앞으로 걸어가며 당긴다(줄은 휘어서 따라온다). `drawer`는 띠 손잡이를 물고 제자리에서 시계 방향으로 돌아 연다.
     - 이 방식은 가이드에 그림과 함께 적는다.
   - 빨래 옮기기 데모 방 `examples/rooms/laundry.yaml`: 바닥의 빨래 2장을 집어 바구니에 넣으면 문이 열린다.
   - Check:
