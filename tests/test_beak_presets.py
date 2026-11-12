@@ -1261,6 +1261,24 @@ def test_gate_dispenser_room_passes_the_static_check(asset_dir, tmp_path, preset
     assert res["ok"] and res["order"]["order"][:1] == ["bk"], res
 
 
+def test_solver_plans_round_basket_walls(asset_dir, tmp_path):
+    """The grid answer keeps the body off basket walls (`solver.plan_free`); the static
+    checks still reach the inside (the walls are not `blockers`)."""
+    from mujoco_puzzle_gym.logic import free_mask
+    from mujoco_puzzle_gym.solver import CLEARANCE, plan_free
+
+    env = PuzzleEnv(task={"actions": ["move", "head", "grab"]},
+                    room=gate_disp_room(tmp_path, "dispenser", "walls"))
+    env.reset(seed=0)
+    bk, grid = env.parts["bk"], env.grid
+    inflate = env.body.footprint_radius + CLEARANCE
+    free = env.stage_free(1, inflate=inflate)
+    beside = grid.cell(bk.xy - [0.0, bk.half[1] + 0.05])        # 5 cm off the south wall
+    assert free[beside] and not plan_free(env, free, inflate)[beside]
+    assert free_mask(grid, env.walls, env.parts, set())[grid.cell(bk.xy)]
+    env.close()
+
+
 GATE_MAP = """
 ####################
 #...............#..#
