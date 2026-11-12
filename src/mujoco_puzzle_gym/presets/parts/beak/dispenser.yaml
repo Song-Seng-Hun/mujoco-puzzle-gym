@@ -1,0 +1,12 @@
+# Dispenser (R28): a cabinet at stand height (0.17 m) that hands out one 40 g
+# cube (beak/cube_weight: a handle on every side, light enough to lift) on its
+# top front edge each time the body steps onto the floor plate 0.35 m in front.
+# 5 in stock, one out at a time, 1 s apart. `<name>.stock`, `<name>.empty`.
+# A receptacle with `consume: true` takes copies back (`recycle`).
+# Set: pos (the cabinet front), facing (where the body stands), item, stock.
+type: dispenser
+button: floor
+item: beak/cube_weight
+stock: 5
+max_active: 1
+cooldown: 1.0

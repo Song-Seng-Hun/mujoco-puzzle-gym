@@ -50,7 +50,9 @@ order (strings): `goto <part>`, `press <part>`, `wait <seconds>`, `push <ball>
 to <net or pin>`, `herd <npc> <part or x y>` (R29), `grab <object>`, `place
 <object> <part>` (R18; a hook: hang it), `drop <object> <part>` (let go from
 the level head, R28), `turn <lever> <value>` (a push lever to that cell, R28),
-`turn <dial> <cell>` (R28), `pull <cord or drawer>` (R28), `look <part>` (until `<part>.seen`, R27). Objects are grabbable parts (cube, laundry, key, ...). After the last one the solver goes on with the grid
+`turn <dial> <cell>` (R28), `pull <cord or drawer>` (R28), `look <part>` (until `<part>.seen`, R27),
+`take <dispenser>` (trigger it and wait for the new copy; later `grab`, `place`
+and `drop` given the dispenser's name work on that copy, R28). Objects are grabbable parts (cube, laundry, key, ...). After the last one the solver goes on with the grid
 answer (the solution order), so a demo may stop before the goal. Without
 `demo:` the solver uses the grid answer only.
 
@@ -102,20 +104,23 @@ class RoomError(ValueError):
         self.stage = stage
 
 
-DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop", "turn", "pull", "look")
+DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop", "turn", "pull", "look",
+                 "take")
 MAX_WAIT = 60.0                        # [s] longest `wait`
 
 
 def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
     """`demo:` entries as tuples: ("goto"|"press", part), ("wait", seconds),
     ("push", ball, target), ("herd", npc, part or (x, y)), ("grab", object),
-    ("place" | "drop", object, part), ("turn", lever, value), ("pull", cord), ("look", part).
-    Raises RoomError (stage `demo`) naming the bad entry."""
+    ("place" | "drop", object, part), ("turn", lever, value), ("pull", cord), ("look", part),
+    ("take", dispenser). `grab` / `place` / `drop` take a dispenser's name after a `take`
+    of it (its copy handed out last). Raises RoomError (stage `demo`) naming the bad entry."""
     if raw is None:
         return []
     if not isinstance(raw, list):
         raise RoomError("`demo:` must be a list of sub-goals, e.g. [press switch_a, goto goal]", "demo")
     out: list[tuple] = []
+    taken: set[str] = set()
 
     def part(i: int, name: str):
         if name not in parts:
@@ -150,13 +155,28 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
             out.append(_parse_herd(i, entry, args, parts, part))
         elif cmd in ("turn", "pull", "look"):
             out.append(_parse_device(i, entry, cmd, args, parts, part))
+        elif cmd == "take":
+            if len(args) != 1:
+                raise RoomError(f"demo[{i}]: write `take <dispenser>`, got {entry!r}", "demo")
+            d = part(i, args[0])
+            if not hasattr(parts[d], "copies"):
+                raise RoomError(f"demo[{i}]: cannot take from {d!r}; take from a dispenser", "demo")
+            taken.add(d)
+            out.append(("take", d))
         elif cmd in ("grab", "place", "drop"):
             n = 1 if cmd == "grab" else 2
             if len(args) != n:
                 raise RoomError(f"demo[{i}]: write `" + ("grab <object>" if n == 1 else f"{cmd} <object> <part>")
                                 + f"`, got {entry!r}", "demo")
             obj = part(i, args[0])
-            if not hasattr(parts[obj], "handle_points"):
+            if hasattr(parts[obj], "copies"):                 # a dispenser: its copy taken last
+                if obj not in taken:
+                    raise RoomError(f"demo[{i}]: `take {obj}` first (then `{cmd} {obj}` works on the "
+                                    f"copy it handed out)", "demo")
+                if not hasattr(parts[obj].copies[0], "handle_points"):
+                    raise RoomError(f"demo[{i}]: {obj!r} hands out {parts[obj].item_cls.type_name} "
+                                    f"robots, not grabbable objects", "demo")
+            elif not hasattr(parts[obj], "handle_points"):
                 raise RoomError(f"demo[{i}]: {obj!r} is not a grabbable object (nothing to grab)", "demo")
             out.append((cmd, obj, *([part(i, args[1])] if n == 2 else [])))
         else:
@@ -434,11 +454,17 @@ class Room:
             except (ValueError, TypeError) as exc:
                 raise RoomError(str(exc), "values") from None
             parts[name].zone = self.part_zones[i] if i < len(self.part_zones) else 0
-        for kind in {type(p): None for p in list(parts.values())}:
-            try:
-                kind.add_room_parts(parts)
-            except (ValueError, TypeError) as exc:
-                raise RoomError(str(exc), "values") from None
+        done: set[type] = set()           # parts that add parts (dispensers, R28) first; then
+        while True:                       # the classes of parts they added
+            kinds = [k for k in {type(p): None for p in parts.values()} if k not in done]
+            if not kinds:
+                break
+            for kind in sorted(kinds, key=lambda k: not getattr(k, "adds_parts", False)):
+                done.add(kind)
+                try:
+                    kind.add_room_parts(parts)
+                except (ValueError, TypeError) as exc:
+                    raise RoomError(str(exc), "values") from None
         spawns = self.zone_spawns()
         for n, p in parts.items():
             if p.role == "warp":

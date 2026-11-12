@@ -1,0 +1,10 @@
+# Dispenser with a beak plate (R28, R4): as `beak/dispenser`, but a 10 x 5 cm
+# plate on the cabinet front, centred 0.14 m up (below the level beak tip:
+# the body lowers its head, task action `head`), hands out the cube.
+# Set: pos (the cabinet front), facing, item, stock.
+type: dispenser
+button: wall_beak
+item: beak/cube_weight
+stock: 5
+max_active: 1
+cooldown: 1.0

@@ -56,14 +56,16 @@ def _obs_parts(env):
 
 @register_obs("part_pos", replace=True)
 def part_pos(env):
-    """Privileged: every part's position relative to the body, heading frame (2 per part)."""
-    return np.concatenate([_to_body_frame(env, p.xy) for p in _obs_parts(env)])
+    """Privileged: every part's position relative to the body, heading frame (2 per part;
+    zeros for a parked part, a dispenser's stored copy, R28)."""
+    return np.concatenate([np.zeros(2) if p.parked else _to_body_frame(env, p.xy) for p in _obs_parts(env)])
 
 
 @register_obs("part_state", replace=True)
 def part_state(env):
-    """Privileged: every part's state in [0, 1] (switch on, door open fraction, goal reached)."""
-    return np.array([p.state() for p in _obs_parts(env)])
+    """Privileged: every part's state in [0, 1] (switch on, door open fraction, goal reached;
+    0 for a parked part)."""
+    return np.array([0.0 if p.parked else p.state() for p in _obs_parts(env)])
 
 
 @register_obs("target_pos", replace=True)
@@ -130,7 +132,7 @@ def balls(env, k: int = BALLS_K):
     c, sn = np.cos(s.yaw), np.sin(s.yaw)
     rows = []
     for p in env.parts.values():
-        if getattr(p, "object_kind", None) != "ball":
+        if getattr(p, "object_kind", None) != "ball" or p.parked:
             continue
         pos = p.pos(env.data)[:2]
         v = p.vel(env.data)[:2]
@@ -147,12 +149,16 @@ def balls(env, k: int = BALLS_K):
 @register_obs("npcs", replace=True)
 def npcs(env):
     """NPC robots (R29), room order: position and velocity relative to the body
-    (heading frame), moving (0/1) and acting (its rule reacting now, 0/1); 6 per robot."""
+    (heading frame), moving (0/1) and acting (its rule reacting now, 0/1); 6 per robot
+    (zeros for a dispenser's stored copy, R28)."""
     s = env.body_state
     c, sn = np.cos(s.yaw), np.sin(s.yaw)
     rows = []
     for p in env.parts.values():
         if not getattr(p, "planar", False):
+            continue
+        if p.parked:
+            rows.append(np.zeros(6))
             continue
         v = p.vel(env.data)
         v = np.array([c * v[0] + sn * v[1], -sn * v[0] + c * v[1]]) - s.lin_vel[:2]
@@ -170,7 +176,8 @@ GRAB_KINDS = ("cube", "laundry", "key", "handle_ball", "egg", "stick", "lever", 
 def beak(env):
     """Beak grab (R18): holding (0/1), held object kind (`GRAB_KINDS` index + 1, 0:
     none) and the nearest handle relative to the beak tip (heading frame, 3); 5 values.
-    Zeros (and no handle) in a room without grabbable objects."""
+    Zeros (and no handle) in a room without grabbable objects. Handles not grabbable now
+    (a latched drawer's strap, a dispenser's stored copies) are left out."""
     from .grab import BEAK_PART
 
     b = env.parts.get(BEAK_PART)

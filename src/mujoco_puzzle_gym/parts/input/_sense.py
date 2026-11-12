@@ -15,7 +15,8 @@ def candidates(part: Part, data, body, trigger: str,
                names: list[str] | None = None) -> Iterator[tuple[object, np.ndarray]]:
     """(key, position) of everything `trigger` counts: the walking body (key
     "body", trunk position) and free bodies of matching kind (key = root body
-    id, body position), skipping bodies the walking body holds. `names`, when
+    id, body position), skipping bodies the walking body holds and parked ones
+    (a dispenser's stored copies, R28). `names`, when
     given, keeps only object parts with those names."""
     kinds = TRIGGERS[trigger]
     if "body" in kinds and body is not None and not names:
@@ -24,7 +25,7 @@ def candidates(part: Part, data, body, trigger: str,
     if world is None:
         return
     for rid, owner in world.objects.items():
-        if world.kinds.get(rid) not in kinds or rid in world.held:
+        if world.kinds.get(rid) not in kinds or rid in world.held or owner.parked:
             continue
         if names and owner.name not in names:
             continue

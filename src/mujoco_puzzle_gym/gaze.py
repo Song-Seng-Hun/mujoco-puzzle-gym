@@ -123,7 +123,10 @@ class Eye:
         return False
 
     def seen_face(self, model, data, eye, rot, part: Part, gids: list[int]):
-        """(centre, normal) of the first face of `part`'s marker that is seen, else None."""
+        """(centre, normal) of the first face of `part`'s marker that is seen, else None
+        (a parked part, a dispenser's stored copy, is never seen)."""
+        if part.parked:
+            return None
         for _, c, n in markers.face_poses(data, gids):
             if self.sees(model, data, eye, rot, c, n, part._bid):
                 return c, n
