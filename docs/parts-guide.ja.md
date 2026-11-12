@@ -170,7 +170,7 @@ parts:
 | 段階 | 見るもの |
 |---|---|
 | `stability` | 指令0で10秒間、転んだり計算が発散したりしないか |
-| `solver` | 答えを知っているスクリプトが、ランダム配置20個のうち18個以上を解けるか。部屋に`demo:`(`goto`、`press`、`wait`、`push <ボール> to <ゴールネット>`、`herd <ロボット> <部品>`、`turn <レバーかダイヤル> <値>`、`pull <ひもか引き出し>`、`look <部品>`)があればその順序に先に従い、残りは格子の解答が引き継ぎます |
+| `solver` | 答えを知っているスクリプトが、ランダム配置20個のうち18個以上を解けるか。部屋に`demo:`(`goto`、`press`、`wait`、`push <ボール> to <ゴールネット>`、`herd <ロボット> <部品>`、`turn <レバーかダイヤル> <値>`、`pull <ひもか引き出し>`、`look <部品>`、`take <ディスペンサー>`)があればその順序に先に従い、残りは格子の解答が引き継ぎます |
 
 解答段階は、通った旗ごとにスナップショットを`runs/check/<部屋>/checkpoints/<旗>.pkl`に残します。
 
@@ -273,6 +273,26 @@ curriculum: {mode: forward, order: difficulty_first}
 - 砲台とレバー:砲台が`bind`でレバーの`.angle`を読むと、`mpg check`の放物線の点検は連続した範囲ではなくレバーの段ごとに狙います。信号で狙い、信号がオンになると撃つ砲台がある部屋では、的の板(`input/target`)が解く順序のスイッチになり、その目標領域(観測`target_pos`も)は砲台を撃たせる入力部品の位置です。`.angle`を`bind`だけが読むレバー・ダイヤルは設定のつまみでスイッチではないので、1まで押しても`new_on`の報酬はなく、格子の解答も押しません(狙いは`demo:`の`turn`)。
 - 例[`examples/rooms/turret.yaml`](../examples/rooms/turret.yaml):レバーを一段押して砲台を的に向け、床の板を踏んで撃つと扉が開きます。
 - 既知の限界:つかむレバーはスクリプトの解答が回しません(`turn`が拒否します)。押すレバーは一方向(-1 → 1)に押すのが基本で、戻す(1 → -1)ときは反対側から押します。ダイヤルは一方向にしか回らないので段は0–3を巡り、一段進むたびに約11秒かかります。ダイヤルの戻りの輪は静的な点検が見ません(`facing`側に1 m)。引き出しを開けるのに4.8–14秒かかり、開いた引き出しはリセットまで閉まりません。
+
+## ディスペンサー
+
+`dispenser`は、信号がオンになるたびに物を一つ出すキャビネットです。`pos`がキャビネットの前面、`facing`(度)が体の立つ側、天面の高さ`height`(既定0.17 m)はくちばしが届く台の高さです。
+
+| プリセット | 種類 | 既定値 | 用途 |
+|---|---|---|---|
+| `beak/dispenser` | `dispenser` `button: floor` | `beak/cube_weight` 5個、`max_active` 1、`cooldown` 1 s、前0.35 mに20 × 20 cmの床プレート | プレートを踏むと天面の前の縁におもりが一つ出ます |
+| `beak/dispenser_wall` | `dispenser` `button: wall_beak` | 同じ物と在庫、前面0.14 mの高さに10 × 5 cmのプレート | 頭を下げて(`head`行動)くちばしでプレートを押します |
+
+- 既定の物が`beak/cube_weight`である理由: 四つの側面に取っ手があってどちらから近づいてもつかめ、40 gで体の`max_lift_mass`(0.05 kg)以内、天面の高さは「くちばしが届くのは0.17–0.19 mの台の上の物だけ」という測定値に合わせました。
+- トリガー(`button`): `floor`は`button_at`([前, 左] m、既定[0.35, 0])の床プレート、`wall_beak`は前面`button_height`の高さの壁プレート(R4の窓、プレートの前6 cm)、`none`は`in`チャンネルです。プレートがあっても`in`チャンネルがオンになれば数えます。
+- 出す物(`item`): つかめる物のプリセット(R28)かNPCのプリセット(R29)の名前、または`{preset: <名前>, <値>: ...}`のように上書きする値と一緒に。ほかの種類は部屋を読むときに拒否します。
+- `stock`(最大20): 前もって作る複製の数。`max_active`: 同時に外に出ていられる数。`cooldown`: 次の一つまでの待ち時間。`refill`(チャンネル): オンになるたびに保管中の複製をすべて在庫に戻します。出口`exit`([前, 左] m、既定は物なら天面の前の縁から2 cm内側、ロボットなら前0.15 mの床)と初速`exit_vel`([前, 左, 上] m/s、転がして出す)。
+- チャンネル: `<ディスペンサー>.stock`(残り数)、`<ディスペンサー>.empty`(なくなると1)。複製は部品`<ディスペンサー>/<番号>`で、`.held`・`.dropped`チャンネルもその名前で出ます。同じディスペンサーの複製はマーカー番号を一つ共有します。
+- 保管: MuJoCoは実行中に体を足せないので、複製は前もって作ります。保管中の物は床の5 m下で衝突を切り、重力を補正して止まっています。ロボットは部屋の外100 mの床の高さで駆動を切ります。保管中の複製は観測(`part_pos`、`part_state`、`npcs`、`beak`)、くちばしでつかむ動作、視界(`.seen`)、センサー、解答に現れません。スナップショットとリセットが在庫と位置を戻します(リセットは在庫を満たします)。
+- 消費(`consume`): 受ける部品(`receptacle`、例: `beak/basket`)に`consume: true`(既定false)を付けると、受け入れた物は消え、受けた数(`.count`、`.mass`)には残ります。消えたのが複製なら外に出ている数から外れ、ディスペンサーが`recycle: true`なら在庫に戻ります(そうでなければ`refill`まで保管)。穴や崖から落ちた複製も同じように戻ります。
+- 解答の`demo:`: `take <ディスペンサー>`(プレートを踏むか押して一つ受け取り、出た物が止まるまで立つ)。そのあと`grab <ディスペンサー>`、`place <ディスペンサー> <部品>`、`drop <ディスペンサー> <部品>`は最後に出た複製を扱います。格子の解答は、解の順序の受ける部品が受け入れる物が部屋に残っていなければ、ディスペンサーから一つ受け取って運びます。壁プレートのディスペンサーから受け取る部屋はtaskの`actions`に`head`が、物を運ぶ部屋は`grab`が必要です。
+- 測定値(2026-11-12、シード10個、かご`consume: true`): `demo: [take d, grab d, place d bk]`が床プレート10/10(10.0–12.6 s)、壁プレート10/10(21.2–25.4 s)。格子の解答のかごへの投入は両プリセットとも9/10です。
+- 既知の限界: かごに入れる成功率はかごの位置によって10回中6–10回です(縁に引っかかる、かごの壁にもたれて転ぶ。E3b-1と同じ限界)。格子の解答がかごに入れたあと次の目標へ歩く道は、かごの横で止まったり転んだりすることが多いです(10回中1回だけ目標に着く)。ロボットを出すディスペンサーはスクリプト解答が使いません。
 
 ## Pythonプラグイン
 
@@ -472,6 +492,27 @@ def majority(inputs, state, dt):
 | `target` | vec |  | `[1, 1]` |  |  | cells [from, to] that turn `<name>` on |
 | `detent` | float | N m | `0.03` | [0, 1] |  | torque pulling to the nearest cell at its edge |
 
+
+### `dispenser`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `button` | enum |  | `floor` | `floor`, `wall_beak`, `none` |  | floor: a plate the body steps on; wall_beak: a plate on the front the beak presses; none: the `in` channels |
+| `item` | any |  | `beak/cube_weight` |  |  | what it hands out: an object (R28) or npc (R29) preset, or {preset, <value>: ...} |
+| `stock` | int |  | `5` | [1, 20] |  | copies built (all in stock at reset) |
+| `max_active` | int |  | `1` | [1, 20] | 可 | copies out at once at most |
+| `cooldown` | float | s | `1.0` | [0, 60] | 可 | least time between two copies |
+| `refill` | str |  | — |  |  | channel: each rising edge restocks every stored copy |
+| `recycle` | bool |  | `False` |  |  | a consumed or fallen copy goes back in stock (else it stays stored until refill) |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | the way the front faces (where the body stands) |
+| `height` | float | m | `0.17` | [0.1, 0.25] |  | cabinet top (a stand height the beak reaches) |
+| `exit` | vec | m | — | [-0.5, 1] |  | [out, left] from pos where a copy appears; default objects [-0.02, 0] (top), npc [0.15, 0] (floor) |
+| `exit_vel` | vec | m/s | `[0.0, 0.0, 0.0]` | [-3, 3] |  | [out, left, up] velocity of a new copy |
+| `button_at` | vec | m | — | [-1, 1] |  | [out, left] of the plate from pos; default floor [0.35, 0], wall_beak [0, 0] |
+| `button_size` | vec | m | — | [0.02, 1] |  | plate size; default floor [0.2, 0.2], wall_beak [0.1, 0.05] (width, height) |
+| `button_height` | float | m | `0.14` | [0.05, 0.25] |  | wall_beak: plate centre above the floor (below the top) |
 
 ### `door`
 
@@ -799,6 +840,7 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.19` | [0.05, 1] |  | hook: peg height |
 | `facing` | float | deg | `0.0` | [-180, 180] |  | hook: the way the peg points (0 = +x) |
 | `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
+| `consume` | bool |  | `False` |  |  | an accepted object vanishes and stays counted (a dispenser copy goes back, R28) |
 
 ### `setter`
 
@@ -970,6 +1012,10 @@ def majority(inputs, state, dt):
 | `beak/basket` | `receptacle` | `shape: box`, `size: [0.3, 0.3]`, `wall_height: 0.1`, `require: count`, `count: 1` |
 | `beak/cube_weight` | `cube` | `size: 0.04`, `mass: 0.04` |
 | `beak/dial` | `dial` | `spokes: 4`, `target: [1, 1]` |
+| `beak/dispenser` | `dispenser` `button: floor` | `beak/cube_weight` 5개, `max_active` 1, `cooldown` 1 s, 앞 0.35 m에 20 × 20 cm 발판 | 발판을 밟으면 윗면 앞 모서리에 추가 하나 나옵니다 |
+| `beak/dispenser_wall` | `dispenser` `button: wall_beak` | 같은 물체·재고, 앞면 0.14 m 높이에 10 × 5 cm 판 | 머리를 숙여(`head` 행동) 부리로 판을 누릅니다 |
+| `beak/dispenser` | `dispenser` | `button: floor`, `item: beak/cube_weight`, `stock: 5`, `max_active: 1`, `cooldown: 1.0` |
+| `beak/dispenser_wall` | `dispenser` | `button: wall_beak`, `item: beak/cube_weight`, `stock: 5`, `max_active: 1`, `cooldown: 1.0` |
 | `beak/drawer` | `drawer` | `travel: 0.15`, `strap: 0.1` |
 | `beak/egg` | `egg` | `break_height: 0.05`, `on_break: fail` |
 | `beak/handle_ball` | `handle_ball` | `radius: 0.03`, `mass: 0.03` |

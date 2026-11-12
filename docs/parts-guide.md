@@ -170,7 +170,7 @@ parts:
 | 단계 | 보는 것 |
 |---|---|
 | `stability` | 명령 0으로 10초 동안 넘어지거나 계산이 터지지 않는지 |
-| `solver` | 정답을 아는 스크립트가 무작위 배치 20개 중 18개 이상을 푸는지. 방에 `demo:`(`goto`, `press`, `wait`, `push <공> to <골대>`, `herd <로봇> <부품>`, `turn <레버 또는 다이얼> <값>`, `pull <줄 또는 서랍>`, `look <부품>`)가 있으면 그 순서를 먼저 따르고, 나머지는 격자 해답이 이어 갑니다 |
+| `solver` | 정답을 아는 스크립트가 무작위 배치 20개 중 18개 이상을 푸는지. 방에 `demo:`(`goto`, `press`, `wait`, `push <공> to <골대>`, `herd <로봇> <부품>`, `turn <레버 또는 다이얼> <값>`, `pull <줄 또는 서랍>`, `look <부품>`, `take <디스펜서>`)가 있으면 그 순서를 먼저 따르고, 나머지는 격자 해답이 이어 갑니다 |
 
 해답 단계는 지나간 깃발마다 저장본을 `runs/check/<방>/checkpoints/<깃발>.pkl`에 남깁니다.
 
@@ -273,6 +273,26 @@ curriculum: {mode: forward, order: difficulty_first}
 - 포탑과 레버: 포탑이 `bind`로 레버 `.angle`을 읽으면 `mpg check`의 포물선 점검은 연속 범위 대신 레버의 칸마다 겨눕니다. 신호로 겨누고 켜질 때 쏘는 포탑이 있는 방에서는 과녁 판(`input/target`)이 풀이 순서의 스위치가 되고, 그 목표 영역(관측 `target_pos`도)은 포탑을 쏘는 입력 부품의 자리입니다. `.angle`을 `bind`만 읽는 레버·다이얼은 설정 손잡이라 스위치가 아니어서, 1로 밀어도 `new_on` 보상이 없고 격자 해답이 밀지 않습니다(겨눔은 `demo:`의 `turn`).
 - 예제 [`examples/rooms/turret.yaml`](../examples/rooms/turret.yaml): 레버를 한 칸 밀어 포탑을 과녁에 맞추고, 발판을 밟아 쏘면 문이 열립니다.
 - 알려진 한계: 잡는 레버는 스크립트 해답이 돌리지 않습니다(`turn`이 거절합니다). 미는 레버는 한쪽(-1 → 1)으로 미는 것이 기본이고, 되돌리기(1 → -1)는 반대편에서 밉니다. 다이얼은 한 방향으로만 돌아 칸이 0–3을 돌고, 한 칸 더 갈 때마다 약 11초 걸립니다. 다이얼을 돌아오는 고리는 정적 점검이 보지 않습니다(`facing` 쪽 1 m). 서랍을 여는 데 4.8–14초 걸리고, 열린 서랍은 리셋까지 닫히지 않습니다.
+
+## 디스펜서
+
+`dispenser`는 신호가 켜지는 순간마다 물체를 하나 내보내는 캐비닛입니다. `pos`가 캐비닛 앞면, `facing`(도)이 몸이 서는 쪽, 윗면 높이 `height`(기본 0.17 m)는 부리가 닿는 받침대 높이입니다.
+
+| 프리셋 | 종류 | 기본값 | 쓰임 |
+|---|---|---|---|
+| `beak/dispenser` | `dispenser` `button: floor` | `beak/cube_weight` 5개, `max_active` 1, `cooldown` 1 s, 앞 0.35 m에 20 × 20 cm 발판 | 발판을 밟으면 윗면 앞 모서리에 추가 하나 나옵니다 |
+| `beak/dispenser_wall` | `dispenser` `button: wall_beak` | 같은 물체·재고, 앞면 0.14 m 높이에 10 × 5 cm 판 | 머리를 숙여(`head` 행동) 부리로 판을 누릅니다 |
+
+- 기본 물체가 `beak/cube_weight`인 까닭: 옆면 넷에 손잡이가 있어 어느 쪽에서 다가가도 집고, 40 g이라 몸의 `max_lift_mass`(0.05 kg) 안이며, 0.17–0.19 m 받침대 위의 물체만 부리가 닿는다는 잰 값에 윗면 높이를 맞추었습니다.
+- 트리거(`button`): `floor`는 `button_at`([앞, 왼쪽] m, 기본 [0.35, 0])의 바닥 발판, `wall_beak`는 앞면 `button_height` 높이의 벽 판(R4 창, 판 앞 6 cm), `none`은 `in` 채널입니다. 발판이 있어도 `in` 채널이 켜지면 셉니다.
+- 내보낼 것(`item`): 잡을 수 있는 물체 프리셋(R28)이나 NPC 프리셋(R29)의 이름, 또는 `{preset: <이름>, <값>: ...}`처럼 덮어쓸 값과 함께. 다른 종류는 방을 읽을 때 거절합니다.
+- `stock`(최대 20): 미리 만드는 복제품 수. `max_active`: 동시에 밖에 나와 있을 수 있는 수. `cooldown`: 다음 하나까지 기다리는 시간. `refill`(채널): 켜지는 순간 보관된 복제품을 모두 재고로 되돌립니다. 출구 `exit`([앞, 왼쪽] m, 기본 물체는 윗면 앞 모서리 2 cm 안쪽, 로봇은 앞 0.15 m 바닥)와 초기 속도 `exit_vel`([앞, 왼쪽, 위] m/s, 굴려 내보내기).
+- 채널: `<디스펜서>.stock`(남은 수), `<디스펜서>.empty`(다 나가면 1). 복제품은 `<디스펜서>/<번호>` 부품이고 `.held`·`.dropped` 채널도 그 이름으로 나옵니다. 같은 디스펜서의 복제품은 마커 번호 하나를 함께 씁니다.
+- 보관: MuJoCo는 실행 중에 몸체를 더할 수 없어서 복제품을 미리 만들어 둡니다. 보관 중인 물체는 바닥 아래 5 m에서 충돌을 끄고 중력을 보정해 멈춰 있고, 로봇은 방 밖 100 m 쪽 바닥 높이에서 구동을 끕니다. 보관된 복제품은 관측(`part_pos`, `part_state`, `npcs`, `beak`), 부리 잡기, 시야(`.seen`), 센서, 해답에 나타나지 않습니다. 저장본과 리셋이 재고와 위치를 되돌립니다(리셋은 재고를 가득 채움).
+- 소비(`consume`): 받는 부품(`receptacle`, 예: `beak/basket`)에 `consume: true`(기본 false)를 주면 받아들인 물체가 사라지고 받은 수(`.count`, `.mass`)에는 남습니다. 사라진 것이 복제품이면 밖에 나온 수에서 빠지고, 디스펜서가 `recycle: true`이면 재고로 돌아갑니다(아니면 `refill`까지 보관). 구덩이나 낭떠러지로 떨어진 복제품도 같은 식으로 돌아갑니다.
+- 해답의 `demo:`: `take <디스펜서>`(발판을 밟거나 판을 눌러 하나를 받고, 나온 것이 멈출 때까지 섬). 그 뒤 `grab <디스펜서>`, `place <디스펜서> <부품>`, `drop <디스펜서> <부품>`은 마지막에 나온 복제품을 다룹니다. 격자 해답은 풀이 순서의 받는 부품이 받을 물체가 방에 없으면 디스펜서에서 하나 받아 옮깁니다. 벽 판 디스펜서에서 받는 방은 task `actions`에 `head`가, 물체를 옮기는 방은 `grab`이 있어야 합니다.
+- 잰 값(2026-11-12, 시드 10개, 바구니 `consume: true`): `demo: [take d, grab d, place d bk]`가 발판 10/10(10.0–12.6 s), 벽 판 10/10(21.2–25.4 s). 격자 해답의 바구니 넣기는 두 프리셋 모두 9/10입니다.
+- 알려진 한계: 바구니에 넣는 성공률은 바구니 자리에 따라 6–10/10입니다(가장자리에 걸리거나 바구니 벽에 기대 넘어짐, E3b-1과 같은 한계). 격자 해답이 바구니에 넣은 뒤 다음 목표로 걸어가는 길은 바구니 옆에서 막히거나 넘어지는 일이 잦습니다(10번 중 1번만 목표까지). 로봇을 내보내는 디스펜서는 스크립트 해답이 쓰지 않습니다.
 
 ## 파이썬 플러그인
 
@@ -471,6 +491,27 @@ def majority(inputs, state, dt):
 | `start` | int |  | `0` | [0, 7] |  | cell on reset |
 | `target` | vec |  | `[1, 1]` |  |  | cells [from, to] that turn `<name>` on |
 | `detent` | float | N m | `0.03` | [0, 1] |  | torque pulling to the nearest cell at its edge |
+
+### `dispenser`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `button` | enum |  | `floor` | `floor`, `wall_beak`, `none` |  | floor: a plate the body steps on; wall_beak: a plate on the front the beak presses; none: the `in` channels |
+| `item` | any |  | `beak/cube_weight` |  |  | what it hands out: an object (R28) or npc (R29) preset, or {preset, <value>: ...} |
+| `stock` | int |  | `5` | [1, 20] |  | copies built (all in stock at reset) |
+| `max_active` | int |  | `1` | [1, 20] | 예 | copies out at once at most |
+| `cooldown` | float | s | `1.0` | [0, 60] | 예 | least time between two copies |
+| `refill` | str |  | — |  |  | channel: each rising edge restocks every stored copy |
+| `recycle` | bool |  | `False` |  |  | a consumed or fallen copy goes back in stock (else it stays stored until refill) |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | the way the front faces (where the body stands) |
+| `height` | float | m | `0.17` | [0.1, 0.25] |  | cabinet top (a stand height the beak reaches) |
+| `exit` | vec | m | — | [-0.5, 1] |  | [out, left] from pos where a copy appears; default objects [-0.02, 0] (top), npc [0.15, 0] (floor) |
+| `exit_vel` | vec | m/s | `[0.0, 0.0, 0.0]` | [-3, 3] |  | [out, left, up] velocity of a new copy |
+| `button_at` | vec | m | — | [-1, 1] |  | [out, left] of the plate from pos; default floor [0.35, 0], wall_beak [0, 0] |
+| `button_size` | vec | m | — | [0.02, 1] |  | plate size; default floor [0.2, 0.2], wall_beak [0.1, 0.05] (width, height) |
+| `button_height` | float | m | `0.14` | [0.05, 0.25] |  | wall_beak: plate centre above the floor (below the top) |
 
 ### `door`
 
@@ -797,6 +838,7 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.19` | [0.05, 1] |  | hook: peg height |
 | `facing` | float | deg | `0.0` | [-180, 180] |  | hook: the way the peg points (0 = +x) |
 | `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
+| `consume` | bool |  | `False` |  |  | an accepted object vanishes and stays counted (a dispenser copy goes back, R28) |
 
 ### `setter`
 
@@ -968,6 +1010,8 @@ def majority(inputs, state, dt):
 | `beak/basket` | `receptacle` | `shape: box`, `size: [0.3, 0.3]`, `wall_height: 0.1`, `require: count`, `count: 1` |
 | `beak/cube_weight` | `cube` | `size: 0.04`, `mass: 0.04` |
 | `beak/dial` | `dial` | `spokes: 4`, `target: [1, 1]` |
+| `beak/dispenser` | `dispenser` | `button: floor`, `item: beak/cube_weight`, `stock: 5`, `max_active: 1`, `cooldown: 1.0` |
+| `beak/dispenser_wall` | `dispenser` | `button: wall_beak`, `item: beak/cube_weight`, `stock: 5`, `max_active: 1`, `cooldown: 1.0` |
 | `beak/drawer` | `drawer` | `travel: 0.15`, `strap: 0.1` |
 | `beak/egg` | `egg` | `break_height: 0.05`, `on_break: fail` |
 | `beak/handle_ball` | `handle_ball` | `radius: 0.03`, `mass: 0.03` |
