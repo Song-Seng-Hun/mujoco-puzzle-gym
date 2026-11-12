@@ -104,6 +104,7 @@ class Carrier:
         self._field = None
         self._settle = 0
         self._stuck = 0
+        self._at = None              # where `_let_go` let the object go
 
     # ---- walking ---------------------------------------------------------------------
     def _free(self) -> np.ndarray:
@@ -263,8 +264,11 @@ class Carrier:
     def _let_go(self, obj) -> np.ndarray | None:
         """Stand still, let go, stand until it rests, walk off (place after "still")."""
         env = self.env
+        if not obj.parked:
+            self._at = obj.pos(env.data)[:2].copy()
         self._settle += 1
-        rest = self._settle > SETTLE * env.hz or np.linalg.norm(obj.vel(env.data)) < REST_SPEED and self._settle > 2
+        rest = self._settle > SETTLE * env.hz or (not obj.parked and self._settle > 2      # consumed: let the
+                                                  and np.linalg.norm(obj.vel(env.data)) < REST_SPEED)  # body settle
         if self.phase == "still":
             if rest:
                 self.phase, self._settle = "drop", 0
@@ -274,9 +278,9 @@ class Carrier:
             if not rest:
                 return STAND.copy()
             self.phase, self.head = "away", -1.0
-        if obj.parked:                      # consumed (R5): nothing left to knock off, stay
+        if self._at is None:                # gone before it was ever seen here (consumed)
             return None
-        return self._walk_off(obj.pos(env.data)[:2], AWAY)
+        return self._walk_off(self._at, AWAY)
 
     def _walk_off(self, xy, dist) -> np.ndarray | None:
         """Turn away from `xy` and walk until `dist` m from it; None once there."""

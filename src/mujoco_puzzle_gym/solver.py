@@ -58,6 +58,7 @@ FACING = 0.4           # |heading error| [rad] below which it walks at full spee
 PEEK = 0.12            # look this far ahead for walls before creeping while turning [m]
 STAND = np.array([-1.0, 0.0, 0.0], dtype=np.float32)
 TAKE_SETTLE = 1.5      # [s] take: wait at most this long for a new copy to rest
+WALL_WAIT = 0.35        # [m] off a dispenser's wall plate while it cannot hand out (take)
 REST_SPEED = 0.02      # [m/s] a copy this slow rests
 
 
@@ -184,7 +185,7 @@ class ScriptedSolver:
             else:
                 here = env.body_state.pos[:2]
                 free = [o for o in env.parts.values() if isinstance(o, Grabbable) and not o.parked
-                        and target.accepts(o) and o.name not in target.inside]
+                        and target.accepts(o) and o.name not in target.inside and not self._in_use(o)]
                 free.sort(key=lambda o: float(np.linalg.norm(o.pos(env.data)[:2] - here)))
                 ds = [d for d in env.parts.values() if hasattr(d, "copies") and d.stock_left() > 0
                       and isinstance(d.copies[0], Grabbable) and target.accepts(d.copies[0])]
@@ -203,6 +204,22 @@ class ScriptedSolver:
             self._step = None
             return STAND.copy()
         return act
+
+    def _in_use(self, obj) -> bool:
+        """`obj` lies in or on another input that is on (a filled receptacle, a plate it
+        holds down): taking it away would turn that input off."""
+        from .parts.input._sense import in_rect
+
+        xy = obj.pos(self.env.data)[:2]
+        for p in self.env.parts.values():
+            if p.stage != "input" or not p.satisfied():
+                continue
+            if obj.name in getattr(p, "inside", ()):
+                return True
+            half = getattr(p, "half", None)
+            if half is not None and getattr(p, "mount", None) != "wall" and in_rect(xy, p.xy, half):
+                return True
+        return False
 
     def take_act(self, disp) -> np.ndarray | None:
         """Trigger dispenser `disp` until it hands out a copy, then stand until the copy
@@ -224,10 +241,21 @@ class ScriptedSolver:
         b = disp.press_plate
         if b is None:
             return STAND.copy()               # the `in` channels hand it out
+        if b.on:                              # pressed, nothing came (cooldown, or pressed before):
+            self.carrier.head = -1.0          # let go of it (a wall plate: head up, the tip clears
+            if b.mount == "wall":             # its top), press again when ready
+                return STAND.copy()
+            act = self.carrier._walk_off(b.xy, float(max(b.half)) + env.body.footprint_radius + CLEARANCE)
+            return STAND.copy() if act is None else act
+        if not disp.ready(float(env.data.time)):
+            if b.mount == "wall":             # wait off the plate: coming in again square on
+                act = self.carrier._walk_off(b.xy, WALL_WAIT)     # (turning in place to it is slow)
+                return STAND.copy() if act is None else act
+            return STAND.copy()
         if b.mount == "wall":
             act = self.carrier.press_wall_act(b)
             return STAND.copy() if act is None else act
-        return STAND.copy() if b.on else self._walk_to(b)
+        return self._walk_to(b)
 
     def _steer(self, field: np.ndarray, target_xy) -> np.ndarray:
         env = self.env
