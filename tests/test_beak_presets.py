@@ -757,6 +757,36 @@ def test_dial_snapshot_and_reset(make):
     assert env.signals.get("dl.angle") == 3
 
 
+def test_dial_turns_one_way_only(make):
+    env = make([{**DIAL, "target": [2, 2]}])
+    dl = env.parts["dl"]
+    set_dial(env, math.radians(180.0))
+    body_steps(env, 1.0)
+    assert env.signals.get("dl.angle") == 2
+    assert env.model.jnt_range[dl._jid][0] == pytest.approx(1.7 * math.pi / 2)   # the stop followed it
+    for _ in range(int(2.0 * env.hz)):                              # a hard push the other way
+        env.data.qfrc_applied[dl._va] = -2.0
+        tick(env)
+    env.data.qfrc_applied[dl._va] = 0.0
+    body_steps(env, 0.5)
+    assert env.signals.get("dl.angle") == 2 and env.signals.get("dl") == 1
+    env.reset(seed=0)                                               # reset frees it again
+    assert env.model.jnt_range[dl._jid][0] == pytest.approx(-0.3 * math.pi / 2)
+
+
+def test_dial_blocks_planning_out_to_its_spokes(make):
+    dl = make([DIAL]).parts["dl"]
+    (seg,) = dl.blockers(False)
+    assert seg.thickness == pytest.approx(2 * dl.cfg["radius"]) and seg.thickness > 0.25
+
+
+def test_dial_target_from_above_to_is_rejected(tmp_path, asset_dir):
+    from rooms import open_room
+
+    with pytest.raises(RoomError, match=re.escape("needs from <= to, got [3, 0]")):
+        open_room(tmp_path, [{**DIAL, "target": [3, 0]}])
+
+
 def test_a_dial_only_a_turret_reads_is_no_switch(make):
     env = make([DIAL, {"name": "tur", "preset": "trap/cannon_turret", "pos": [-1.2, 0.75], "in": ["dl"],
                        "bind": {"aim_yaw": {"from": "dl.angle", "map": [0, 3, -30, 30]}}}])
@@ -786,6 +816,32 @@ def test_drawer_latches_open_and_its_strap_is_no_longer_grabbed(make):
     assert env.signals.get("dr") == 0 and env.model.jnt_range[dr._jid][0] == 0.0
     env.restore_snapshot(snap)
     assert env.signals.get("dr") == 1 and env.model.jnt_range[dr._jid][0] > 0.14
+
+
+def test_drawer_contents_ride_with_a_jittered_drawer(make):
+    env = make([{**DRAWER, "random": [0.3, 0.3]}, {"name": "c", "preset": "beak/cube_weight", "pos": [-0.6, 0.68]}])
+    dr, c = env.parts["dr"], env.parts["c"]
+    moved = []
+    for seed in range(4):
+        env.reset(seed=seed)
+        moved.append(float(np.linalg.norm(dr.xy - dr.base_xy)))
+        body_steps(env, 0.5)
+        p = c.pos(env.data)
+        assert np.allclose(p[:2] - dr.xy, [0.0, 0.08], atol=0.01), (seed, dr.xy, p)
+        assert p[2] == pytest.approx(0.17 + 0.02, abs=0.005)       # on the tray, not the floor
+    assert max(moved) > 0.1                                          # the jitter did move it
+
+
+def test_beak_obs_skips_a_latched_drawers_strap(make):
+    from mujoco_puzzle_gym.obs import OBS
+
+    env = make([DRAWER])
+    dr = env.parts["dr"]
+    env.data.qpos[dr._qa] = 0.149
+    mujoco.mj_forward(env.model, env.data)
+    body_steps(env, 0.1)
+    assert env.signals.get("dr") == 1
+    assert OBS["beak"](env).tolist()[2:] == [0.0, 0.0, 0.0]         # no handle left to reach for
 
 
 def test_drawer_contents_must_be_within_the_beaks_reach(asset_dir, tmp_path):

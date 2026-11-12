@@ -38,7 +38,7 @@ position ties the head to the device. The body never walks backwards (vx
   out `travel` m (measured 10/10, 4.8-14 s, weld force <= 0.38 N with a 0.1 m
   strap). At LATCH_AT of `travel` it latches open (the slide's `jnt_range`
   shrinks), `<name>` is 1 and the strap's knob is no longer grabbable (a held
-  one is let go). Free objects placed on the closed tray (`shelf_z`) rest on
+  one is let go). Free objects placed on the closed tray (`carry_xy`) rest on
   it and ride out; `check_static` rejects contents deeper than CONTENT_DEPTH.
 
 Planning (R20): all are switches (a lever or dial whose `.angle` only `bind`s
@@ -322,6 +322,8 @@ class Lever(HandleDevice):
 # ---- dial ---------------------------------------------------------------------------------
 PASS_OFF = 0.10          # [m] the body walks past this far beside the axis (spokes reach RADIUS)
 PASS_FROM, PASS_TO = 0.45, 0.35   # [m] a pass runs from this far before the axis to this far past it
+RATCHET = 0.3            # [cells] the dial turns back at most this far from its cell (one way, R28)
+DIAL_TURNS = 100         # [turns] the hinge's upper stop (never reached)
 
 
 class Dial(HandleDevice):
@@ -349,6 +351,8 @@ class Dial(HandleDevice):
         for v in (self.start, self.lo, self.hi):
             if not 0 <= v < self.n:
                 raise SchemaError(f"part {name!r}: cells are 0..{self.n - 1}, got {v}")
+        if self.lo > self.hi:
+            raise SchemaError(f"part {name!r}: target [from, to] needs from <= to, got {[self.lo, self.hi]}")
         self.walk = np.array([-self.f[1], self.f[0]])          # pass direction: the axis on the body's left
         self.cell = self.start
 
@@ -368,7 +372,9 @@ class Dial(HandleDevice):
                       size=[0.025, hi / 2 + 0.01, 0], pos=[0, 0, hi / 2 + 0.01], rgba=BODY_RGBA)
         hub = body.add_body(name=self.body_name + "/hub")
         hub.add_joint(name=self.body_name + "/hinge", type=mujoco.mjtJoint.mjJNT_HINGE, axis=[0, 0, 1],
-                      damping=0.02, armature=0.002, stiffness=[float(c["detent"]) / (self.step / 2), 0, 0])
+                      damping=0.02, armature=0.002, stiffness=[float(c["detent"]) / (self.step / 2), 0, 0],
+                      limited=mujoco.mjtLimited.mjLIMITED_TRUE,
+                      range=[math.degrees((self.start - RATCHET) * self.step), DIAL_TURNS * 360.0])
         for i in range(self.n):
             a = i * self.step
             hub.add_geom(name=f"{self.body_name}/spoke{i}", type=mujoco.mjtGeom.mjGEOM_BOX,
@@ -381,6 +387,7 @@ class Dial(HandleDevice):
     def bind(self, model, data):
         super().bind(model, data)
         self._qa, self._va = self._joint(model, self.body_name + "/hinge")
+        self._jid = model.joint(self.body_name + "/hinge").id
 
     def reset(self, model, data):
         data.qpos[self._qa] = self.start * self.step
@@ -391,6 +398,9 @@ class Dial(HandleDevice):
         """Spring rest at the nearest cell; write the cell and whether it is a target cell."""
         k = round(float(data.qpos[self._qa]) / self.step)
         model.qpos_spring[self._qa] = k * self.step
+        lo = (k - RATCHET) * self.step                 # one way: the hinge's lower stop follows the cell
+        if lo > model.jnt_range[self._jid][0]:
+            model.jnt_range[self._jid][0] = lo
         self.cell = k % self.n
         self.write(float(self.cell), self.name + ".angle")
         self.write(float(self.lo <= self.cell <= self.hi))
@@ -416,7 +426,8 @@ class Dial(HandleDevice):
         return self.pass_start()
 
     def blockers(self, is_open):
-        return [Segment(tuple(self.xy), tuple(self.xy + 1e-3 * self.f), 0.05)]    # the post
+        """The spokes' sweep (walking through it turns the dial; `dial_act` passes on purpose)."""
+        return [Segment(tuple(self.xy), tuple(self.xy + 1e-3 * self.f), 2 * float(self.cfg["radius"]))]
 
 
 # ---- pull cord ----------------------------------------------------------------------------
@@ -637,12 +648,19 @@ class Drawer(HandleDevice):
         """The strap knob is out of the grab once the drawer latched open (R28)."""
         return not self.latched
 
-    def shelf_z(self, xy) -> float | None:
-        """Tray floor height over the closed tray (objects placed there rest on it)."""
-        d = np.asarray(xy, dtype=float) - self.xy
+    def on_tray(self, xy) -> bool:
+        """`xy` (room file positions) is over the closed tray."""
+        d = np.asarray(xy, dtype=float) - self.base_xy
         along, side = float(d @ self.f), float(d @ self.left)
-        inside = -CAB_DEPTH + 0.01 < along < -0.01 and abs(side) < CAB_HALF - 0.03
-        return self.h if inside else None
+        return -CAB_DEPTH + 0.01 < along < -0.01 and abs(side) < CAB_HALF - 0.03
+
+    def carry_xy(self, obj) -> np.ndarray | None:
+        """Where a free object whose `pos` is on the tray goes this episode: the same place
+        in the tray at the drawer's (randomised) position, its own jitter dropped. None: not
+        in the tray."""
+        if not self.on_tray(obj.base_xy):
+            return None
+        return self.xy + (obj.base_xy - self.base_xy)
 
     def handle_rest(self):
         return np.array([*(self.xy + self.f * self.strap), self.knob_z])
@@ -651,8 +669,8 @@ class Drawer(HandleDevice):
         """Contents the beak cannot reach once the drawer is open (R28)."""
         out = []
         for p in env.parts.values():
-            if hasattr(p, "floor_z") and self.shelf_z(p.base_xy) is not None:
-                depth = -float((p.base_xy - self.xy) @ self.f)
+            if hasattr(p, "floor_z") and self.on_tray(p.base_xy):
+                depth = -float((p.base_xy - self.base_xy) @ self.f)
                 if depth > CONTENT_DEPTH:
                     out.append(f"{p.name!r} sits {depth:.2f} m deep in drawer {self.name!r}: the beak "
                                f"reaches {CONTENT_DEPTH:g} m in once it is open")

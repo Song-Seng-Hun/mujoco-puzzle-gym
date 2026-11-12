@@ -180,7 +180,10 @@ def beak(env):
     if b.held is not None:
         kind = float(GRAB_KINDS.index(b.objects[b.held].object_kind) + 1)
     tip = env.data.site_xpos[b._site]
-    pts = np.concatenate([o.handle_points(env.data) for o in b.objects]) - tip
+    pts = [o.handle_points(env.data) for o in b.objects if getattr(o, "grabbable_now", True)]
+    if not pts:                                         # e.g. only a latched drawer: no handle
+        return np.array([float(b.held is not None), kind, 0.0, 0.0, 0.0])
+    pts = np.concatenate(pts) - tip
     d = pts[int(np.argmin(np.linalg.norm(pts, axis=1)))]
     yaw = env.body_state.yaw
     c, sn = np.cos(yaw), np.sin(yaw)

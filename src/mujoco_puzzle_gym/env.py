@@ -331,12 +331,16 @@ class PuzzleEnv(gym.Env):
         self.zone = 0
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
-            if hasattr(self.parts[name], "floor_z"):          # free objects rest on raised floor
-                self.parts[name].floor_z = self.floor_height(xy)[0] or 0.0
-                for p in self.parts.values():                   # ... or in a drawer's tray (R28)
-                    z = p.shelf_z(xy) if hasattr(p, "shelf_z") else None
-                    if z is not None:
-                        self.parts[name].floor_z = z
+        for name, xy in layout["parts"].items():
+            obj = self.parts[name]
+            if hasattr(obj, "floor_z"):                         # free objects rest on raised floor
+                obj.floor_z = self.floor_height(xy)[0] or 0.0
+                for p in self.parts.values():                   # ... or in a drawer's tray (R28):
+                    put = p.carry_xy(obj) if hasattr(p, "carry_xy") else None
+                    if put is not None:                         # kept where it sits in the tray
+                        obj.place(self.model, put)
+                        layout["parts"][name] = put
+                        obj.floor_z = p.h
         self.body.reset(self.data, layout["spawn"])
         if self.floor is not None:
             self._place_body(layout["spawn"])
