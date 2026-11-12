@@ -9,10 +9,15 @@ used by solver.py. "Object": any grabbable part (cube, laundry, key, ...).
 - place: walk at the part's centre carrying the object (near it, only while
   it is farther than the object, then turn in place); once the object's
   centre is within the part's `place_tolerance` (default PLACE_TOL) of it,
-  stand until the object hangs still (the head sways while walking, so
-  letting go at once throws it), open the beak and stand until it rests (or
-  SETTLE s each). The head goes back to level and the body turns round and
-  walks off until AWAY m from the object (later walking would kick it off).
+  or, at a box (a basket), once a wall is right ahead and the object is over
+  the inside (walking on leans the body over the wall and it falls after
+  letting go), stand until the object hangs still (the head sways while
+  walking, so letting go at once throws it), open the beak and stand until it
+  rests (or SETTLE s each). The head goes back to level and the body turns
+  round and walks off until AWAY m from the object (later walking would kick
+  it off); from a box, until half its width + the footprint radius from its
+  centre (clear of the walls along an axis; the solver plans round box walls
+  from the nearest free cell, solver.py `plan_free`).
   Standing STUCK s with the object as far as the target but beside it (too
   close to turn onto it), it walks off AWAY m from the target and comes again.
   On a hook (a receptacle of shape `hook`) it walks up to the peg instead,
@@ -225,7 +230,11 @@ class Carrier:
                 return act
             self.phase, self._stuck = "approach", 0
         if holding and self.phase not in ("still", "drop"):
-            if np.linalg.norm(cube.pos(env.data)[:2] - target) <= tol:
+            over = np.linalg.norm(cube.pos(env.data)[:2] - target) <= tol
+            if not over and getattr(part, "shape", None) == "box" and self._blocked_ahead():
+                inner = part.half - part.wall_t        # against a basket wall: walking on leans the
+                over = bool((np.abs(cube.pos(env.data)[:2] - target) <= inner).all())   # body over it
+            if over:
                 self.phase = "still"
                 if drop:
                     self.head = -1.0
@@ -241,7 +250,7 @@ class Carrier:
             else:
                 act = self._walk(target)
                 return act if act is not None else self.steer(target, SLOW)
-        return self._let_go(cube)
+        return self._let_go(cube, part)
 
     def _hang_act(self, obj, hook, holding: bool) -> np.ndarray | None:
         """Bring `obj`'s leading handle to the peg tip, let go there, walk off."""
@@ -261,8 +270,11 @@ class Carrier:
             return self._close_in(approach, np.array([*deep, tip[2]]), lambda: self._ahead(obj))
         return self._let_go(obj)
 
-    def _let_go(self, obj) -> np.ndarray | None:
-        """Stand still, let go, stand until it rests, walk off (place after "still")."""
+    def _let_go(self, obj, part=None) -> np.ndarray | None:
+        """Stand still, let go, stand until it rests, walk off (place after "still"): from a
+        box receptacle `part`, until half its width + footprint radius from its centre."""
+        from .solver import CLEARANCE
+
         env = self.env
         if not obj.parked:
             self._at = obj.pos(env.data)[:2].copy()
@@ -278,6 +290,8 @@ class Carrier:
             if not rest:
                 return STAND.copy()
             self.phase, self.head = "away", -1.0
+        if getattr(part, "shape", None) == "box":
+            return self._walk_off(part.xy, float(max(part.half)) + env.body.footprint_radius + CLEARANCE)
         if self._at is None:                # gone before it was ever seen here (consumed)
             return None
         return self._walk_off(self._at, AWAY)

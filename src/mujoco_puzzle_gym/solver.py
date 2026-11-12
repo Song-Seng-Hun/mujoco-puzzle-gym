@@ -62,6 +62,13 @@ WALL_WAIT = 0.35        # [m] off a dispenser's wall plate while it cannot hand 
 REST_SPEED = 0.02      # [m/s] a copy this slow rests
 
 
+def plan_free(env, free: np.ndarray, inflate: float) -> np.ndarray:
+    """`free` less the cells within `inflate` of a box receptacle's walls (a basket): walking
+    along one, the body sticks to it and cannot turn."""
+    segs = [s for p in env.parts.values() if hasattr(p, "wall_segments") for s in p.wall_segments()]
+    return free & ~env.grid.blocked(segs, inflate) if segs else free
+
+
 class ScriptedSolver:
     def __init__(self, env):
         from .carry import Carrier
@@ -101,7 +108,8 @@ class ScriptedSolver:
         env = self.env
         key = (stage, env.targets[stage].target_key())
         if key not in self._fields:
-            free = env.stage_free(stage, inflate=env.body.footprint_radius + CLEARANCE)
+            inflate = env.body.footprint_radius + CLEARANCE
+            free = plan_free(env, env.stage_free(stage, inflate=inflate), inflate)
             self._fields[key] = env.grid.distance(free, env.targets[stage].target_mask(env.grid))
         return self._fields[key]
 
@@ -290,8 +298,9 @@ class ScriptedSolver:
                tuple(p.name for p in parts if p.role == "gate" and p.state() >= GATE_PASSABLE),
                tuple(p.name for p in parts if p.hole_now(env.grid) is not None))
         if key not in self._live:
-            free = live_free(env.grid, env.walls, env.parts, GATE_PASSABLE,
-                             inflate=env.body.footprint_radius + CLEARANCE)
+            inflate = env.body.footprint_radius + CLEARANCE
+            free = plan_free(env, live_free(env.grid, env.walls, env.parts, GATE_PASSABLE, inflate=inflate),
+                             inflate)
             self._live[key] = (free, env.grid.distance(free, part.target_mask(env.grid)))
         return self._live[key]
 
