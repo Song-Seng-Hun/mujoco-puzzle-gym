@@ -1238,15 +1238,21 @@ def test_check_actions_for_a_dispenser(asset_dir, tmp_path, preset, actions, ok)
     assert res["actions"]["ok"] is ok and res["ok"] is ok, res
 
 
+GATE_X = 0.4          # divider; its opening is the standard 0.56 m (examples/rooms/doors.yaml)
+
+
 def gate_disp_room(tmp_path, preset, name):
-    """The basket (consume) opens the door to the goal; no `demo:`."""
-    raw = {"name": name, "cell": 0.1, "map": GATE_MAP,
+    """The basket (consume) opens a sliding door to the goal room; no `demo:`. The divider
+    leaves the standard 0.56 m gap (a 0.3 m gap is narrower than the planner's inflated body,
+    plan.md E3b-3 "바구니에서 나오기"); the basket stands off the way to the door."""
+    raw = {"name": name, "size": [1.8, 0.9], "wall": {"thickness": 0.06, "height": 0.25},
+           "walls": [{"from": [GATE_X, -0.45], "to": [GATE_X, -0.28]},
+                     {"from": [GATE_X, 0.28], "to": [GATE_X, 0.45]}],
            "spawn": {"pos": [-0.6, -0.25], "yaw": 0.0, "random": [0.05, 0.05, 0.3]},
            "parts": [{"name": "d", "preset": f"beak/{preset}", "pos": DISP_AT, "facing": -90},
-                     {"name": "bk", "preset": "beak/basket", "pos": [0.35, 0.15], "consume": True},
-                     {"name": "door", "type": "door", "pos": [0.65, 0.0], "width": 0.3, "axis": "y",
-                      "in": ["bk.ok"]},
-                     {"name": "goal", "type": "goal", "pos": [0.85, 0.0], "radius": 0.08}]}
+                     {"name": "bk", "preset": "beak/basket", "pos": [0.15, -0.25], "consume": True},
+                     {"name": "door", "preset": "device/sliding_door", "pos": [GATE_X, 0.0], "in": ["bk.ok"]},
+                     {"name": "goal", "type": "goal", "pos": [0.7, 0.0], "radius": 0.08}]}
     path = tmp_path / f"{name}.yaml"
     path.write_text(yaml.safe_dump(raw))
     return path
@@ -1273,25 +1279,10 @@ def test_solver_plans_round_basket_walls(asset_dir, tmp_path):
     bk, grid = env.parts["bk"], env.grid
     inflate = env.body.footprint_radius + CLEARANCE
     free = env.stage_free(1, inflate=inflate)
-    beside = grid.cell(bk.xy - [0.0, bk.half[1] + 0.05])        # 5 cm off the south wall
+    beside = grid.cell(bk.xy + [0.0, bk.half[1] + 0.05])        # 5 cm off the north wall
     assert free[beside] and not plan_free(env, free, inflate)[beside]
     assert free_mask(grid, env.walls, env.parts, set())[grid.cell(bk.xy)]
     env.close()
-
-
-GATE_MAP = """
-####################
-#...............#..#
-#...............#..#
-#...............#..#
-#..................#
-#..................#
-#..................#
-#...............#..#
-#...............#..#
-#...............#..#
-####################
-"""
 
 
 @pytest.mark.slow
@@ -1306,6 +1297,23 @@ def test_grid_answer_takes_a_copy_for_the_basket(asset_dir, tmp_path, preset):
         assert [t.name for t in env.targets] == ["bk", "goal"]
         if on is None or env.body_state.fallen:
             bad[seed] = (on, env.body_state.fallen)
+        env.close()
+    assert SEEDS - len(bad) >= NEED, f"{preset}: {bad}"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("preset", DISP_PRESETS)
+def test_grid_answer_fills_the_basket_and_reaches_the_goal(asset_dir, tmp_path, preset):
+    """Episodes as `mpg check` runs them (40 s): fill the basket, walk off it, through the door."""
+    from mujoco_puzzle_gym.solver import run_episode
+
+    bad = {}
+    for seed in range(SEEDS):
+        env = PuzzleEnv(task={"actions": ["move", "head", "grab"]},
+                        room=gate_disp_room(tmp_path, preset, f"goal_{preset}_{seed}"))
+        res = run_episode(env, seed)
+        if not res["success"]:
+            bad[seed] = (res["target"], res["fallen"], res["seconds"])
         env.close()
     assert SEEDS - len(bad) >= NEED, f"{preset}: {bad}"
 
