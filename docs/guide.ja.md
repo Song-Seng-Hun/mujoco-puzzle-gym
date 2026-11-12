@@ -44,7 +44,7 @@ flowchart LR
 | `mpg parts` | 登録された部品、値のスキーマ、プリセットの一覧(`--json`)、値の表(`--markdown`) |
 | `mpg train <task.yaml> --minutes N` | 決めた時間だけ学習、結果は`runs/<id>/` |
 | `mpg diagnose runs/<id>` | 失敗の原因を分類、根拠の数値と失敗動画 |
-| `mpg eval runs/<id>` | 学習に使っていない配置での成功率と平均時間(`--policy random`で基準線)。`--onnx policy.onnx --task task.yaml`なら書き出したポリシーをpickleなしで評価 |
+| `mpg eval runs/<id>` | 学習に使っていない配置での成功率と平均時間(`--policy random`で基準線)。`--onnx policy.onnx --task task.yaml`なら書き出したポリシーをpickleなしで評価。`--difficulty k`は難易度段階kで(既定は最後の段階) |
 | `mpg export-onnx runs/<id>` | ポリシーを`policy.onnx`と`policy.json`に書き出す(共有用) |
 | `mpg render runs/<id>` | 成功エピソードのMP4 |
 | `mpg demo` | リポジトリに同梱の学習済みポリシーがサンプルの部屋を解く動画(`demo.mp4`) |
@@ -112,6 +112,7 @@ mpg eval runs/<id> --full --segments
 - `--curriculum reverse`: 最後の区間からゴールまでを出発点にして、出発点を前へずらしていきます。`none`(既定)は最初からゴールまでです。
 - 同じ値はtask.yamlに`curriculum: {mode: forward, advance_at: 0.8, replay: 0.2, window: 50, snapshots: null}`と書けます。`snapshots`はスナップショットのフォルダーです(空なら`runs/check/<部屋>/checkpoints`)。
 - 進み具合は`runs/<id>/curriculum.json`に、時刻、開いた区間、区間ごとの成功率として残ります。
+- task.yamlに`difficulty:`(罠の強さのような値の段階、[部品ガイドの難易度段階](parts-guide.ja.md#難易度段階))があれば、(区間、難易度)の組を一つずつ開きます。`curriculum.order`が`difficulty_first`(既定)なら一つの区間の難易度を上げきってから次の区間へ、`segment_first`なら一つの難易度ですべての区間を開いてから次の難易度へ。`curriculum.json`のレベル名は`<区間>@d<段階>`です。
 - 旗は解く順序に入るので、報酬`progress`と観測`target_pos`は旗を順にたどります。観測項目`checkpoints`は、次の旗(one-hot、最後の枠はゴール)と旗ごとの到達の有無です。
 - `mpg eval --full`はスナップショットなしで最初からゴールまでの成功率(`full_success_rate`)を、`--segments`は区間ごとの成功率(`segment_success_rates`)を出します。両方を使うと、「区間はすべて成功したのに、通しで走ると失敗した割合」(`chain_gap_rate`)も出します。
 

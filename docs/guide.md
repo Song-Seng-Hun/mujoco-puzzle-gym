@@ -44,7 +44,7 @@ flowchart LR
 | `mpg parts` | 등록된 부품, 값 스키마, 프리셋 목록(`--json`), 값 표(`--markdown`) |
 | `mpg train <task.yaml> --minutes N` | 정해진 시간 동안 학습, 결과는 `runs/<id>/` |
 | `mpg diagnose runs/<id>` | 실패 원인 분류, 근거 숫자, 실패 영상 |
-| `mpg eval runs/<id>` | 학습에 쓰지 않은 배치에서 성공률과 평균 시간 (`--policy random`으로 기준선). `--onnx policy.onnx --task task.yaml`은 내보낸 정책을 pickle 없이 평가 |
+| `mpg eval runs/<id>` | 학습에 쓰지 않은 배치에서 성공률과 평균 시간 (`--policy random`으로 기준선). `--onnx policy.onnx --task task.yaml`은 내보낸 정책을 pickle 없이 평가. `--difficulty k`는 난이도 단계 k에서(기본은 마지막 단계) |
 | `mpg export-onnx runs/<id>` | 정책을 `policy.onnx`와 `policy.json`으로 내보내기(나누기용) |
 | `mpg render runs/<id>` | 성공 에피소드 MP4 |
 | `mpg demo` | 저장소에 든 학습된 정책이 예제 방을 푸는 영상(`demo.mp4`) |
@@ -112,6 +112,7 @@ mpg eval runs/<id> --full --segments
 - `--curriculum reverse`: 마지막 구간에서 골까지부터 시작해 시작점을 앞으로 당깁니다. `none`(기본)은 처음부터 골까지입니다.
 - 같은 값은 task.yaml에 `curriculum: {mode: forward, advance_at: 0.8, replay: 0.2, window: 50, snapshots: null}`로 적을 수 있습니다. `snapshots`는 저장본 폴더입니다(비우면 `runs/check/<방>/checkpoints`).
 - 진행은 `runs/<id>/curriculum.json`에 시각, 열린 구간, 구간별 성공률로 남습니다.
+- task.yaml의 `difficulty:`(함정 세기 같은 값의 단계, [부품 안내의 난이도 단계](parts-guide.md#난이도-단계))가 있으면 (구간, 난이도) 쌍을 하나씩 엽니다. `curriculum.order`가 `difficulty_first`(기본)면 한 구간의 난이도를 다 올린 뒤 다음 구간, `segment_first`면 한 난이도로 모든 구간을 연 뒤 다음 난이도입니다. `curriculum.json`의 수준 이름은 `<구간>@d<단계>`입니다.
 - 깃발은 풀이 순서에 들어가므로 보상 `progress`와 관측 `target_pos`가 깃발을 차례로 거쳐 갑니다. 관측 항목 `checkpoints`는 다음 깃발(one-hot, 마지막 칸은 골)과 깃발별 도달 여부입니다.
 - `mpg eval --full`은 저장본 없이 처음부터 골까지의 성공률(`full_success_rate`)을, `--segments`는 구간별 성공률(`segment_success_rates`)을 냅니다. 둘을 함께 쓰면 "구간은 모두 성공했지만 이어 달리면 실패한 비율"(`chain_gap_rate`)도 냅니다.
 
