@@ -1238,12 +1238,12 @@ def test_check_actions_for_a_dispenser(asset_dir, tmp_path, preset, actions, ok)
     assert res["actions"]["ok"] is ok and res["ok"] is ok, res
 
 
-GATE_X = 0.4          # divider; its opening is the standard 0.56 m (examples/rooms/doors.yaml)
+GATE_X = 0.4          # divider; wall ends 0.56 m apart, a 0.50 m opening (examples/rooms/doors.yaml)
 
 
 def gate_disp_room(tmp_path, preset, name):
     """The basket (consume) opens a sliding door to the goal room; no `demo:`. The divider
-    leaves the standard 0.56 m gap (a 0.3 m gap is narrower than the planner's inflated body,
+    leaves the standard 0.50 m opening (a 0.3 m one is narrower than the planner's inflated body,
     plan.md E3b-3 "바구니에서 나오기"); the basket stands off the way to the door."""
     raw = {"name": name, "size": [1.8, 0.9], "wall": {"thickness": 0.06, "height": 0.25},
            "walls": [{"from": [GATE_X, -0.45], "to": [GATE_X, -0.28]},

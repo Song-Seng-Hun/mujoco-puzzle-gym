@@ -15,8 +15,9 @@ used by solver.py. "Object": any grabbable part (cube, laundry, key, ...).
   walking, so letting go at once throws it), open the beak and stand until it
   rests (or SETTLE s each). The head goes back to level and the body turns
   round and walks off until AWAY m from the object (later walking would kick
-  it off); from a box, until its footprint clears the walls (measured from
-  the box centre: the solver plans round box walls, solver.py `plan_free`).
+  it off); from a box, until half its width + the footprint radius from its
+  centre (clear of the walls along an axis; the solver plans round box walls
+  from the nearest free cell, solver.py `plan_free`).
   Standing STUCK s with the object as far as the target but beside it (too
   close to turn onto it), it walks off AWAY m from the target and comes again.
   On a hook (a receptacle of shape `hook`) it walks up to the peg instead,
@@ -271,7 +272,7 @@ class Carrier:
 
     def _let_go(self, obj, part=None) -> np.ndarray | None:
         """Stand still, let go, stand until it rests, walk off (place after "still"): from a
-        box receptacle `part`, until the footprint clears its walls (from its centre)."""
+        box receptacle `part`, until half its width + footprint radius from its centre."""
         from .solver import CLEARANCE
 
         env = self.env
