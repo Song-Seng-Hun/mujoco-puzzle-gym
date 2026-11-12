@@ -142,9 +142,9 @@ parts:
 | [`examples/rooms/herd.yaml`](../examples/rooms/herd.yaml) | 도망치는 로봇을 구석의 버튼 위로 몰아 두면 그동안 문이 열려 있습니다 | `npc/flee`, `input/floor_momentary`(`trigger: npc`), `device/sliding_door` |
 | [`examples/rooms/warp_hop.yaml`](../examples/rooms/warp_hop.yaml) | 문 없는 벽 너머의 골로 워프 발판을 타고 넘어갑니다 | `warp` |
 | [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml) | 받침대의 큐브를 부리로 집어 압력판에 올리면 문이 열립니다 | `cube`, `pressure`, `door` |
-| [`examples/rooms/cube_socket.yaml`](../examples/rooms/cube_socket.yaml) | 받침대의 열쇠(마커 7)를 같은 번호의 소켓에 넣으면 문이 열립니다 | `beak/key`, `input/socket`, `device/sliding_door` |
+| [`examples/rooms/cube_socket.yaml`](../examples/rooms/cube_socket.yaml) | 받침대의 열쇠(마커 7)를 같은 번호의 소켓에 넣으면 문이 열립니다. `--task examples/task_cube_socket.yaml` | `beak/key`, `input/socket`, `device/sliding_door` |
 | [`examples/rooms/wall_button.yaml`](../examples/rooms/wall_button.yaml) | 벽 버튼을 부리로 누르면 문이 열립니다 | `beak/wall_button_beak_mid`, `device/sliding_door` |
-| [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | 받침대 두 곳의 빨래를 바구니에 넣으면(2장) 문이 열립니다. task는 60초 판 | `beak/laundry`, `beak/basket`, `device/sliding_door` |
+| [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | 받침대 두 곳의 빨래를 바구니에 넣으면(2장) 문이 열립니다. `--task examples/task_laundry.yaml`(60초 판) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 글자 지도로 그린 두 방, 계단과 경사로 | `button`, `door` |
 
 공 조립 프리셋은 방 하나 전체라서 그대로 `mpg check`에 넣어도 되고, `preset: puzzles/ball/bowling`으로 깔고 값을 바꿔 써도 됩니다.
