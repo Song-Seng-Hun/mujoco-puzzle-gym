@@ -69,6 +69,7 @@ FLOOR_SIZE = (0.2, 0.2)
 WALL_SIZE = (0.1, 0.05)         # [m] wall plate [width, height]
 OBJECT_EXIT = (-0.02, 0.0)      # [m] default exit: on the top, 2 cm behind the front edge
 NPC_EXIT = (0.15, 0.0)          # [m] default exit of a robot: the floor in front
+CAUGHT_Z = -CATCH_DEPTH + 0.2  # [m] a copy lower than this lies on the catch plane (floors >= -0.2 m)
 DROP = 0.002                    # [m] copies appear this far above where they rest
 BODY_RGBA = (0.4, 0.5, 0.6, 1.0)
 OFF_RGBA = (0.9, 0.35, 0.2, 1.0)
@@ -97,10 +98,6 @@ class Dispensed:
     def substep(self, model, data):
         if not self.parked:
             super().substep(model, data)
-
-    @property
-    def grabbable_now(self) -> bool:
-        return not self.parked
 
     def vanish(self, model, data) -> None:
         """A receptacle consumed it (R5 `consume`): back to the dispenser's storage."""
@@ -306,6 +303,8 @@ class Dispenser(Part):
         z = self.floor_z + (self.h if on_top else 0.0)
         yaw = float(self.cfg["facing"]) + 180.0           # -x side (a lone handle) faces out
         v = np.asarray(self.cfg["exit_vel"], dtype=float)
+        copy.reset(model, data)                 # per-life state as new (a recycled broken egg
+                                                # comes out whole); parked until unpark below
         vel = [*(self.f * v[0] + self.side * v[1]), v[2]]
         if self.npc_item:
             copy.unpark(model, [*xy, z])
@@ -337,7 +336,7 @@ class Dispenser(Part):
         now = float(data.time)
         if not self.npc_item:                  # fell through a hole onto the catch plane
             for i in list(self.out):
-                if self.copies[i].pos(data)[2] < self.floor_z - CATCH_DEPTH / 2:
+                if self.copies[i].pos(data)[2] < CAUGHT_Z:
                     self.store(model, data, i)
         if self.refill:
             r = self.bus.on(self.refill)
@@ -351,12 +350,15 @@ class Dispenser(Part):
             pressed = b.on = b.pressed(data, body)
             model.geom_rgba[b._gid] = ON_RGBA if pressed else OFF_RGBA
         trig = pressed or self.inputs_on()
-        if (trig and not self.was_on and self.enabled() and self.stock_left() > 0
-                and len(self.out) < int(self.live["max_active"])
-                and now - self.last >= float(self.live["cooldown"]) - 1e-9):
+        if trig and not self.was_on and self.ready(now):
             self._hand_out(model, data, now)
         self.was_on = trig
         self._write()
+
+    def ready(self, now: float) -> bool:
+        """A rising edge at time `now` would hand out a copy."""
+        return (self.enabled() and self.stock_left() > 0 and len(self.out) < int(self.live["max_active"])
+                and now - self.last >= float(self.live["cooldown"]) - 1e-9)
 
     def state(self):
         return float(self.stock_left()) / self.n
