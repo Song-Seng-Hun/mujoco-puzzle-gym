@@ -1,0 +1,6 @@
+# Task for examples/rooms/cube_plate.yaml (R19): the cube must be grabbed, so the
+# actions add `head` (match the beak tip to the handle height) and `grab`.
+# Without `grab`, `mpg check` fails the stage `actions`. Missing keys take task.DEFAULTS.
+room: rooms/cube_plate.yaml
+actions: [move, head, grab]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, target_pos, beak]

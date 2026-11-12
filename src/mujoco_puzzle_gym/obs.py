@@ -154,6 +154,31 @@ def npcs(env):
     return np.concatenate(rows) if rows else np.zeros(0)
 
 
+#: Object kinds the `beak` term numbers (1 = first); 0 = nothing held.
+GRAB_KINDS = ("cube",)
+
+
+@register_obs("beak", replace=True)
+def beak(env):
+    """Beak grab (R18): holding (0/1), held object kind (`GRAB_KINDS` index + 1, 0:
+    none) and the nearest handle relative to the beak tip (heading frame, 3); 5 values.
+    Zeros (and no handle) in a room without grabbable objects."""
+    from .grab import BEAK_PART
+
+    b = env.parts.get(BEAK_PART)
+    if b is None or not b._eq:
+        return np.zeros(5)
+    kind = 0.0
+    if b.held is not None:
+        kind = float(GRAB_KINDS.index(b.objects[b.held].object_kind) + 1)
+    tip = env.data.site_xpos[b._site]
+    pts = np.concatenate([o.handle_points(env.data) for o in b.objects]) - tip
+    d = pts[int(np.argmin(np.linalg.norm(pts, axis=1)))]
+    yaw = env.body_state.yaw
+    c, sn = np.cos(yaw), np.sin(yaw)
+    return np.array([float(b.held is not None), kind, c * d[0] + sn * d[1], -sn * d[0] + c * d[1], d[2]])
+
+
 # ---- obs items with parameters (R39) ---------------------------------------------
 from . import sensors  # noqa: E402,F401  registers `rangefinder` and `camera`
 from . import gaze  # noqa: E402,F401  registers `markers_seen` (R27)

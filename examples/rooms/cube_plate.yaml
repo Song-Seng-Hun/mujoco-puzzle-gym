@@ -1,0 +1,28 @@
+# Carry a cube onto a pressure plate (R17, R18): the cube waits on a stand (the
+# raised "P" cell, 0.18 m: the beak tip is 0.135-0.21 m high, so a cube on the
+# floor is out of reach). Grab it by its handle, put it on the plate (objects
+# only, min_mass 0.02 kg) and the door in the dividing wall opens.
+name: cube_plate
+cell: 0.1
+legend:
+  "P": {type: floor, height: 0.18}
+map: |
+  ####################
+  #....P.......#.....#
+  #............#.....#
+  #............#.....#
+  #..................#
+  #..................#
+  #..................#
+  #..................#
+  #............#.....#
+  #............#.....#
+  #............#.....#
+  ####################
+spawn: {pos: [-0.6, -0.25], yaw: 1.57, random: [0.1, 0.05, 0.3]}
+parts:
+  - {name: cube, type: cube, pos: [-0.45, 0.42], mass: 0.03}
+  - {name: plate, type: pressure, pos: [-0.2, -0.3], size: [0.2, 0.2], min_mass: 0.02}
+  - {name: door, type: door, pos: [0.35, 0.0], width: 0.4, axis: y, in: [plate]}
+  - {name: goal, type: goal, pos: [0.65, 0.0], radius: 0.12}
+demo: [grab cube, place cube plate]

@@ -1,7 +1,7 @@
 """Test helpers: an open room built from a part list, and a test-only free box.
 
-The box stands in for the cube (R17, milestone E3) in sensor tests: a free
-body of kind "object" with a given size and mass.
+The box stands in for the cube (R17) in sensor tests: a free body of kind
+"object" with a given size and mass and no handles.
 """
 
 from __future__ import annotations

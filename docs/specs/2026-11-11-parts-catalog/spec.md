@@ -1,5 +1,5 @@
 # Spec: mujoco-puzzle-gym 마일스톤 2 (부품 카탈로그, 신호, 체크포인트, 단계별 학습)
-Status: approved 2026-11-12 (E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
+Status: approved 2026-11-12 (E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
 View (read-only copy): (아직 없음)
 
 근거
@@ -82,7 +82,7 @@ View (read-only copy): (아직 없음)
 ### 입력 부품
 - R4: 버튼 3종.
   - 종류: `momentary`(누르는 동안만 1), `oneshot`(한 번 눌리면 계속 1), `toggle`(누를 때마다 0↔1).
-  - `mount: floor | wall`. 바닥형은 몸이나 물체가 올라서면 눌리고, 벽형은 부리 끝 사이트가 누름판에 닿으면 눌린다.
+  - `mount: floor | wall`. 바닥형은 몸이나 물체가 올라서면 눌리고, 벽형은 부리 끝 사이트가 누름판 앞 6 cm 안(뒤는 판 두께 + 1 cm)에 오면 눌린다(머리를 숙이고 벽에 붙으면 가슴이 먼저 닿아 부리 끝이 판에서 0.1–5.4 cm 떨어진다).
   - `trigger: body | object | npc | any`(버튼 기본 `body`)로 무엇에 눌리는지 정한다. `any`는 오리, 물체, NPC(R29)를 모두 포함하고 대포알과 끈 매듭(R31)은 포함하지 않는다. R5의 압력판·구역 `trigger`도 같다.
   - `enable`이 0이면 눌려도 출력이 바뀌지 않는다.
   - Check: `tests/test_buttons.py`가 종류 3개 × 설치 2곳 × enable 켬/끔의 출력 순서를 확인한다. 몸을 놓거나 부리 사이트를 옮기는 식으로 시험한다.
@@ -731,7 +731,7 @@ flowchart LR
 
 ## Open questions
 - [x] 1. 컨베이어 구현: (a) 표면을 이루는 mocap 띠 조각을 순환시키는 방식, (b) 접촉한 대상에 접선 방향 힘을 주는 방식. (a)가 물리적으로 정직하지만 무겁다. 1번 PR에서 두 방식을 측정한 뒤 정한다. (Claude) → 결정(2026-11-12, 사용자 "승인"): (c) 띠 위의 몸과 물체 위치를 띠 속도만큼 옮긴다. 측정: (a) mocap은 물체를 나르지 못함(큐브 94 cm 뒤처짐). (b) 큐브는 띠 속도의 98%로 따라가지만 띠 마찰을 0.02로 낮춰야 했다(정상 마찰이면 0.014 m/s). 얼음 같은 표면은 걷기에 맞지 않는다.
-- [ ] 2. 걷기 정책이 학습 때 받은 머리 자세 명령의 범위, 그리고 머리를 숙인 채로 걸어도 넘어지지 않는지. 상위 학습 설정과 짧은 시험으로 확인한다. 확인 전에는 R19의 `head`를 실험 기능으로 표시한다. (Claude)
+- [x] 2. 걷기 정책이 학습 때 받은 머리 자세 명령의 범위, 그리고 머리를 숙인 채로 걸어도 넘어지지 않는지. 상위 학습 설정과 짧은 시험으로 확인한다. 확인 전에는 R19의 `head`를 실험 기능으로 표시한다. (Claude) → 확인(E3 14단계, 2026-11-12): 상위 학습 설정(microduck_rl 0daab160, `microduck_velocity_env_cfg.py`의 `head_pose_range` 마지막 단계, velstand는 warm start로 이 마지막 단계에 고정)의 머리 명령은 HOME 기준 차이 4개(neck_pitch, head_pitch, head_yaw, head_roll)이고 범위는 ±1.10, ±1.10, ±1.40, ±0.31 rad이다. 몸 자세 명령과 달리 걸을 때도 켜져 있다. 측정(velstand, 시드 10개: `vin` 6.5–8.2, 명령 지연 3–6 물리 스텝): neck −1.1·head +1.1(가장 낮음)로 서기, vx 0.25·0.3·0.4로 6초 걷기, 제자리 돌기(wz ±1), 걸으며 돌기, 옆걸음, 1초마다 머리 숙임·들기 모두 넘어짐 0/10. 숙이면 걷는 속도가 약 25% 준다(vx 0.3, 6초 0.91 → 0.69 m). 부리 끝(`mouth_tip`) 높이는 머리를 든 채 0.21 m, 가장 숙여 0.135 m, 몸통 중심 앞으로 0.085 → 0.053 m다(neck 명령은 따라가는 폭이 좁아 −1.1에 약 −0.66). 벽으로 걸어 들어가면 머리를 든 채 부리 끝이 벽에서 0.1–1.3 cm, 숙이면 3.7–5.4 cm까지 가고 넘어지지 않는다(8초, 10/10). 결정: `head` 행동 a ∈ [−1, 1]을 숙임 정도 t = (a + 1)/2로 바꾸고, 머리 명령 (neck_pitch, head_pitch) = t × (−1.1, +1.1) rad를 보낸다. 바닥 높이(0.135 m 아래) 물체는 머리 숙이기만으로 닿지 않는다(Open question 8에 넘기는 값).
 - [x] 3. 데모 방 `four_flags`의 학습 목표: 전체 성공률 몇 % 이상을 몇 시간 안에 낼지. 또 forward 학습이 같은 시간의 `none`보다 나아야 한다는 비교를 넣을지. (사용자) → 결정: 2시간 안에 `--full` 성공률 70% 이상, 같은 시간의 `none`과 비교한다. 결과(2026-11-11, 9단계): 달성. 2시간 뒤 `forward`와 `none` 모두 `--full` 1.00(100회). 이 방은 깃발이 풀이 순서라 `target_pos`와 진행 보상이 길을 알려 주어 `none`도 약 1분에 80%를 넘었고, 단계별 학습의 이득은 보이지 않았다. 이득 비교는 보상이 길을 잘 못 알려 주는 방(12단계 난이도)에서 다시 한다.
 - [x] 4. `next_stage` 워프로 이어진 여러 방을 한 에피소드로 볼지, 방마다 따로 볼지. 기본 제안은 한 에피소드이고, 방마다 체크포인트를 둔다. (사용자) → 결정: 한 에피소드, 방마다 체크포인트. 구현: 모든 방을 한 모델의 구역으로 만든다(R14).
 

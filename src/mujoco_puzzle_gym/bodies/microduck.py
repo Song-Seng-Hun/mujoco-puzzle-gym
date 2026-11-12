@@ -67,7 +67,14 @@ SPAWN_HEIGHT = 0.125        # infer_policy.py initial trunk z (non-roller)
 TIMESTEP = 0.005
 DECIMATION = 4              # 50 Hz policy
 OBS_DIM = 61                # 3 + 3 + 14 + 14 + 14 + 13
-CMD_DIM = 13                # twist(3) + head_pose(4) + body_pose(6); only twist is used here
+CMD_DIM = 13                # twist(3) + head_pose(4) + body_pose(6); body_pose stays 0
+# Head command (R19, OQ2): deltas from HOME for (neck_pitch, head_pitch, head_yaw,
+# head_roll). Training (velocity_env_cfg head_pose_range, last stage) samples
+# +-1.10, +-1.10, +-1.40, +-0.31 rad, also while walking. `set_head(t)` sends
+# t * HEAD_LOW: mouth_tip 0.21 m (t 0) .. 0.135 m (t 1) above the floor, no fall
+# standing, walking (vx 0.25-0.4), turning or toggling the head (10/10 seeds each).
+HEAD_LOW = np.array([-1.1, 1.1, 0.0, 0.0], dtype=np.float32)
+MOUTH_SITE = "mouth_tip"    # beak tip (R18 weld grab, R4 wall buttons)
 
 # Actuator command delay in physics steps. Training samples 3..6 per env
 # (_BAM_ACTUATOR_KWARGS delay_min_lag / delay_max_lag); infer_policy.py's --delay.
@@ -116,9 +123,12 @@ class MicroduckAdapter(BodyAdapter):
     # is the conservative pre-measurement default from spec R18. max_step [m] and
     # max_slope [deg] (R37) are OQ5 measurements (2026-11-11, velstand, vx 0.3,
     # 10 seeds): 1 cm steps up 10/10 (1.2 cm 8/10, 1.4 cm 5/10), 2 cm down
-    # without a fall; 5 deg slopes up 10/10 (6 deg 9/10, 7 deg 2/10).
+    # without a fall; 5 deg slopes up 10/10 (6 deg 9/10, 7 deg 2/10). beak_height
+    # [m]: the beak tip above the floor with the head level (OQ2; `mpg check`
+    # asks for the `head` action below it, R19).
     capabilities = Capabilities(names=frozenset({"walk", "beak_grab"}),
-                                values={"max_lift_mass": 0.05, "max_step": 0.01, "max_slope": 5.0})
+                                values={"max_lift_mass": 0.05, "max_step": 0.01, "max_slope": 5.0,
+                                        "beak_height": 0.21})
 
     def __init__(self, asset_dir: Path | None = None, vin: float = BAM_VIN,
                  vin_drop_gain: float | None = BAM_VIN_DROP_GAIN,
@@ -152,6 +162,7 @@ class MicroduckAdapter(BodyAdapter):
         self._data: mujoco.MjData | None = None
         self._ctrl = None
         self.last_action = np.zeros(len(JOINTS), dtype=np.float32)
+        self.head = np.zeros(4, dtype=np.float32)
         self._prev_torque = np.zeros(len(JOINTS))
 
     def command_from_action(self, action: Sequence[float]) -> np.ndarray:
@@ -209,6 +220,12 @@ class MicroduckAdapter(BodyAdapter):
         mujoco.mju_mat2Quat(q, rc.ravel())
         cam.pos = site.pos
         cam.quat = q
+
+    def grab_site(self) -> str:
+        return PREFIX + MOUTH_SITE
+
+    def set_head(self, level: float) -> None:
+        self.head = HEAD_LOW * float(np.clip(level, 0.0, 1.0))
 
     def view_camera(self, model: mujoco.MjModel) -> int | None:
         cid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, PREFIX + HEAD_SITE)
@@ -317,6 +334,7 @@ class MicroduckAdapter(BodyAdapter):
         self._ctrl.q_target[:] = DEFAULT_POSE
         self._prev_torque[:] = 0.0
         self.last_action[:] = 0.0
+        self.head = np.zeros(4, dtype=np.float32)
         self._targets = [DEFAULT_POSE.astype(np.float64)] * (self.action_lag + 1)
         mujoco.mj_forward(data.model, data)
 
@@ -332,6 +350,7 @@ class MicroduckAdapter(BodyAdapter):
         quat = data.xquat[self._trunk]
         command = np.zeros(CMD_DIM, dtype=np.float32)
         command[:3] = cmd
+        command[3:7] = self.head
         return np.concatenate([
             data.sensordata[self._gyro],                                 # base_ang_vel (IMU gyro)
             rotate_inverse(quat, np.array([0.0, 0.0, -1.0])),            # projected_gravity
@@ -368,6 +387,7 @@ class MicroduckAdapter(BodyAdapter):
             "actuator_state": copy.deepcopy(c.actuator_state),
             "control": copy.deepcopy(c.control),
             "last_ts": c.last_ts,
+            "head": self.head.copy(),
         }
 
     def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
@@ -381,6 +401,7 @@ class MicroduckAdapter(BodyAdapter):
         c.actuator_state = copy.deepcopy(state["actuator_state"])
         c.control = copy.deepcopy(state["control"])
         c.last_ts = state["last_ts"]
+        self.head = state.get("head", np.zeros(4, dtype=np.float32)).copy()
 
     def step(self, data: mujoco.MjData, cmd: Sequence[float],
              on_substep: SubstepFn | None = None) -> None:

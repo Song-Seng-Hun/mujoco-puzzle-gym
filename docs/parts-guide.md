@@ -109,7 +109,7 @@ parts:
 |---|---|---|
 | `flee` | `npc/flee` | 몸이 `sense` 안에 오면 반대쪽으로 도망칩니다. 막히면 벽을 따라 미끄러집니다 |
 | `follow` | `npc/follow` | `sense` 안의 몸 쪽으로 와서 `keep`만큼 떨어져 멈춥니다 |
-| `lure` | `npc/lure` | 몸이 `bait` 물체를 물고 있으면 그쪽으로 옵니다. 잡기(E3)가 들어오기 전에는 움직이지 않고 `herd`로 몰 수도 없습니다 |
+| `lure` | `npc/lure` | 몸이 `bait` 물체(큐브)를 물고 있으면 그 물체 쪽으로 와서 `keep`만큼 떨어져 멈춥니다 |
 | `patrol` | `npc/patrol` | `path`(`pos`에서 잰 점들, 한 바퀴)를 돕니다. 몸이 앞을 막으면 멈춰 기다립니다 |
 | `guard` | `npc/guard` | 자리(`pos`)를 지키다가 몸이 `sense + reach` 안에 오면 `reach`까지 나와 막아섭니다 |
 | `shy_gaze` | `npc/shy_gaze` | 몸이 마커를 쳐다보면(시선 센서, 방 `gaze:`) 멈추고, 안 보면 몸 쪽으로 다가옵니다. `invert: true`면 반대입니다 |
@@ -121,7 +121,7 @@ parts:
 - 채널: `<이름>.moving`(움직이는 동안 1), `<이름>.on`(올라선 버튼의 마커 번호, 없으면 -1). 관측 항목 `npcs`는 로봇마다 상대 위치, 속도, 움직임, 반응 중인지(6칸)입니다.
 - `speed`가 몸의 걷는 속도(약 0.16 m/s) 이상이면 `mpg check`의 `parts` 단계가 경고합니다(실패는 아님). 몸이 따라잡지 못하기 때문입니다.
 - `seek_button` 로봇의 `button`(로봇이 누를 수 있는 버튼, 구역, 레이저, 압력판)은 풀이 순서에서 로봇의 `in`이 켜지면 켜진 것으로 칩니다(`in`이 없으면 처음부터). 몸은 그 위로 가지 않고, 로봇이 가서 누릅니다. 그래서 "스위치 A → 로봇(`in: [A]`) → 판 → 문" 방은 A만 누르면 풀립니다.
-- 그 밖에 로봇만 누르는 입력(`trigger: npc`, `objects` 목록 없음)은 몰 수 있는 로봇(`flee`, `follow`)의 `leash` 안(`leash`가 없으면 어디든)에 있으면 풀이 순서에서 발판으로 칩니다. 해답의 `demo:`에 `herd <로봇> <부품>`(또는 `herd <로봇> <x> <y>`)을 쓰면 `flee` 로봇은 반대편에서 몰고, `follow` 로봇은 앞장서 끌고 갑니다. `lure` 로봇은 잡기(E3)가 들어온 뒤 몰 수 있습니다.
+- 그 밖에 로봇만 누르는 입력(`trigger: npc`, `objects` 목록 없음)은 몰 수 있는 로봇(`flee`, `follow`, 미끼가 큐브인 `lure`)의 `leash` 안(`leash`가 없으면 어디든)에 있으면 풀이 순서에서 발판으로 칩니다. 해답의 `demo:`에 `herd <로봇> <부품>`(또는 `herd <로봇> <x> <y>`)을 쓰면 `flee` 로봇은 반대편에서 몰고, `follow` 로봇은 앞장서 끌고 갑니다. `lure` 로봇은 먼저 `grab <미끼>`로 미끼를 문 뒤 `herd`를 쓰면, 문 미끼로 끌고 갑니다.
 
 ## 조립 예
 
@@ -141,6 +141,7 @@ parts:
 | [`examples/rooms/trap_run.yaml`](../examples/rooms/trap_run.yaml) | 구덩이를 돌아가고, 바닥에서 도는 막대 옆과 약한 옆바람 속을 지나 골로 | `trap/pit`, `trap/spinning_bar`, `trap/crosswind` |
 | [`examples/rooms/herd.yaml`](../examples/rooms/herd.yaml) | 도망치는 로봇을 구석의 버튼 위로 몰아 두면 그동안 문이 열려 있습니다 | `npc/flee`, `input/floor_momentary`(`trigger: npc`), `device/sliding_door` |
 | [`examples/rooms/warp_hop.yaml`](../examples/rooms/warp_hop.yaml) | 문 없는 벽 너머의 골로 워프 발판을 타고 넘어갑니다 | `warp` |
+| [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml) | 받침대의 큐브를 부리로 집어 압력판에 올리면 문이 열립니다 | `cube`, `pressure`, `door` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 글자 지도로 그린 두 방, 계단과 경사로 | `button`, `door` |
 
 공 조립 프리셋은 방 하나 전체라서 그대로 `mpg check`에 넣어도 되고, `preset: puzzles/ball/bowling`으로 깔고 값을 바꿔 써도 됩니다.
@@ -160,6 +161,7 @@ parts:
 | `parts` | 부품별 점검(골대 입구보다 큰 공, 닿을 수 없는 공·코인). 몸만큼 빠른 NPC 로봇은 경고(`warnings`)만 하고 실패하지 않습니다 |
 | `overlap` | 기본 배치에서 부품의 단단한 몸체가 벽이나 다른 부품에 5 mm 넘게 박혔는지. 바닥 패드·깃발·골 구역은 빠지고, 문은 자기 벽(문이 막는 틈의 벽, 같은 선 위의 벽)과만 겹쳐도 됩니다 |
 | `order` | 신호와 벽으로 볼 때 골까지 가는 풀이 순서가 있는지. 글자 지도 방은 부품이 바닥 칸 위에 있는지와 막는 턱·경사도 |
+| `actions` | 풀이에 필요한 행동이 task `actions`에 있는지. 큐브를 옮겨야 하면(`demo:`의 `grab`, 또는 풀이 순서에 큐브만 켤 수 있는 입력) `grab`, 풀이가 누르는 벽 버튼 판 윗변이 머리를 든 부리 끝(0.21 m)보다 낮으면 `head`가 있어야 합니다 |
 
 앞의 세 단계(`values`, `channels`, `demo`)는 방을 읽는 중에 실패하므로, 그때 결과에는 실패한 단계만 있고 해답 단계는 건너뜁니다. 정적 단계만 보려면 `--static`을 붙입니다.
 
@@ -198,9 +200,17 @@ curriculum: {mode: forward, order: difficulty_first}
 - `bind`가 거는 값, 범위 밖 값, 크기 값은 방을 읽을 때 거절합니다.
 - 뽑기 없이 돌리면(평가, 직접 `reset`) 마지막 단계입니다. `mpg eval runs/<id> --difficulty 1`처럼 단계를 고를 수 있습니다.
 
-## 잡기는 아직 없습니다
+## 큐브와 부리로 집기
 
-큐브, 부리로 집기, 벽 버튼, 부리 장치(`beak` 분류)는 다음 묶음에서 들어옵니다. 그때의 잡기는 단순화한 것입니다. 부리 끝이 물체에 닿은 상태에서 잡기 명령을 내리면 물체를 부리 끝에 붙이고(용접 구속), 손가락 접촉이나 미끄러짐은 흉내 내지 않습니다.
+- `cube`는 손잡이가 달린 상자입니다(`size`, `mass`, `friction`, 손잡이 면 `handles`: `+x`, `-x`, `+y`, `-y`, `+z` 중, 기본 옆면 넷). 압력판, 소켓, 물체 버튼과 구역이 셉니다. 방에 큐브가 있으면 큐브가 켤 수 있는 입력은 풀이 순서에서 발판으로 칩니다.
+- 부리로 집기는 실물 오리로 옮길 수 없는 시뮬레이션 단순화입니다. 시뮬레이션 모델에는 부리 관절이 없어서, 부리 끝(`mouth_tip`)이 손잡이에서 `grab_radius`(기본 4 cm) 안에 있을 때 잡기 명령이 0.5를 넘으면 머리와 큐브 사이 용접 구속을 켭니다. 머리와 큐브는 서로 부딪히지 않습니다. 0.5 이하로 내리면 놓습니다. 질량이 몸의 `max_lift_mass`(기본 0.05 kg)보다 크면 잡히지 않고 `beak.too_heavy`가 1이 됩니다. 붙들고 있는 힘이 `max_hold_force`를 넘으면 놓치고 `<큐브>.dropped`가 펄스로 나갑니다. 다시 잡으려면 명령을 한 번 내렸다 올려야 합니다.
+- 부리 끝은 바닥에서 0.135–0.21 m 높이라 바닥의 큐브에는 닿지 않습니다. 큐브는 높이 0.17–0.19 m 받침대 앞 모서리에 손잡이를 몸 쪽으로 두면 걸어 들어가며 잡을 수 있습니다. 글자 지도에서는 높은 바닥 칸(`legend`의 `{type: floor, height: 0.18}`)이 받침대입니다.
+- 채널: `beak.holding`, `beak.held_id`(잡은 큐브의 마커 번호, 없으면 -1), `beak.too_heavy`, 큐브마다 `<큐브>.held`, `<큐브>.dropped`. 잡힌 큐브는 바닥 버튼, 압력판, 구역, 소켓이 세지 않습니다. 저장본은 잡은 상태까지 되돌립니다. 워프는 물고 있는 큐브도 머리에 대한 자세를 지켜 함께 옮깁니다.
+- 관측 항목 `beak`: 잡고 있는지, 잡은 물체 종류(큐브 1, 없으면 0), 부리 끝에서 가장 가까운 손잡이까지의 상대 위치(몸 방향 기준 x, y, z). 5칸.
+- 벽 버튼: `button`에 `mount: wall`을 주면 벽 면(`pos`)에서 `height` 높이에 `facing` 방향을 보는 판(`size`: [너비, 높이])이 됩니다. 부리 끝이 판 위에 있고 판 앞 6 cm 안이면 눌립니다(벽에 붙어 머리를 숙이면 가슴이 먼저 닿아 부리 끝이 판에서 4–5 cm 떨어지기 때문입니다). 판 뒤로는 판 두께 + 1 cm까지만 셉니다. 얇은 벽 건너편의 오리는 누르지 못합니다. `trigger`는 쓰지 않습니다.
+- 상위 행동: `task.yaml`의 `actions: [move]`(기본)에 `head`(머리 숙이기 1칸: -1 그대로, 1 가장 낮게)와 `grab`(1칸, 0.5 초과면 잡기)을 이 순서로 더할 수 있습니다. 행동 크기는 3 + 더한 수입니다. 정책이 할 수 없는 일은 스크립트 해답도 하지 않습니다. 큐브를 옮기거나 낮은 벽 버튼을 누르는 방은 task에 `grab`·`head`가 없으면 `mpg check`의 `actions` 단계에서 실패합니다. 예: `mpg check examples/rooms/cube_plate.yaml --task examples/task_cube_plate.yaml`.
+- 해답의 `demo:`: `grab <큐브>`(손잡이 앞까지 걸어가 머리 높이를 맞춰 잡음), `place <큐브> <부품>`(부품 가운데 위로 옮겨 멈춘 뒤 놓고 물러남). 벽 버튼은 `press <버튼>`이나 풀이 순서로 머리를 숙여 누릅니다.
+- 예제 [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml): 받침대의 큐브를 집어 압력판에 올려 문을 엽니다.
 
 ## 파이썬 플러그인
 
@@ -267,9 +277,11 @@ def majority(inputs, state, dt):
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
 | `kind` | enum |  | `momentary` | `momentary`, `oneshot`, `toggle` |  |  |
-| `mount` | enum |  | `floor` | `floor` |  | floor (wall buttons: E3) |
+| `mount` | enum |  | `floor` | `floor`, `wall` |  | floor: stepped on; wall: pressed with the beak tip |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what presses it: body, object, npc or any (not shells or rope knots) |
-| `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
+| `size` | vec | m | `[0.25, 0.25]` | [0.02, 2] |  | plate size [x, y]; wall: [width, height] |
+| `height` | float | m | `0.2` | [0.02, 1] |  | wall: plate centre above the floor |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | wall: the direction the plate faces (0 = +x) |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
 
 ### `cannon`
@@ -368,6 +380,20 @@ def majority(inputs, state, dt):
 | `wrap` | bool |  | `False` |  |  | past max -> min, below min -> max |
 | `target` | int |  | `1` | [-1e+06, 1e+06] |  | `<name>.reached` is 1 at count >= target |
 | `persist` | bool |  | `False` |  |  | keep the count when a snapshot is restored |
+
+### `cube`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
+| `mass` | float | kg | `0.03` | [0.001, 10] |  | above the body's max_lift_mass the beak cannot lift it |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
+| `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
 
 ### `door`
 
@@ -643,9 +669,11 @@ def majority(inputs, state, dt):
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
 | `kind` | enum |  | `momentary` | `momentary`, `oneshot`, `toggle` |  |  |
-| `mount` | enum |  | `floor` | `floor` |  | floor (wall buttons: E3) |
+| `mount` | enum |  | `floor` | `floor`, `wall` |  | floor: stepped on; wall: pressed with the beak tip |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what presses it: body, object, npc or any (not shells or rope knots) |
-| `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
+| `size` | vec | m | `[0.25, 0.25]` | [0.02, 2] |  | plate size [x, y]; wall: [width, height] |
+| `height` | float | m | `0.2` | [0.02, 1] |  | wall: plate centre above the floor |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | wall: the direction the plate faces (0 = +x) |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
 | `latch` | bool |  | `True` |  |  | M1: stay on after the body leaves (oneshot); false: momentary |
 

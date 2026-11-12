@@ -1,7 +1,7 @@
 """R5 sensors: each turns on in one case and stays off in another.
 
 Zone (direction, rearm, named objects), laser, pressure plate (a light and a
-heavy test box; the cube itself comes with E3), receptacle (require x4,
+heavy test box; the cube itself: test_grab.py), receptacle (require x4,
 wrong x4, close_on_ok, socket plate, held objects). The target sensor needs
 cannon shells (E2). Also the R8b lap counter run with the walking body (slow).
 """

@@ -3,8 +3,8 @@ the speed warning, `herd` and the example room `herd.yaml` (slow).
 
 Behaviour tests hold the body still (zero command) and read the sign of the
 robot -> body distance change after 2 s. `shy_gaze` uses the R27 gaze sensor
-(the standing body looks straight ahead). `lure` waits for the E3 grab, which
-fills `World.held` (plan step 12b).
+(the standing body looks straight ahead). `lure` follows the bait while the
+beak holds it (R18 grab fills `World.held`) and is herded after `grab <bait>`.
 """
 
 from __future__ import annotations
@@ -64,6 +64,22 @@ def test_follow_comes_and_keeps_its_distance(asset_dir, tmp_path):
     assert change_after(env) < -0.1
     body_steps(env, 4.0)
     assert gap(env) == pytest.approx(0.3, abs=0.04)
+
+
+def test_lure_comes_to_the_bait_only_while_it_is_held(asset_dir, tmp_path):
+    from test_grab import CUBE, grab, to_beak
+
+    env = npc_env(tmp_path, behavior="lure", bait="c", pos=[-0.4, -1.0], sense=0.8, keep=0.2,
+                  extra=[CUBE])
+    assert abs(change_after(env)) < 0.01                 # bait on the floor far off: stays
+    to_beak(env, "c")
+    grab(env)
+    assert change_after(env) < -0.1                       # held: comes towards it
+    body_steps(env, 3.0)
+    bait = env.parts["c"].pos(env.data)[:2]
+    assert np.linalg.norm(robot(env).pos(env.data) - bait) == pytest.approx(0.2, abs=0.04)
+    grab(env, on=False, seconds=0.5)
+    assert abs(change_after(env)) < 0.01                 # let go: stops
 
 
 def test_patrol_drives_its_path_and_waits_for_the_body(asset_dir, tmp_path):
@@ -296,7 +312,7 @@ def test_speed_warning(asset_dir, tmp_path):
 
 @pytest.mark.parametrize("bot,demo,needle", [
     ({"behavior": "patrol", "path": [[0, 0], [0.2, 0]]}, ["herd bot b"], "cannot herd"),
-    ({"behavior": "lure", "bait": "b"}, ["herd bot b"], "cannot herd"),     # until the E3 grab
+    ({"behavior": "lure", "bait": "b"}, ["herd bot b"], "cannot herd"),     # bait cannot be grabbed
     ({"behavior": "flee"}, ["herd bot"], "herd <npc>"),
     ({"behavior": "flee"}, ["herd bot 1.0 x"], "two numbers"),
 ])
@@ -322,11 +338,14 @@ def test_npc_button_is_a_switch_for_the_planner(asset_dir):
 @pytest.mark.parametrize("bot,sensor,role", [
     ({"behavior": "flee"}, {"type": "zone", "trigger": "npc"}, "switch"),
     ({"behavior": "flee"}, {"type": "zone", "objects": ["box"]}, "sensor"),   # robots never count
-    ({"behavior": "lure", "bait": "box"}, {"type": "button", "trigger": "npc"}, "sensor"),
+    ({"behavior": "lure", "bait": "box"}, {"type": "button", "trigger": "npc"}, "sensor"),   # not grabbable
+    ({"behavior": "lure", "bait": "c"}, {"type": "button", "trigger": "npc"}, "switch"),
 ])
 def test_which_npc_sensors_the_planner_presses(asset_dir, tmp_path, bot, sensor, role):
     box = {"name": "box", "type": "t_box", "pos": [1.0, -1.0]}
-    env = npc_env(tmp_path, pos=[0.0, 0.0], extra=[box, {"name": "z", "pos": [0.5, 0.5], **sensor}], **bot)
+    cube = {"name": "c", "type": "cube", "pos": [1.0, -0.5]}
+    env = npc_env(tmp_path, pos=[0.0, 0.0], extra=[box, cube, {"name": "z", "pos": [0.5, 0.5], **sensor}],
+                  **bot)
     assert env.parts["z"].role == role
 
 
@@ -372,3 +391,46 @@ def test_herd_room_passes_check(asset_dir, tmp_path):
     res = check(HERD, snap_dir=tmp_path)
     assert res["ok"], res
     assert res["solver"]["successes"] >= 18
+
+
+LURE_MAP = """\
+########################
+#...P............#.....#
+#................#.....#
+#................#.....#
+#................#.....#
+#......................#
+#......................#
+#......................#
+#......................#
+#................#.....#
+#................#.....#
+#................#.....#
+#................#.....#
+########################
+"""
+
+
+@pytest.mark.slow
+def test_herd_leads_a_lure_robot_with_the_held_bait(asset_dir, tmp_path):
+    """The bait waits on a stand (P); `grab bait`, then `herd` leads the robot onto the pad."""
+    import yaml
+    raw = {"name": "lure_herd", "cell": 0.1, "legend": {"P": {"type": "floor", "height": 0.18}},
+           "map": LURE_MAP, "spawn": {"pos": [-0.3, 0.1], "yaw": 1.57},
+           "parts": [{"name": "bait", "type": "cube", "pos": [-0.75, 0.55]},
+                     {"name": "bot", "type": "npc", "behavior": "lure", "bait": "bait", "pos": [-0.6, -0.2],
+                      "sense": 0.8, "keep": 0.25},
+                     {"name": "pad", "type": "button", "kind": "oneshot", "trigger": "npc",
+                      "pos": [-0.2, -0.2], "size": [0.2, 0.2]},
+                     {"name": "door", "type": "door", "pos": [0.55, 0.0], "width": 0.4, "axis": "y",
+                      "in": ["pad"]},
+                     {"name": "goal", "type": "goal", "pos": [0.9, 0.0], "radius": 0.12}],
+           "demo": ["grab bait", "herd bot pad"]}
+    path = tmp_path / "lure_herd.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(task={"actions": ["move", "head", "grab"]}, room=path)
+    assert env.parts["pad"].role == "switch"
+    for seed in range(3):
+        res = run_episode(env, seed, ScriptedSolver(env))
+        assert res["success"] and res["demo_step"] == 2, res
+    env.close()

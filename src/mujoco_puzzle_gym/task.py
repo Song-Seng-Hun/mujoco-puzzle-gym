@@ -5,6 +5,7 @@ task is saved as `task.resolved.yaml` next to a run.
     room: switch_door.yaml        # relative to the task file
     env: {hz: 10, episode_seconds: 40, command_scale: 1.0}   # scale > 1: unclipped
                                                             # commands (broken tests)
+    actions: [move]               # R19: add `head` and / or `grab` (one action value each)
     plugins: [my_terms]           # modules imported first (here and in every worker)
     obs: [gravity, ang_vel, lin_vel, part_pos, part_state]   # items may take
                                   # parameters: {item: coins, k: 5} (R39, obs.py)
@@ -38,11 +39,13 @@ from . import curriculum
 from .registry import REWARDS, load_builtins
 
 RESOLVED_NAME = "task.resolved.yaml"
+ACTIONS = ("move", "head", "grab")
 HZ_RANGE = (5.0, 25.0)
 
 DEFAULTS: dict[str, Any] = {
     "room": None,
     "body": "default",
+    "actions": ["move"],
     "env": {"hz": 10.0, "episode_seconds": 40.0, "command_scale": 1.0},
     "plugins": [],
     "obs": ["gravity", "ang_vel", "lin_vel", "part_pos", "part_state"],
@@ -125,6 +128,10 @@ def validate(task: dict[str, Any]) -> None:
         raise TaskError("env.episode_seconds must be > 0")
     if float(task["env"]["command_scale"]) <= 0:
         raise TaskError("env.command_scale must be > 0")
+    acts = task["actions"]
+    if (not isinstance(acts, list) or not acts or acts[0] != "move" or len(set(acts)) != len(acts)
+            or any(a not in ACTIONS for a in acts) or acts[1:] != [a for a in ACTIONS[1:] if a in acts]):
+        raise TaskError(f"`actions` must be [move] plus head and / or grab in that order, got {acts!r}")
     from .obs import ObsItemError, check_items
 
     try:

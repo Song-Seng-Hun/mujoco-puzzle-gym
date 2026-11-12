@@ -47,9 +47,10 @@ the stages together (an earlier stage may have none).
 
 Demo (R20): `demo:` lists the scripted solver's sub-goals for `mpg check`, in
 order (strings): `goto <part>`, `press <part>`, `wait <seconds>`, `push <ball>
-to <net or pin>`, `herd <npc> <part or x y>` (R29). After the last one the
-solver goes on with the grid answer (the solution order), so a demo may stop
-before the goal. Without `demo:` the solver uses the grid answer only. `grab` and `place` come with cubes (PR E3).
+to <net or pin>`, `herd <npc> <part or x y>` (R29), `grab <cube>`, `place
+<cube> <part>` (R18). After the last one the solver goes on with the grid
+answer (the solution order), so a demo may stop before the goal. Without
+`demo:` the solver uses the grid answer only.
 
 Markers and gaze (R26, R27): marked parts get ArUco markers (markers/);
 `gaze: {fov, max_dist, max_tilt, dwell}` sets the gaze sensor (gaze.py), and a
@@ -99,15 +100,14 @@ class RoomError(ValueError):
         self.stage = stage
 
 
-DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd")
-DEMO_LATER = ("grab", "place")        # E3 (cubes)
+DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place")
 MAX_WAIT = 60.0                        # [s] longest `wait`
 
 
 def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
     """`demo:` entries as tuples: ("goto"|"press", part), ("wait", seconds),
-    ("push", ball, target), ("herd", npc, part or (x, y)). Raises RoomError (stage
-    `demo`) naming the bad entry."""
+    ("push", ball, target), ("herd", npc, part or (x, y)), ("grab", cube),
+    ("place", cube, part). Raises RoomError (stage `demo`) naming the bad entry."""
     if raw is None:
         return []
     if not isinstance(raw, list):
@@ -124,9 +124,6 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
         if not words:
             raise RoomError(f"demo[{i}]: must be a string like 'goto goal', got {entry!r}", "demo")
         cmd, args = words[0], words[1:]
-        if cmd in DEMO_LATER:
-            raise RoomError(f"demo[{i}]: `{cmd}` comes with cubes (PR E3); "
-                            f"use one of {DEMO_COMMANDS}", "demo")
         if cmd not in DEMO_COMMANDS:
             raise RoomError(f"demo[{i}]: unknown sub-goal {cmd!r}; use one of {DEMO_COMMANDS}", "demo")
         if cmd in ("goto", "press"):
@@ -148,6 +145,15 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
             out.append(("wait", sec))
         elif cmd == "herd":
             out.append(_parse_herd(i, entry, args, parts, part))
+        elif cmd in ("grab", "place"):
+            n = 1 if cmd == "grab" else 2
+            if len(args) != n:
+                raise RoomError(f"demo[{i}]: write `" + ("grab <cube>" if n == 1 else "place <cube> <part>")
+                                + f"`, got {entry!r}", "demo")
+            cube = part(i, args[0])
+            if not hasattr(parts[cube], "handle_points"):
+                raise RoomError(f"demo[{i}]: {cube!r} is not a cube (nothing to grab)", "demo")
+            out.append((cmd, cube, *([part(i, args[1])] if n == 2 else [])))
         else:
             if len(args) != 3 or args[1] != "to":
                 raise RoomError(f"demo[{i}]: write `push <ball> to <net or pin>`, got {entry!r}", "demo")
@@ -165,15 +171,15 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
 
 def _parse_herd(i: int, entry: str, args: list[str], parts: dict[str, Any], part) -> tuple:
     """("herd", npc, part name or (x, y)) for `herd <npc> <part>` / `herd <npc> <x> <y>` (R29)."""
-    from .parts.npc.behaviors import HERDABLE
+    from .parts.npc.behaviors import HERDABLE, can_herd
 
     if len(args) not in (2, 3):
         raise RoomError(f"demo[{i}]: write `herd <npc> <part>` or `herd <npc> <x> <y>`, "
                         f"got {entry!r}", "demo")
     npc = part(i, args[0])
-    if getattr(parts[npc], "behavior", None) not in HERDABLE:
+    if not can_herd(parts[npc], parts):
         raise RoomError(f"demo[{i}]: cannot herd {npc!r}; herd an npc robot with behavior "
-                        f"{' / '.join(HERDABLE)}", "demo")
+                        f"{' / '.join(HERDABLE)} (lure: with a grabbable bait)", "demo")
     if len(args) == 2:
         return ("herd", npc, part(i, args[1]))
     try:
@@ -555,6 +561,8 @@ class Room:
                 if top:
                     pb.pos = [pb.pos[0], pb.pos[1], pb.pos[2] + top]
         body.spawn(spec, self.sample_spawn(None))
+        for part in parts.values():
+            part.attach_body(spec, body)
         spec.visual.global_.offwidth = 960
         spec.visual.global_.offheight = 720
         return spec

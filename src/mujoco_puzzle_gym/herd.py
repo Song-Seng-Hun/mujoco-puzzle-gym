@@ -12,11 +12,14 @@ e.g. a button) counts its rectangle, anything else a disk of `AT_TARGET` m.
      (recomputed) line, slowly, and stand while there; the robot keeps
      running towards the target. If the body ends up more than `LOST_ANGLE`
      off the line, it approaches again.
-- follow robots are led (lure robots too once the E3 grab fills World.held):
-  the body walks to the point `keep + LEAD` m
+- follow robots are led: the body walks to the point `keep + LEAD` m
   past the target on the robot -> target line, so the robot stopping `keep`
   short of the body stops on the target. It stands while the robot falls
-  behind more than `WAIT` x `sense` (the robot follows only within `sense`).
+  behind more than `WAIT` x `sense` (the robot follows only within `sense`)
+  and walks back towards it when it is out of `sense`.
+- lure robots are led the same way by the bait the body holds (`grab <bait>`
+  before `herd`): the bait, not the body, goes to that point, and the body
+  stands instead of turning to the robot (turning swings the bait).
 """
 
 from __future__ import annotations
@@ -152,15 +155,24 @@ class Herder:
         env = self.env
         me = npc.pos(env.data)
         here = env.body_state.pos[:2]
-        if np.linalg.norm(here - me) > WAIT * float(npc.live["sense"]):
-            return self._face(me)
+        bait = npc.bait_pos() if npc.behavior == "lure" else None
+        lead = here if bait is None else bait
+        gap, sense = float(np.linalg.norm(here - me)), float(npc.live["sense"])
+        if gap > sense:                         # out of its reach: walk back towards it
+            return self._steer(self._path_aim(me), forward=SLOW)
+        if gap > WAIT * sense:
+            return self._wait(me, bait)
         line = goal - me
         n = float(np.linalg.norm(line))
         u = line / n if n > 1e-6 else np.array([1.0, 0.0])
-        point = goal + u * (float(npc.live["keep"]) + LEAD)
+        point = goal + u * (float(npc.live["keep"]) + LEAD) + (here - lead)
         if np.linalg.norm(point - here) < AT_POINT:
-            return self._face(me)
+            return self._wait(me, bait)
         return self._steer(self._path_aim(point), forward=SLOW)
+
+    def _wait(self, me, bait) -> np.ndarray:
+        """Lead: face the robot, or stand still holding a bait (turning swings it)."""
+        return STAND.copy() if bait is not None else self._face(me)
 
     def _face(self, xy) -> np.ndarray:
         s = self.env.body_state

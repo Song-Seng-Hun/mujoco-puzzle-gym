@@ -95,7 +95,7 @@ All commands, training settings, adding parts and rewards, and swapping the body
 - [ ] **Milestone 2**: a part catalog (in progress)
   - [x] Buttons, sensors, logic gates, counters, coins, warps, balls and goal nets, several kinds of door, checkpoints and curriculum training, ArUco markers and a gaze sensor, camera and distance-sensor observations. The 35 part presets and the example rooms are in the [parts and presets guide](parts-guide.en.md).
   - [x] Moving devices (platforms, conveyors, springs), traps, robots that move on their own
-  - [ ] Cubes and beak grabbing, tow ropes, more episode randomization
+  - [ ] Cubes and beak grabbing (a simulation simplification that does not carry over to the real duck: a constraint attaches the cube to the beak tip), tow ropes, more episode randomization
 - [ ] **Milestone 3**: puzzle parts for other bodies, such as arms and wheeled robots
 
 ## Limits
