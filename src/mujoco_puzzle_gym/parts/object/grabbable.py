@@ -78,6 +78,15 @@ class Grabbable(FreeObject):
                     and any(takes(p, o) for o in objs):
                 p.role = "switch"
 
+    @property
+    def handle_body(self) -> str:
+        """Body the beak weld holds (grab.py); devices (R28) hold a handle body instead."""
+        return self.body_name
+
+    @property
+    def handle_bid(self) -> int:
+        return self._bid
+
     def handle_points(self, data) -> np.ndarray:
         """World centres of the handles (one row each)."""
         rot = data.xmat[self._bid].reshape(3, 3)

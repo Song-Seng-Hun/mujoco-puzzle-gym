@@ -47,7 +47,7 @@ def test_bad_link_fails_with_reason(asset_dir, repo_root, tmp_path):
 
 
 @pytest.mark.parametrize("edit, needle", [
-    (lambda r: r["parts"][0].update(type="lever"), "unknown part type 'lever'"),
+    (lambda r: r["parts"][0].update(type="crank"), "unknown part type 'crank'"),
     (lambda r: r["parts"].pop(), "goal"),
     (lambda r: r["links"][0].update(**{"from": "goal"}), "must be a switch"),
     (lambda r: r["parts"][1].update(name="switch_a"), "duplicate"),
