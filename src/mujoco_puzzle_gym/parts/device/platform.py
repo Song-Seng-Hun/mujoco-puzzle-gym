@@ -127,7 +127,8 @@ class Platform(Part):
     def place(self, model, xy):
         super().place(model, xy)
         self.shift = np.array([*(self.xy - self.base_xy), 0.0])
-        model.body_pos[self._bid] = self.origin + self.shift
+        # x, y only: z keeps the raised-cell height the room added at build (R37)
+        model.body_pos[self._bid, :2] = self.origin[:2] + self.shift[:2]
 
     # ---- path -------------------------------------------------------------------
     def point(self, s: float) -> np.ndarray:
@@ -213,8 +214,9 @@ class Platform(Part):
 
     # ---- planning ---------------------------------------------------------------
     def _swept(self, grid):
-        lo = self.path[:, :2].min(axis=0) + self.shift[:2] - self.half
-        hi = self.path[:, :2].max(axis=0) + self.shift[:2] + self.half
+        shift = self.xy - self.base_xy            # from the (restored) position, not the last place()
+        lo = self.path[:, :2].min(axis=0) + shift - self.half
+        hi = self.path[:, :2].max(axis=0) + shift + self.half
         return grid.rect((lo + hi) / 2, tuple((hi - lo) / 2))
 
     def hole_mask(self, grid, get):

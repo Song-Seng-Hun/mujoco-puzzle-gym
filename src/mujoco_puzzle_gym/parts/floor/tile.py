@@ -104,7 +104,8 @@ class FloorTile(FloorPart):
         c = self.cfg
         # A value gets a joint when the signal changes it, or a setter or bind may (R13).
         self.moves = {k: (bool(self.inputs) and c["on_" + k] is not None
-                          and not np.allclose(c["on_" + k], c[k])) or k in self.binds
+                          and not np.allclose(c["on_" + k], c[k]))
+                      or k in self.binds or "on_" + k in self.binds
                       for k in KEYS}
         self.axis = c["tilt_axis"]
         self.cur = {k: np.array(v, float) for k, v in self.off.items()}

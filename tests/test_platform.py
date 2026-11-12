@@ -111,3 +111,33 @@ def test_body_on_moving_platform_record(tmp_path, speed):
     moved = env.body_state.pos - start
     print(f"\nR11 record: body on platform {speed} m/s 3 s: fell={fell}, moved={moved.round(3).tolist()}, "
           f"slab moved {env.parts['pl'].top(env.data)[0] + 0.5:.3f} m")
+
+
+def test_platform_on_a_raised_cell_keeps_its_height(tmp_path):
+    # review fix: place() on reset must not drop the raised-cell height the room added (R37)
+    import yaml
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    raw = {"name": "raised", "cell": 0.1, "step_height": 0.01,
+           "map": "##########\n#........#\n#..3333..#\n#..3333..#\n#........#\n##########\n",
+           "spawn": {"pos": [-0.3, -0.1], "yaw": 0.0},
+           "parts": [{"name": "pl", "type": "platform", "pos": [0.0, 0.05],
+                      "path": [[-0.05, 0.0, 0.03], [0.05, 0.0, 0.03]], "speed": 0.1},
+                     {"name": "goal", "type": "goal", "pos": [0.3, -0.1], "radius": 0.05}]}
+    path = tmp_path / "raised.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(room=path)
+    for seed in (0, 1):
+        env.reset(seed=seed, options={"layout": env.sample_layout(None)})
+        assert env.parts["pl"].top(env.data)[2] == pytest.approx(0.03 + 0.03, abs=0.002)
+
+
+def test_swept_cells_follow_the_restored_position(tmp_path):
+    # review fix: planning reads the part's position, not the shift of the last place()
+    env = platform_env(tmp_path)
+    pl = env.parts["pl"]
+    before = pl._swept(env.grid)
+    pl.xy = pl.base_xy + np.array([0.0, 0.3])              # as a snapshot restore sets it
+    after = pl._swept(env.grid)
+    assert not np.array_equal(before, after)
+    dy = env.grid.Y[after].mean() - env.grid.Y[before].mean()
+    assert dy == pytest.approx(0.3, abs=env.grid.res)

@@ -119,3 +119,11 @@ def test_setter_on_tile_tilt_builds_its_joint(tmp_path):
     env.parts["s"].value = 1.0
     body_steps(env, 1.0)
     assert t.values(env.data)["tilt"] == pytest.approx(8.0, abs=0.3)
+
+
+def test_bind_on_on_tilt_builds_its_joint(tmp_path):
+    # review fix: a bind on `on_tilt` needs the tilt joint even when the room sets no on_tilt
+    tile = {"name": "t", "type": "floor_tile", "pos": [0.3, 0.3], "size": [0.4, 0.4], "in": ["s"],
+            "bind": {"on_tilt": {"from": "s", "map": [0.0, 1.0, 0.0, 8.0]}}}
+    env = open_room(tmp_path, [SIG, tile], name="ontilt")
+    assert "tilt" in env.parts["t"]._j

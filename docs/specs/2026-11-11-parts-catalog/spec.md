@@ -1,5 +1,5 @@
 # Spec: mujoco-puzzle-gym 마일스톤 2 (부품 카탈로그, 신호, 체크포인트, 단계별 학습)
-Status: approved 2026-11-12 (E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
+Status: approved 2026-11-12 (E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
 View (read-only copy): (아직 없음)
 
 근거
@@ -187,8 +187,8 @@ View (read-only copy): (아직 없음)
       - 범위 밖 기울기는 build 단계에서 거절한다.
       - `random`이 0이 아닌 바닥 부품은 build 단계에서 거절한다.
 - R11: 궤도 플랫폼과 엘리베이터.
-  - 미끄럼 관절 3개(x, y, z)와 위치 액추에이터로 만든다(중력 보상). mocap은 위에 놓인 물체를 마찰로 나르지 못한다(2026-11-12 측정: 0.3 m/s로 3초 움직이면 큐브가 94 cm 뒤처짐, 관절 방식 0.0 cm).
-  - 설정: `path: [[x,y,z], …]`, `speed`, `mode: loop | pingpong | once`.
+  - 경로가 움직이는 축(x, y, z)마다 미끄럼 관절과 위치 액추에이터를 하나씩 단다(중력 보상). mocap은 위에 놓인 물체를 마찰로 나르지 못한다(2026-11-12 측정: 0.3 m/s로 3초 움직이면 큐브가 94 cm 뒤처짐, 관절 방식 0.0 cm).
+  - 설정: `path: [[dx,dy,z], …]`(`pos` 기준 오프셋, z는 바닥 위 윗면 높이), `speed`, `mode: loop | pingpong | once`.
   - `while_signal`이면 신호가 1인 동안만 움직이고, `on_signal`이면 신호의 상승 순간에 출발한다.
   - 엘리베이터는 수직 경로를 쓰는 프리셋이다.
   - Check: `tests/test_platform.py`.

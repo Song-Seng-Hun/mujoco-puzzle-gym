@@ -142,3 +142,14 @@ def test_snapshot_restores_devices(tmp_path):
     assert np.abs(again[-1][box:box + 3] - rec[-1][box:box + 3]).max() < 0.005
     env.reset(seed=0)
     assert env.parts["sp"].live["velocity"] == [0.0, 0.0, 1.5] and not env.parts["set"].applied
+
+
+def test_snapshot_without_values_restores(tmp_path):
+    # review fix: snapshots pickled before R13 have no `values`; restore falls back to room values
+    belt = {"name": "c", "preset": "device/conveyor", "pos": [0.3, 0.3], "in": ["s"]}
+    env = open_room(tmp_path, [SIG, belt], spawn=(-1.0, -1.0), name="oldsnap")
+    snap = env.save_snapshot()
+    object.__delattr__(snap, "values")
+    env.parts["c"].live["speed"] = 0.4
+    env.restore_snapshot(snap)
+    assert env.parts["c"].live["speed"] == env.parts["c"]._live0["speed"]

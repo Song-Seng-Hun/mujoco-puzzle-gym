@@ -78,10 +78,13 @@ def restore(snap: Snapshot, model: mujoco.MjModel, data: mujoco.MjData, parts: d
     mujoco.mj_setState(model, data, snap.state, SIG)
     load_model_values(model, snap.model)
     bus.load(snap.signals)
+    values = getattr(snap, "values", {})       # snapshots pickled before R13 have none
     for n, p in parts.items():
         p.xy = snap.part_xy[n].copy()
-        if n in snap.values:
-            p.load_values(model, data, snap.values[n])
+        if n in values:
+            p.load_values(model, data, values[n])
+        else:
+            p.reset_values(model, data)
         p.load_state(model, data, copy.deepcopy(snap.parts[n]))
     body.load_history(data, copy.deepcopy(snap.body))
     mujoco.mj_forward(model, data)
