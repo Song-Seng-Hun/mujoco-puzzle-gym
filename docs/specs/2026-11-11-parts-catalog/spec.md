@@ -1,5 +1,5 @@
 # Spec: mujoco-puzzle-gym 마일스톤 2 (부품 카탈로그, 신호, 체크포인트, 단계별 학습)
-Status: approved 2026-11-12 (E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
+Status: approved 2026-11-12 (E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
 View (read-only copy): (아직 없음)
 
 근거
@@ -232,7 +232,7 @@ View (read-only copy): (아직 없음)
   - Check: `tests/test_spring.py`. 큐브의 발사 직후 속도가 설정값 ±5%이고, 착지 거리가 탄도 계산 ±15%이다.
 
 ### 함정
-- R16: 함정 6종. 모두 신호가 1인 동안만 작동하고, 세기는 `power`(단위는 종류별 스키마)로 정한다.
+- R16: 함정 6종. 모두 신호가 1인 동안만 작동하고, 세기는 `power`(단위는 종류별 스키마)로 정한다(세기가 없는 구덩이는 제외).
   - 바람: 영역 안의 대상에 일정한 힘을 준다(`xfrc_applied`).
   - 밀대: 옆에서 정한 거리와 속도로 민다.
   - 회전 막대: 바닥 높이에서 돈다.
@@ -570,7 +570,7 @@ View (read-only copy): (아직 없음)
   - `--curriculum reverse`: 마지막 구간부터 시작해 시작점을 앞으로 당긴다.
   - `--curriculum none`: M1과 같다.
   - 난이도 단계 `difficulty` (사용자 2026-11-11: "A를 통과하면 약한 돌을 옆에서 쏘는 A로 강화해서 방해를 뚫고 나아가는 훈련으로 이어지게"):
-    - task.yaml에 `difficulty: [{param: cannon_a.speed, from: 0.5, to: 2.0, steps: 4}, {param: cannon_a.enabled, from: 0, to: 1, at_step: 1}]`처럼 부품 값의 단계표를 적는다.
+    - task.yaml에 `difficulty: [{param: cannon_a.power, from: 0.5, to: 2.0, steps: 4}, {param: cannon_a.enabled, from: 0, to: 1, at_step: 1}]`처럼 부품 값의 단계표를 적는다.
     - 현재 단계에서 성공률이 `--advance-at`을 넘으면 다음 단계로 올린다. 앞 단계는 `--replay` 비율로 섞는다.
     - 구간과 난이도를 함께 쓸 수 있다. 예: A→B를 함정 없이 익힌다 → 같은 A→B에 약한 대포를 켠다 → 대포를 세게 한다 → B→C를 연다. 순서는 `order: segment_first | difficulty_first`로 정한다.
     - 바꿀 수 있는 값은 스키마에서 "실행 중 변경 가능"이거나 "에피소드 시작 때 변경 가능"으로 표시된 것만이다. 에피소드 시작 때만 바꾼다.(또 R35의 `randomize.<층>` 세기도 `param`으로 쓸 수 있다.)
