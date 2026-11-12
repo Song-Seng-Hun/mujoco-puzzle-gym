@@ -163,7 +163,7 @@ def npcs(env):
 
 #: Object kinds the `beak` term numbers (1 = first); 0 = nothing held. New kinds
 #: go at the end so the numbers of the old ones stay.
-GRAB_KINDS = ("cube", "laundry", "key", "handle_ball", "egg", "stick", "lever", "pull_cord")
+GRAB_KINDS = ("cube", "laundry", "key", "handle_ball", "egg", "stick", "lever", "pull_cord", "drawer")
 
 
 @register_obs("beak", replace=True)

@@ -23,8 +23,10 @@ is passable, an opening trapdoor as a hole):
 - `place <object> <part>`: carry it until it is over the part, let go and wait
   for it to rest; on a hook, hang it on the peg (R28);
 - `drop <object> <part>`: as place, letting go from the level head (R28 egg);
-- `turn <lever> <value>`: push a push lever to that cell (R28);
-- `pull <cord>`: hold a pull cord's knob, turn round, walk away until it is on (R28);
+- `turn <lever> <value>`: push a push lever to that cell; `turn <dial> <cell>`: walk
+  past the dial, looping round clockwise, until it is at that cell (R28);
+- `pull <cord or drawer>`: hold the knob, turn round, walk away until the cord is on
+  or the drawer latched open, then let go (R28);
 - `look <part>`: stand facing the part's marker until `<part>.seen` is 1 (R27).
 `press` on a wall button (and a wall button in the grid answer) walks up to
 the plate with the beak tip at its height, or with a held stick's far end
@@ -126,11 +128,11 @@ class ScriptedSolver:
         return self._steer(self.field(env.stage), target.target_xy())
 
     def _work(self, target) -> np.ndarray | None:
-        """Grid answer: work a lever / cord or look for a `_look_` switch (None: not one)."""
+        """Grid answer: work a lever, dial, cord or drawer, or look for a `_look_` switch (None: not one)."""
         from .gaze import Look
 
         kind = getattr(target, "object_kind", None)
-        if not isinstance(target, Look) and kind not in ("lever", "pull_cord"):
+        if not isinstance(target, Look) and kind not in ("lever", "dial", "pull_cord", "drawer"):
             return None
         c = self.carrier
         if self._worked is not target:
@@ -140,6 +142,8 @@ class ScriptedSolver:
             act = c.look_act(target.watched)
         elif kind == "lever":
             act = c.turn_act(target, 1.0)
+        elif kind == "dial":
+            act = c.dial_act(target, target.lo)
         else:
             act = c.pull_act(target)
         return STAND.copy() if act is None else act

@@ -6,7 +6,7 @@ weld (`eq_active`) between the head body carrying the beak-tip site
 moment; the head and the objects do not collide. "Object" here is any
 grabbable part (a part with handles: the cube, R17, and the R28 objects,
 parts/object/grabbable.py) and the R28 devices worked by a handle (grab
-lever, pull cord, parts/beak/devices.py), whose weld holds their handle
+lever, pull cord, drawer strap, parts/beak/devices.py), whose weld holds their handle
 body (`handle_body`, a knob on a ball joint) instead of a free body. A room with them gets the hidden input part
 `_beak` (first in the room order, so sensors see this body step's
 `World.held`); it builds one inactive weld per object once the body is in the
@@ -154,6 +154,8 @@ class Beak(Part):
         tip = data.site_xpos[self._site]
         best = None
         for i, o in enumerate(self.objects):
+            if not getattr(o, "grabbable_now", True):      # a latched drawer's strap (R28)
+                continue
             d = float(np.min(np.linalg.norm(o.handle_points(data) - tip, axis=1)))
             if best is None or d < best[1]:
                 best = (i, d)
@@ -171,7 +173,7 @@ class Beak(Part):
                 dropped[i] = True
                 self.armed = False
                 self._release(data)
-            elif cmd <= GRAB_ON:
+            elif cmd <= GRAB_ON or not getattr(self.objects[i], "grabbable_now", True):
                 self._release(data)
         self.too_heavy = False
         if cmd <= GRAB_ON:

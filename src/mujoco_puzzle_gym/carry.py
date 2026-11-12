@@ -29,10 +29,16 @@ used by solver.py. "Object": any grabbable part (cube, laundry, key, ...).
   on the side that pushes it toward the goal value (the facing side raises
   it), then walk slowly at the lever until its cell is the goal; then walk off
   PUSH_START m.
-- pull (a pull cord, R28): close in on the knob as for grab, then turn round
+- turn (a dial, R28): walk to the start of its pass line (PASS_OFF beside the
+  axis, PASS_FROM before it), face along it (clockwise in place), walk slowly
+  past (one cell a pass); until the cell is the goal, loop round clockwise
+  with walking turns (back along the line's far side, LOOP_PAST beyond its
+  start, then onto it again). Needs about 1 m clear on the facing side.
+- pull (a pull cord or a drawer, R28): close in on the knob as for grab, then turn round
   in place clockwise (the body barely turns in place counter-clockwise from a
   stand) until it faces away from the cord, and walk slowly on until the cord
-  is on; then let go.
+  is on; then let go. A drawer latches open during the turn. Holding PULL_STALL s
+  without progress (the body pivots round the knob), it lets go and comes again.
 - look (R27): walk to a point LOOK_DIST m in front of a face of the part's
   marker (a top face: on the body's side of it), then turn to face the marker
   (walking slowly while turning) and stand until `<part>.seen` is 1 (done once
@@ -69,6 +75,9 @@ LOOK = 0.25
 STAND = np.array([-1.0, 0.0, 0.0], dtype=np.float32)
 PUSH_START = 0.35    # [m] push lever: start the push this far out (and walk off as far)
 BACK_STEP = -1.0     # action[1] while turning off a pushed lever (step right as it turns right)
+PULL_STALL = 6.0     # [s] pull: holding this long without drawing 1 cm more: let go, come again
+DIAL_AIM = 0.3       # [m] dial: steer at the pass line this far ahead
+LOOP_PAST = 0.1      # [m] dial: walk back this far past the start of the line before turning in
 LOOK_DIST = 0.6      # [m] look: stand this far from the marker (gaze max_dist 2 m, max_tilt 70 deg)
 LOOK_AIM = 0.1       # [rad] look: facing the marker this well, stand
 BLOCK_Z = 0.05       # [m] obstacle ray from the trunk centre at this height ...
@@ -323,7 +332,9 @@ class Carrier:
 
     # ---- devices (R28) and looking (R27) ------------------------------------------------
     def turn_act(self, lever, goal: float) -> np.ndarray | None:
-        """Push lever `lever` until its value is `goal`, then walk off."""
+        """Push lever `lever` until its value is `goal`, then walk off (a dial: `dial_act`)."""
+        if getattr(lever, "object_kind", None) == "dial":
+            return self.dial_act(lever, int(goal))
         if self.phase == "away":
             return self._back_off(lever)
         done = bool(np.isclose(lever.value, goal))
@@ -358,18 +369,72 @@ class Carrier:
             return np.array([-1.0, BACK_STEP, -1.0], dtype=np.float32)
         return np.array([1.0, 0.0, float(np.clip(TURN_GAIN * err, -1.0, 1.0))], dtype=np.float32)
 
+    def dial_act(self, dial, goal: int) -> np.ndarray | None:
+        """Walk past the dial on its pass line (one cell a pass) until its cell is `goal`;
+        between passes loop round clockwise (walking turns) to the start of the line."""
+        from .parts.beak.devices import PASS_FROM, PASS_OFF, PASS_TO
+
+        if dial.cell == goal:
+            return None
+        env = self.env
+        s = env.body_state
+        w = dial.walk
+        along = float((s.pos[:2] - dial.xy) @ w)
+        heading = math.atan2(w[1], w[0])
+        self.head = -1.0
+        if self.phase == "approach":
+            act = self._walk(dial.pass_start())
+            if act is not None:
+                return act
+            self.phase = "align"
+        if self.phase == "align":                       # face along the line (clockwise in place)
+            if abs(_wrap(heading - s.yaw)) > FACING:
+                return np.array([-1.0, 0.0, -1.0], dtype=np.float32)
+            self.phase = "line"
+        if self.phase == "line":
+            if along > PASS_TO:
+                self.phase = "turn_back"
+            else:                                       # pure pursuit onto the line, 0.3 m ahead
+                aim = dial.xy + dial.f * PASS_OFF + w * (along + DIAL_AIM)
+                return self.steer(aim, SLOW)
+        if self.phase == "turn_back":
+            if abs(_wrap(heading + math.pi - s.yaw)) > FACING:
+                return np.array([1.0, 0.0, -1.0], dtype=np.float32)
+            self.phase = "back"
+        if self.phase == "back":
+            if along > -PASS_FROM - LOOP_PAST:
+                err = _wrap(heading + math.pi - s.yaw)
+                return np.array([1.0, 0.0, float(np.clip(TURN_GAIN * err, -1.0, 1.0))], dtype=np.float32)
+            self.phase = "turn_in"
+        if abs(_wrap(heading - s.yaw)) > FACING:         # turn_in: clockwise onto the line
+            return np.array([1.0, 0.0, -1.0], dtype=np.float32)
+        self.phase = "line"
+        return self.steer(dial.xy + dial.f * PASS_OFF + w * (along + DIAL_AIM), SLOW)
+
     def pull_act(self, cord) -> np.ndarray | None:
-        """Hold the cord's knob, turn round clockwise, walk on until the cord is on."""
+        """Hold the knob (a cord's or a drawer's strap), turn round clockwise, walk on until
+        the cord is on / the drawer latched open. No progress for PULL_STALL s while holding
+        (the body pivots round the knob instead of turning): let go and come again."""
         env = self.env
         if cord.satisfied():
             self.grab = -1.0
             return None
-        self.grab = 1.0
+        self.grab = -1.0 if self.phase == "approach" else 1.0     # no grab while walking up
         if self.held() is not cord:
             if self.phase in ("turn", "walk"):         # let go on the way: come again
                 self.reset()
+                self.grab = -1.0
             knob = cord.handle_points(env.data)[0]
+            self._pulled, self._stall = cord.progress(env.data), 0
             return self._close_in(knob[:2] + cord.f * APPROACH, knob)
+        p = cord.progress(env.data)
+        if p > self._pulled + 0.01:
+            self._pulled, self._stall = p, 0
+        self._stall += 1
+        if self._stall > PULL_STALL * env.hz:
+            self.reset()
+            self.grab = -1.0
+            return STAND.copy()
         err = _wrap(math.atan2(cord.f[1], cord.f[0]) - env.body_state.yaw)
         if self.phase != "walk" and abs(err) > FACING:
             self.phase = "turn"

@@ -1,4 +1,4 @@
-"""Devices the beak works (R28, category `beak`): lever and pull cord.
+"""Devices the body works (R28, category `beak`): lever, dial, pull cord, drawer.
 
 Each stands at `pos` and is worked from its `facing` side (deg; the direction
 from the device to where the body stands). Those worked by a handle are held
@@ -19,21 +19,35 @@ position ties the head to the device. The body never walks backwards (vx
     top at `height`; hold it and step sideways: to the body's left raises the
     value. `max_angle` defaults to GRAB_MAX, what the weld held while stepping
     (plan.md E3b-2: holding a knob fixed in space stalls the sidestep).
+- `dial`: a floor dial on a vertical axis with `spokes` spokes (default 4) at
+  DIAL_LO-DIAL_HI m (the feet pass under). Walking past on the pass line,
+  PASS_OFF beside the axis on the `facing` side with the axis on the body's
+  left, pushes one spoke round: one cell a pass, counter-clockwise only
+  (measured: 10/10 exactly 90 deg at 0.10-0.12 m off). `<name>.angle` is the
+  cell 0..spokes-1 (`channel_cells`), `<name>` is 1 while the cell is in
+  `target`. Detents as the lever's.
 - `pull_cord`: a cord (1D flexcomp, weightless: gravity compensated) hanging
   from a gallows arm, the knob at its end at `height`. The top of the cord is
   on a spring slider in the arm: pulling draws cord out. `<name>` turns on once
   `distance` m is drawn out (and stays on with `latch`). Hold the knob, turn
   round in place (clockwise: the body barely turns in place the other way),
   walk away.
+- `drawer`: a tray (floor at `height`, stand height) on a slide in a cabinet
+  whose front face is at `pos`; a weightless strap (1D flexcomp) on the tray's
+  front ends in the knob. Hold it and turn in place clockwise: the tray slides
+  out `travel` m (measured 10/10, 4.8-14 s, weld force <= 0.38 N with a 0.1 m
+  strap). At LATCH_AT of `travel` it latches open (the slide's `jnt_range`
+  shrinks), `<name>` is 1 and the strap's knob is no longer grabbable (a held
+  one is let go). Free objects placed on the closed tray (`shelf_z`) rest on
+  it and ride out; `check_static` rejects contents deeper than CONTENT_DEPTH.
 
-The R28 `dial` and `drawer` are not built: holding a knob that the device keeps
-on a fixed path stalls the body's sidestep (plan.md E3b-2 measurement).
-
-Planning (R20): both are switches. Their target area is the work point (where
-the body stands to work them); the scripted solver works them with the `demo:`
-sub-goals `turn <lever> <value>` (push levers) and `pull <cord>` (carry.py),
-and so does the grid answer when one is next in the solution order (lever to
-1, cord pulled).
+Planning (R20): all are switches (a lever or dial whose `.angle` only `bind`s
+read is a setting: role prop, `settings_are_props`). Their target area is the
+work point (where the body stands to work them, a dial: the start of its pass
+line); the scripted solver works them with the `demo:` sub-goals `turn <lever>
+<value>` (push levers), `turn <dial> <cell>` and `pull <cord or drawer>`
+(carry.py), and so does the grid answer when one is next in the solution order
+(lever to 1, dial to its first target cell, cord pulled, drawer opened).
 """
 
 from __future__ import annotations
@@ -59,6 +73,8 @@ KNOB = 0.012             # [m] knob radius
 WORK_REACH = 0.085       # [m] trunk centre -> beak tip, standing, level head (work point)
 BODY_RGBA = (0.45, 0.45, 0.5, 1.0)
 ARM_RGBA = (0.85, 0.55, 0.15, 1.0)
+DIAL_LO, DIAL_HI = 0.07, 0.12   # [m] dial spokes: from the trunk's height up (the feet pass under),
+                                # like the push lever's paddle
 
 
 def _visual(**kw) -> dict:
@@ -153,6 +169,19 @@ class HandleDevice(Part):
         return float(self.satisfied())
 
 
+def settings_are_props(parts, kind) -> None:
+    """A lever or dial whose `.angle` only `bind`s read (a turret's aim) is a setting, not a
+    switch: no `new_on` for setting it, no grid-answer target (R16, R28)."""
+    for dev in parts.values():
+        if not isinstance(dev, kind):
+            continue
+        chans = (dev.name, dev.name + ".angle")
+        binds = any(chans[1] in p.watch for p in parts.values())
+        reads = any(ch in [*p.inputs, *([p.enable] if p.enable else [])] for p in parts.values() for ch in chans)
+        if binds and not reads:
+            dev.role = "prop"
+
+
 # ---- lever --------------------------------------------------------------------------------
 class Lever(HandleDevice):
     object_kind = "lever"
@@ -194,17 +223,8 @@ class Lever(HandleDevice):
 
     @classmethod
     def add_room_parts(cls, parts):
-        """A lever whose `.angle` only `bind`s read (a turret's aim) is a setting, not a
-        switch: no `new_on` for pushing it to 1, no grid-answer target (R16, R28)."""
         super().add_room_parts(parts)
-        for lv in parts.values():
-            if not isinstance(lv, Lever):
-                continue
-            ch = lv.name + ".angle"
-            binds = any(ch in p.watch for p in parts.values())
-            reads = any(ch in [*p.inputs, *([p.enable] if p.enable else [])] for p in parts.values())
-            if binds and not reads:
-                lv.role = "prop"
+        settings_are_props(parts, cls)
 
     def channel_cells(self, channel: str):
         """Values `<name>.angle` can rest at (the cannon ballistic check aims per cell);
@@ -299,6 +319,106 @@ class Lever(HandleDevice):
         return [Segment(tuple(p - self.left * 0.015), tuple(p + self.left * 0.015), 0.03)]
 
 
+# ---- dial ---------------------------------------------------------------------------------
+PASS_OFF = 0.10          # [m] the body walks past this far beside the axis (spokes reach RADIUS)
+PASS_FROM, PASS_TO = 0.45, 0.35   # [m] a pass runs from this far before the axis to this far past it
+
+
+class Dial(HandleDevice):
+    object_kind = "dial"
+    grab_handle = False
+    emits = True
+    suffixes = (".angle",)
+    state_keys = ("cell",)
+    fields = (
+        Field("spokes", "int", 4, min=3, max=8, doc="spokes, one cell each (measured with 4)"),
+        Field("radius", "float", 0.15, unit="m", min=0.12, max=0.2, doc="spoke reach from the axis"),
+        Field("start", "int", 0, min=0, max=7, doc="cell on reset"),
+        Field("target", "vec", [1, 1], length=2, doc="cells [from, to] that turn `<name>` on"),
+        Field("detent", "float", 0.03, unit="N m", min=0.0, max=1.0,
+              doc="torque pulling to the nearest cell at its edge"),
+    )
+
+    def __init__(self, name, cfg):
+        super().__init__(name, cfg)
+        c = self.cfg
+        self.n = int(c["spokes"])
+        self.step = 2 * math.pi / self.n
+        self.start = int(c["start"])
+        self.lo, self.hi = (int(v) for v in c["target"])
+        for v in (self.start, self.lo, self.hi):
+            if not 0 <= v < self.n:
+                raise SchemaError(f"part {name!r}: cells are 0..{self.n - 1}, got {v}")
+        self.walk = np.array([-self.f[1], self.f[0]])          # pass direction: the axis on the body's left
+        self.cell = self.start
+
+    @classmethod
+    def add_room_parts(cls, parts):
+        settings_are_props(parts, cls)
+
+    def channel_cells(self, channel: str):
+        """Cells `<name>.angle` rests at (the cannon ballistic check aims per cell)."""
+        return np.arange(self.n, dtype=float) if channel == self.name + ".angle" else None
+
+    def build(self, spec):
+        c = self.cfg
+        body = spec.worldbody.add_body(name=self.body_name, pos=[*self.base_xy, 0.0])
+        lo, hi, rin, R = DIAL_LO, DIAL_HI, 0.03, float(c["radius"])
+        body.add_geom(name=self.body_name + "/post", type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+                      size=[0.025, hi / 2 + 0.01, 0], pos=[0, 0, hi / 2 + 0.01], rgba=BODY_RGBA)
+        hub = body.add_body(name=self.body_name + "/hub")
+        hub.add_joint(name=self.body_name + "/hinge", type=mujoco.mjtJoint.mjJNT_HINGE, axis=[0, 0, 1],
+                      damping=0.02, armature=0.002, stiffness=[float(c["detent"]) / (self.step / 2), 0, 0])
+        for i in range(self.n):
+            a = i * self.step
+            hub.add_geom(name=f"{self.body_name}/spoke{i}", type=mujoco.mjtGeom.mjGEOM_BOX,
+                         size=[(R - rin) / 2, 0.006, (hi - lo) / 2],
+                         pos=[(R + rin) / 2 * math.cos(a), (R + rin) / 2 * math.sin(a), (hi + lo) / 2],
+                         quat=yaw_quat(math.degrees(a)), mass=0.02, rgba=ARM_RGBA if i else HANDLE_RGBA)
+        self._moving = [hub.name]
+        return body
+
+    def bind(self, model, data):
+        super().bind(model, data)
+        self._qa, self._va = self._joint(model, self.body_name + "/hinge")
+
+    def reset(self, model, data):
+        data.qpos[self._qa] = self.start * self.step
+        data.qvel[self._va] = 0.0
+        self._settle(model, data)
+
+    def _settle(self, model, data) -> None:
+        """Spring rest at the nearest cell; write the cell and whether it is a target cell."""
+        k = round(float(data.qpos[self._qa]) / self.step)
+        model.qpos_spring[self._qa] = k * self.step
+        self.cell = k % self.n
+        self.write(float(self.cell), self.name + ".angle")
+        self.write(float(self.lo <= self.cell <= self.hi))
+
+    def update(self, model, data, body):
+        self._settle(model, data)
+
+    def load_state(self, model, data, st):
+        super().load_state(model, data, st)
+        self._settle(model, data)
+
+    def state(self):
+        return self.cell / (self.n - 1)
+
+    def handle_rest(self):
+        return np.array([*self.xy, DIAL_HI])
+
+    def pass_start(self) -> np.ndarray:
+        """Where a pass starts (the work point): PASS_OFF beside the axis, PASS_FROM before it."""
+        return self.xy + self.f * PASS_OFF - self.walk * PASS_FROM
+
+    def work_point(self):
+        return self.pass_start()
+
+    def blockers(self, is_open):
+        return [Segment(tuple(self.xy), tuple(self.xy + 1e-3 * self.f), 0.05)]    # the post
+
+
 # ---- pull cord ----------------------------------------------------------------------------
 CORD_NODES = 9
 GALLOWS_BACK = 0.12      # [m] post behind the cord
@@ -385,6 +505,8 @@ class PullCord(HandleDevice):
         """Cord drawn out of the arm [m]."""
         return float(data.qpos[self._qa])
 
+    progress = drawn
+
     def update(self, model, data, body):
         now = self.drawn(data) >= float(self.cfg["distance"]) - 1e-9
         self.on = (self.on and bool(self.cfg["latch"])) or now
@@ -396,3 +518,146 @@ class PullCord(HandleDevice):
     def blockers(self, is_open):
         p = self.xy - self.f * GALLOWS_BACK
         return [Segment(tuple(p - self.left * 0.015), tuple(p + self.left * 0.015), 0.03)]
+
+
+# ---- drawer -------------------------------------------------------------------------------
+CAB_DEPTH, CAB_HALF, CAB_HEIGHT = 0.22, 0.13, 0.25     # [m] cabinet (front face at `pos`)
+STRAP_NODES = 6
+LATCH_AT = 0.97          # open fraction that latches the drawer open
+#: [m] contents this far behind the front at most: the beak reaches over the open tray's front
+#: (2026-11-12: a cube 0.08 m in was grabbed 10/10, 0.12 m in 0/10)
+CONTENT_DEPTH = 0.09
+
+
+class Drawer(HandleDevice):
+    """A tray on a slide in a cabinet; a weightless strap on its front ends in the knob."""
+
+    object_kind = "drawer"
+    emits = True
+    stateful = True
+    state_keys = ("latched",)
+    fields = (
+        Field("height", "float", 0.17, unit="m", min=0.12, max=0.2,
+              doc="tray floor (contents rest here: beak height, like a stand)"),
+        Field("travel", "float", 0.15, unit="m", min=0.08, max=0.2, doc="how far the tray slides out"),
+        Field("strap", "float", 0.1, unit="m", min=0.04, max=0.15,
+              doc="strap length to the knob (measured: 0.1 m 10/10 opened, 0.06 m 6/10)"),
+        Field("friction", "float", 0.05, unit="N", min=0.0, max=0.3,
+              doc="slide friction (measured up to 0.3 N; 0.6 N stops the turn short)"),
+    )
+
+    def __init__(self, name, cfg):
+        super().__init__(name, cfg)
+        c = self.cfg
+        self.h, self.travel, self.strap = float(c["height"]), float(c["travel"]), float(c["strap"])
+        self.knob_z = self.h + 0.02
+        self.latched = False
+
+    def build(self, spec):
+        c = self.cfg
+        body = spec.worldbody.add_body(name=self.body_name, pos=[*self.base_xy, 0.0],
+                                       quat=yaw_quat(float(c["facing"])))
+        box = mujoco.mjtGeom.mjGEOM_BOX
+        D, W, H, n = CAB_DEPTH, CAB_HALF, CAB_HEIGHT, self.body_name
+        body.add_geom(name=n + "/top", type=box, size=[D / 2, W, 0.01], pos=[-D / 2 - 0.01, 0, H - 0.01],
+                      rgba=BODY_RGBA)
+        for s in (-1, 1):
+            body.add_geom(name=f"{n}/side{s:+d}", type=box, size=[D / 2, 0.01, H / 2],
+                          pos=[-D / 2 - 0.01, s * W, H / 2], rgba=BODY_RGBA)
+        body.add_geom(name=n + "/back", type=box, size=[0.01, W, H / 2], pos=[-D - 0.02, 0, H / 2], rgba=BODY_RGBA)
+        body.add_geom(name=n + "/plinth", type=box, size=[D / 2, W, (self.h - 0.02) / 2],
+                      pos=[-D / 2 - 0.01, 0, (self.h - 0.02) / 2], rgba=BODY_RGBA)
+        tray = body.add_body(name=n + "/tray", pos=[0, 0, self.h])
+        tray.add_joint(name=n + "/slide", type=mujoco.mjtJoint.mjJNT_SLIDE, axis=[1, 0, 0],
+                       range=[0.0, self.travel], limited=mujoco.mjtLimited.mjLIMITED_TRUE,
+                       damping=0.5, frictionloss=float(c["friction"]), armature=0.01)
+        tw = W - 0.02
+        tray.add_geom(name=n + "/floor", type=box, size=[D / 2 - 0.005, tw, 0.005], pos=[-D / 2 - 0.005, 0, -0.005],
+                      mass=0.03, rgba=ARM_RGBA)
+        for s in (-1, 1):
+            tray.add_geom(name=f"{n}/wall{s:+d}", type=box, size=[D / 2 - 0.005, 0.004, 0.012],
+                          pos=[-D / 2 - 0.005, s * (tw - 0.004), 0.012], mass=0.005, rgba=ARM_RGBA)
+        tray.add_geom(name=n + "/rear", type=box, size=[0.004, tw, 0.012], pos=[-D + 0.004, 0, 0.012],
+                      mass=0.003, rgba=ARM_RGBA)
+        fz = self.knob_z - self.h
+        tray.add_geom(name=n + "/front", type=box, size=[0.005, tw + 0.01, (fz + 0.03) / 2],
+                      pos=[-0.005, 0, (fz + 0.03) / 2 - 0.015], mass=0.008, rgba=ARM_RGBA)
+        k, L = STRAP_NODES, self.strap
+        strap = tray.make_flex(n + "/strap", type="grid", dim=1, count=[k, 1, 1], spacing=[L / (k - 1)] * 3,
+                               radius=0.004, mass=0.005, dof="full", equality=1, pos=[L / 2, 0, fz])
+        strap.contype = strap.conaffinity = 0
+        strap.rgba = [0.9, 0.85, 0.7, 1.0]
+        for eq in spec.equalities:                 # little stretch (as the pull cord)
+            if eq.type == mujoco.mjtEq.mjEQ_FLEX and eq.name1 == strap.name:
+                eq.solref = [0.005, 1.0]
+        for j in list(spec.body(f"{n}/strap_0").joints):    # the first node is fixed to the front
+            spec.delete(j)
+        for i in range(k):                          # weightless: the strap sticks straight out
+            spec.body(f"{n}/strap_{i}").gravcomp = 1.0
+        self._add_knob(spec.body(f"{n}/strap_{k - 1}"), [0, 0, 0])
+        spec.body(self.handle_body).gravcomp = 1.0
+        self._moving = [tray.name, *(f"{n}/strap_{i}" for i in range(k)), self.handle_body]
+        return body
+
+    def bind(self, model, data):
+        super().bind(model, data)
+        self._qa, self._va = self._joint(model, self.body_name + "/slide")
+        self._jid = model.joint(self.body_name + "/slide").id
+
+    def reset(self, model, data):
+        data.qpos[self._qa] = 0.0
+        data.qvel[self._va] = 0.0
+        self.latched = False
+        self._lock(model)
+
+    def _lock(self, model) -> None:
+        """Latched: the slide's range shrinks to fully open (`jnt_range` is a snapshot field)."""
+        model.jnt_range[self._jid] = [self.travel - 0.002, self.travel] if self.latched else [0.0, self.travel]
+        self.write(float(self.latched))
+
+    def opened(self, data) -> float:
+        """Open fraction 0..1."""
+        return float(data.qpos[self._qa]) / self.travel
+
+    def progress(self, data) -> float:
+        """Tray drawn out [m] (the solver's pull progress)."""
+        return float(data.qpos[self._qa])
+
+    def update(self, model, data, body):
+        if not self.latched and self.opened(data) >= LATCH_AT:
+            self.latched = True
+        self._lock(model)
+
+    def load_state(self, model, data, st):
+        super().load_state(model, data, st)
+        self._lock(model)
+
+    @property
+    def grabbable_now(self) -> bool:
+        """The strap knob is out of the grab once the drawer latched open (R28)."""
+        return not self.latched
+
+    def shelf_z(self, xy) -> float | None:
+        """Tray floor height over the closed tray (objects placed there rest on it)."""
+        d = np.asarray(xy, dtype=float) - self.xy
+        along, side = float(d @ self.f), float(d @ self.left)
+        inside = -CAB_DEPTH + 0.01 < along < -0.01 and abs(side) < CAB_HALF - 0.03
+        return self.h if inside else None
+
+    def handle_rest(self):
+        return np.array([*(self.xy + self.f * self.strap), self.knob_z])
+
+    def check_static(self, env) -> list[str]:
+        """Contents the beak cannot reach once the drawer is open (R28)."""
+        out = []
+        for p in env.parts.values():
+            if hasattr(p, "floor_z") and self.shelf_z(p.base_xy) is not None:
+                depth = -float((p.base_xy - self.xy) @ self.f)
+                if depth > CONTENT_DEPTH:
+                    out.append(f"{p.name!r} sits {depth:.2f} m deep in drawer {self.name!r}: the beak "
+                               f"reaches {CONTENT_DEPTH:g} m in once it is open")
+        return out
+
+    def blockers(self, is_open):
+        back = self.xy - self.f * (CAB_DEPTH / 2 + 0.01)
+        return [Segment(tuple(back - self.left * CAB_HALF), tuple(back + self.left * CAB_HALF), CAB_DEPTH + 0.02)]

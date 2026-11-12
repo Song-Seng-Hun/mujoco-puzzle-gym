@@ -170,7 +170,7 @@ parts:
 | 段階 | 見るもの |
 |---|---|
 | `stability` | 指令0で10秒間、転んだり計算が発散したりしないか |
-| `solver` | 答えを知っているスクリプトが、ランダム配置20個のうち18個以上を解けるか。部屋に`demo:`(`goto`、`press`、`wait`、`push <ボール> to <ゴールネット>`、`herd <ロボット> <部品>`、`turn <レバー> <値>`、`pull <ひも>`、`look <部品>`)があればその順序に先に従い、残りは格子の解答が引き継ぎます |
+| `solver` | 答えを知っているスクリプトが、ランダム配置20個のうち18個以上を解けるか。部屋に`demo:`(`goto`、`press`、`wait`、`push <ボール> to <ゴールネット>`、`herd <ロボット> <部品>`、`turn <レバーかダイヤル> <値>`、`pull <ひもか引き出し>`、`look <部品>`)があればその順序に先に従い、残りは格子の解答が引き継ぎます |
 
 解答段階は、通った旗ごとにスナップショットを`runs/check/<部屋>/checkpoints/<旗>.pkl`に残します。
 
@@ -241,12 +241,14 @@ curriculum: {mode: forward, order: difficulty_first}
 
 ## くちばしで動かす装置
 
-装置はその場に立っていて、体は`facing`(度)の側から操作します。どちらも解く順序のスイッチで、目標領域は体が立って操作する位置です。取っ手で操作する装置は、玉関節についた小さな取っ手の体をくちばしの溶接でつかみます(つかむ半径、離れる力、`.held`・`.dropped`チャンネルは物と同じです)。
+装置はその場に立っていて、体は`facing`(度)の側から操作します。すべて解く順序のスイッチで、目標領域は体が立って操作する位置です。取っ手で操作する装置は、玉関節についた小さな取っ手の体をくちばしの溶接でつかみます(つかむ半径、離れる力、`.held`・`.dropped`チャンネルは物と同じです)。
 
 | プリセット | 種類 | 既定値 | 用途 |
 |---|---|---|---|
 | `beak/lever` | `lever` `mode: push` | 3段(-1, 0, 1)、最大35°、-1から始まる、板の高さ7–12 cm | 体が胸で板を押し倒します。`<レバー>.angle`が段の値を出します |
 | `beak/pull_cord` | `pull_cord` | 0.45 mから垂らしたひも、取っ手の高さ0.19 m、6 cm引くとオン、`latch` | 取っ手をくわえて向きを変え、歩いて離れるとひもが引き出されます |
+| `beak/dial` | `dial` | 羽根4枚(段0–3)、羽根の高さ7–12 cm、半径0.15 m、0から始まる、`target: [1, 1]` | 軸の横0.10 mの線を歩いて通り過ぎると一段ずつ回ります |
+| `beak/drawer` | `drawer` | 引き出しの底0.17 m、0.15 m出る、帯0.1 m、取っ手の高さ0.19 m | 帯の取っ手をくわえてその場で時計回りに回ると開き、開いたまま止まります |
 
 - レバー:`detents`が段の数です(既定3、0は連続、1は拒否)。関節ばねが腕を一番近い段へ引き(`detent` N·m)、チャンネルはその段の値だけを出します。`mode: push`は床のレバーで、体が`facing`側から前に歩いて板を-1から1の方へ押します。足は板の下(7 cm)を通ります。`mode: grab`は体の方を向いて立つ腕の上の取っ手をくわえ、横歩きで回すレバーです。測った値のため既定の`max_angle`は10°で、スクリプトの解答はこのレバーを回しません(下記)。
 - 引きひも:ひもは1Dのflexcompで、重力補償により重さがありません。ひもの上端は腕の中のばね付きスライダーにかかっていて、引くとひもが出てきて、`distance`だけ出ると`<ひも>`がオンになります。`latch`ならリセットまでオンのままです。ひものばね`stiffness`は既定で2 N/m。
@@ -263,12 +265,14 @@ curriculum: {mode: forward, order: difficulty_first}
 ```
 
 - 測った値(2026-11-12、既定の体、`max_hold_force` 3 N):つかむレバーの取っ手をくわえて横歩きすると、体の右へは9.5–15.7°回ったところで溶接の力が3 Nを超えて離れ、左へは体が動きませんでした(12秒で0.2°以下)。同じ場所でつかまずに横歩きすると4秒で0.19–0.25 m進みます。押すレバーは5回とも転ばずに3.2–4.3秒で1まで倒れました。引きひもは取っ手をくわえて回るのに4.5–5秒、解答ではオンになるまで全部で9–11秒かかりました(ばね4 N/mでは3.5–3.7 cmで歩みが止まり、オンになりません)。
-- ダイヤルと引き出しは作っていません。決まった道の上の取っ手をくわえると横歩きが止まります。ダイヤルは横歩きと回転を混ぜても13°以内で離れ、引き出しは横に踏み出しても5 mmしか動かず開きませんでした。
-- 観測`beak`の物の種類:`lever` 7、`pull_cord` 8。
-- 解答の`demo:`:`turn <レバー> <値>`(押すレバーだけ、値は段のひとつ。レバーの前まで歩いて押し、止まって回ってから離れる)、`pull <ひも>`、`look <部品>`(`<部品>.seen`を読む部品があるとき、その部品を視野の真ん中に入れて立つ)。格子の解答も、解く順序にレバーが来れば1まで押し、ひもは引きます。引きひもがあればtaskの`actions`に`grab`が必要です。
-- 砲台とレバー:砲台が`bind`でレバーの`.angle`を読むと、`mpg check`の放物線の点検は連続した範囲ではなくレバーの段ごとに狙います。信号で狙い、信号がオンになると撃つ砲台がある部屋では、的の板(`input/target`)が解く順序のスイッチになり、その目標領域(観測`target_pos`も)は砲台を撃たせる入力部品の位置です。`.angle`を`bind`だけが読むレバーは設定のつまみでスイッチではないので、1まで押しても`new_on`の報酬はなく、格子の解答も押しません(狙いは`demo:`の`turn`)。
+- ダイヤル:軸の立った床のダイヤルで、羽根は取っ手ではありません。体が`facing`側で軸から0.10 m離れた線を、軸を左に見て前に歩いて通り過ぎると、胸が羽根を一枚押して一段(羽根4枚なら90°)回ります。向きは一方向(上から見て反時計回り)だけです。次の段は時計回りに歩いて回って戻り(後ろには歩かない)、同じ側をもう一度通ります。そのため`facing`側に1 mほど空けておきます。`<ダイヤル>.angle`が段の番号(0–3)で、砲台の狙いにも使えます(段ごとに狙う)。`<ダイヤル>`は段が`target`の範囲にあるとき1です。
+- 引き出し:台の高さ(0.17 m)の引き出しがキャビネットに入っていて、前板の重さのない帯(1D flexcomp)の先に取っ手があります。取っ手をくわえてその場で時計回りに回ると引き出しが引き出され、ほぼ全部(97%)出ると開いたまま止まり、`<引き出し>`が1になります。それからは帯の取っ手はつかめません(くわえていれば離します)。閉じた引き出しの中(前から0.09 m以内)に置いた物は底に載り、引き出しといっしょに出てきて、くちばしでつかめます。それより奥だと`mpg check`の`parts`段階で失敗します。`pos`はキャビネットの前面、`facing`が開く側です。
+- ダイヤル・引き出しの測った値(2026-11-12):軸の横0.10 mを通るとvx 0.25・0.4どちらも10回中10回ちょうど90°、0.12 mでは10回と9回、0.14 mでは5回で、転倒はありませんでした。段3に合わせるのは10/10(一周約11秒、全部で約33秒)。帯0.1 mで取っ手の位置と向きをばらつかせても(±2.5 cm、±0.15 rad)、10回とも4.8–14.1秒で開いて止まり、溶接の力は0.38 N以下、離れることはありませんでした。帯6 cmでは同じ条件で6/10でした。解答(`pull`のあと`grab`)は10回とも開けて中のキューブをつかみました(前から0.08 mのキューブ。0.12 m奥のものは届きません)。
+- 観測`beak`の物の種類:`lever` 7、`pull_cord` 8、`drawer` 9。
+- 解答の`demo:`:`turn <レバー> <値>`(押すレバーだけ、値は段のひとつ。レバーの前まで歩いて押し、止まって回ってから離れる)、`turn <ダイヤル> <段>`(その段になるまで通り過ぎと時計回りの戻りを繰り返す)、`pull <ひもか引き出し>`(オンになるか開いて止まれば離す。くわえて6秒間1 cmも引けなければ離して来直す)、`look <部品>`(`<部品>.seen`を読む部品があるとき、その部品を視野の真ん中に入れて立つ)。格子の解答も、解く順序にレバーが来れば1まで押し、ダイヤルは最初の目標の段まで回し、ひもは引き、引き出しは開けます。引きひもか引き出しがあればtaskの`actions`に`grab`が必要です。
+- 砲台とレバー:砲台が`bind`でレバーの`.angle`を読むと、`mpg check`の放物線の点検は連続した範囲ではなくレバーの段ごとに狙います。信号で狙い、信号がオンになると撃つ砲台がある部屋では、的の板(`input/target`)が解く順序のスイッチになり、その目標領域(観測`target_pos`も)は砲台を撃たせる入力部品の位置です。`.angle`を`bind`だけが読むレバー・ダイヤルは設定のつまみでスイッチではないので、1まで押しても`new_on`の報酬はなく、格子の解答も押しません(狙いは`demo:`の`turn`)。
 - 例[`examples/rooms/turret.yaml`](../examples/rooms/turret.yaml):レバーを一段押して砲台を的に向け、床の板を踏んで撃つと扉が開きます。
-- 既知の限界:つかむレバーはスクリプトの解答が回しません(`turn`が拒否します)。押すレバーは一方向(-1 → 1)に押すのが基本で、戻す(1 → -1)ときは反対側から押します。
+- 既知の限界:つかむレバーはスクリプトの解答が回しません(`turn`が拒否します)。押すレバーは一方向(-1 → 1)に押すのが基本で、戻す(1 → -1)ときは反対側から押します。ダイヤルは一方向にしか回らないので段は0–3を巡り、一段進むたびに約11秒かかります。ダイヤルの戻りの輪は静的な点検が見ません(`facing`側に1 m)。引き出しを開けるのに4.8–14秒かかり、開いた引き出しはリセットまで閉まりません。
 
 ## Pythonプラグイン
 
@@ -453,6 +457,22 @@ def majority(inputs, state, dt):
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
 | `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
 
+### `dial`
+
+役割`switch`、更新段階`input`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `facing` | float | deg | `0.0` | [-180, 180] |  | direction from the device to where the body works it |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs the knob this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding the knob takes more force |
+| `spokes` | int |  | `4` | [3, 8] |  | spokes, one cell each (measured with 4) |
+| `radius` | float | m | `0.15` | [0.12, 0.2] |  | spoke reach from the axis |
+| `start` | int |  | `0` | [0, 7] |  | cell on reset |
+| `target` | vec |  | `[1, 1]` |  |  | cells [from, to] that turn `<name>` on |
+| `detent` | float | N m | `0.03` | [0, 1] |  | torque pulling to the nearest cell at its edge |
+
+
 ### `door`
 
 役割`gate`、更新段階`device`。
@@ -466,6 +486,21 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.25` | [0.05, 1] |  |  |
 | `open_dir` | enum |  | `1` | `1`, `-1` |  | slide toward +axis (1) or -axis (-1) |
 | `speed` | float | m/s | — | [0.02, 5] |  | opening speed (default: as fast as the motor moves it) |
+
+### `drawer`
+
+役割`switch`、更新段階`input`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `facing` | float | deg | `0.0` | [-180, 180] |  | direction from the device to where the body works it |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs the knob this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding the knob takes more force |
+| `height` | float | m | `0.17` | [0.12, 0.2] |  | tray floor (contents rest here: beak height, like a stand) |
+| `travel` | float | m | `0.15` | [0.08, 0.2] |  | how far the tray slides out |
+| `strap` | float | m | `0.1` | [0.04, 0.15] |  | strap length to the knob (measured: 0.1 m 10/10 opened, 0.06 m 6/10) |
+| `friction` | float | N | `0.05` | [0, 0.3] |  | slide friction (measured up to 0.3 N; 0.6 N stops the turn short) |
+
 
 ### `egg`
 
@@ -934,6 +969,8 @@ def majority(inputs, state, dt):
 |---|---|---|
 | `beak/basket` | `receptacle` | `shape: box`, `size: [0.3, 0.3]`, `wall_height: 0.1`, `require: count`, `count: 1` |
 | `beak/cube_weight` | `cube` | `size: 0.04`, `mass: 0.04` |
+| `beak/dial` | `dial` | `spokes: 4`, `target: [1, 1]` |
+| `beak/drawer` | `drawer` | `travel: 0.15`, `strap: 0.1` |
 | `beak/egg` | `egg` | `break_height: 0.05`, `on_break: fail` |
 | `beak/handle_ball` | `handle_ball` | `radius: 0.03`, `mass: 0.03` |
 | `beak/hook` | `receptacle` | `shape: hook`, `size: [0.08, 0.08]`, `height: 0.19`, `peg: 0.06`, `tolerance: 0.04` |
