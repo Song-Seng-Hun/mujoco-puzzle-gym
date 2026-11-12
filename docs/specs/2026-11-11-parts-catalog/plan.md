@@ -261,6 +261,10 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - 벽 버튼(R4): 판 앞은 6 cm, 판 뒤는 판 두께 + 1 cm까지만 눌림으로 센다. 얇은 벽 건너편 부리 끝은 누르지 못한다(시험 추가).
      - 큐브 시험을 spec R17 Check대로 `tests/test_cube.py`로 옮겼다(15단계 "계획과 다른 점" 첫 줄은 이제 맞지 않음). 리셋하면 잡기가 풀리는 시험(`eq_active`, `World.held`, `beak.holding`)을 더했다.
 16b. 부리 기믹 프리셋(R28): 집을 물체 6종, 부리 장치 8종, `demo:`에 turn·pull 하위 목표 추가. 뒤로 걷지 않는 제약에 맞춰 당기기 방향을 정한다. `lever`와 `receptacle`의 걸이·바구니 프리셋도 여기서 만든다. 예제 `turret.yaml`. (7b단계에서 넘어온 일: `demo:`에 `look` 명령을 더해 `.seen` 문이 있는 방도 풀이가 통과하게 한다. 지금은 그런 방이 `order` 단계에서 실패한다.)
+   - PR 나누기 (2026-11-12, 사용자 승인 "E3b를 PR 3개로"): 16b는 세 PR로 나눈다.
+     - E3b-1 `feat/m2-beak-objects`: 집을 물체 6종(`cube_weight`, `laundry`, `key`, `handle_ball`, `egg`, `stick`), `receptacle`의 걸이·바구니 프리셋, 저울(`scale`), `wall_button_beak`(`low`, `mid`), 잡기를 큐브 밖 물체로 넓히기, 해답의 걸기·넣기·깨기·막대로 누르기.
+     - E3b-2 `feat/m2-beak-devices`: `lever`, `dial`, `drawer`, `pull_cord`, `demo:`의 turn·pull·look, 예제 `turret.yaml`.
+     - E3b-3 `feat/m2-dispenser`: `dispenser`.
 16c. 애드온 장착대(R30): 먼저 공식 바퀴 모델과 합친 모델에서 `roller.onnx`를 나란히 돌려 OQ7을 정한다(자산 추가 받기는 사용자 승인 후). 그다음 장착대, 모드 전환, `crouch` 행동, 예제 `roller_rink.yaml`. `set_addon` 순서와 리셋·복원 경로, `crouch` 최소 속도, 바퀴 퍼즐 조립 프리셋 9종, 예제 `roller_route.yaml`.
 16d. 견인 끈(R31): 먼저 OQ9를 잰다(빈 방에서 썰매 질량·마찰을 올려 가며 velstand 넘어짐과 속도, 장력 기록). 그다음 `rope.py`(매듭, tendon, `connect` 구속, 채널), 부리 묶기·풀기, 끊어짐, `hitch_station`, 저장본·리셋 경로, 정적 점검 경고(문 폭, 꺾임, 질량), `tow`/`untow` 하위 목표, 프리셋 8종, 예제 `tow_yard.yaml`. 구속은 사이트 두 개 `connect`, 붙이기는 매듭 이동·속도 0 → `eq_active` 순서. 워프는 끈 묶음 전체, 고정 끝 끈은 먼저 풂. 매듭 고리 손잡이. NPC 목줄은 구동 이득 0. 매듭 20 g 이상·바닥만 충돌·트리거 제외, `reel_speed`, 순간이동·`set_addon` 전 끈 처리, `rope_door`.  NPC 끈 워프는 평면 관절 값으로, 이득·활동 영역은 끈 상태에서 다시 계산. `attach_failed`.
 16e. 주인과 동행(R32): `zone.attach_to` → `owner.py`(경로, 기다리기, 명령, `lost`) → 저장본 → `follow` 하위 목표 → 프리셋 8종 → 예제 `walkies.yaml`. `leash_walk`·`roller_walk`는 R31·R30 뒤. `stay` 동안 `near_ratio`·`lost`·`waits` 멈춤. `receptacle.attach_to`(NPC 자식 몸체). `attach_to` 부품은 상대 `pos`, `place()` 건너뜀, 위치는 `xpos`.
