@@ -81,7 +81,7 @@ parts:
 
 ## 罠
 
-罠(`trap`分類)は体を押したり、倒したり、落としたりします。どれも`in`の信号がオンの間だけ動き(`in`がなければ常に)、強さは`power`一つで決めます。`enabled: 0`で止まります。`power`と`enabled`は実行中に変えられるので、設定変更器、`bind`、難易度段階(後述)で調整します。
+罠(`trap`分類)は体を押したり、倒したり、落としたりします。どれも`in`の信号がオンの間だけ動き(`in`がなければ常に)、強さは`power`一つで決めます。`enabled: 0`で止まります(`in`のない穴は常に開いていて止められず、`enable`や`enabled`を書くと拒否します。切り替えるには`in`を与えます)。`power`と`enabled`は実行中に変えられるので、設定変更器、`bind`、難易度段階(後述)で調整します。
 
 | 罠 | プリセット | `power` |
 |---|---|---|
@@ -98,7 +98,7 @@ parts:
 - 砲弾は前もって作った`pool`個(既定10)を使い回します。`lifetime`秒たつか、全部出ていれば一番古いものを回収して撃ち直します。スナップショットには飛んでいる砲弾も入ります。
 - 砲弾はボタン、圧力板、区域を押しません。数えるのは的(`input/target`)だけです。的は`min_speed`以上で当たると`<名前>.hits`を増やしてオンになります(`mode: latch`はオンのまま、`pulse`は1ステップ)。
 - 砲台(`trap/cannon_turret`)はレバーのような信号で狙い、信号がオンになった瞬間に一発撃ちます。`mpg check`は`bind`が出せる狙いの範囲全体で放物線を計算し、一方向でも的の板に当たれば通します。`spread`があれば円錐全体が板に入る必要があります。
-- 倒れる強さの記録(2026-11-12、立っている体、距離0.4 m、横と前から各3回):砲弾の質量 × 速さが0.5 N·s以下では一度も倒れず、0.6 N·s(0.1 kg、6 m/s)から倒れはじめ、0.8 N·s(0.2 kg、4 m/s)では6回とも倒れました。そのため既定値は0.2 kg、4 m/sです。歩いている体はもっと弱く、0.4 N·sの砲弾を2.5秒ごとに受けた解答スクリプトは20回中6回倒れました。
+- 倒れる強さの記録(2026-11-12、立っている体、距離0.4 m、横と前から各3回):砲弾の質量 × 速さが0.5 N·s以下では一度も倒れず、0.6 N·s(0.1 kg、6 m/s、前)から倒れはじめ、0.8 N·s(0.2 kg、4 m/s)では6回中4回、1.0 N·s(0.2 kg、5 m/s)では6回とも倒れました。そのため既定値は0.2 kg、5 m/sです。歩いている体はもっと弱く、0.4 N·sの砲弾を2.5秒ごとに受けた解答スクリプトは20回中6回倒れました。
 - 砲弾の質量(`shell_mass`)は部屋を組むときだけ決めます。MuJoCoが物体の質量行列を前もって計算しておくため、実行中に変えると動きが狂います。
 
 ## 組み立ての例
@@ -257,7 +257,7 @@ def majority(inputs, state, dt):
 | `enabled` | int |  | `1` | [0, 1] | 可 | 0 turns the trap off (setters, difficulty steps) |
 | `yaw` | float | deg | `0.0` | [-180, 180] |  | heading the cannon faces |
 | `height` | float | m | `0.15` | [0.05, 1.5] |  | muzzle height above the floor |
-| `power` | float | m/s | `4.0` | [0.5, 15] | 可 | launch speed |
+| `power` | float | m/s | `5.0` | [0.5, 15] | 可 | launch speed |
 | `shell_mass` | float | kg | `0.2` | [0.005, 1] |  | shell mass |
 | `shell_radius` | float | m | `0.025` | [0.01, 0.1] |  |  |
 | `period` | float | s | `2.0` | [0.2, 60] | 可 | fire: auto: time between bursts |
@@ -468,7 +468,7 @@ def majority(inputs, state, dt):
 
 | 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
 |---|---|---|---|---|---|---|
-| `enabled` | int |  | `1` | [0, 1] | 可 | 0 turns the trap off (setters, difficulty steps) |
+| `enabled` | int |  | `1` | [0, 1] | 可 | 0 closes the lid; only a pit with `in` can be switched |
 | `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | tile size [x, y] |
 | `on_fall` | enum |  | `fail` | `fail`, `reset` |  | fail: the episode ends; reset: back to the last checkpoint or the start |
 

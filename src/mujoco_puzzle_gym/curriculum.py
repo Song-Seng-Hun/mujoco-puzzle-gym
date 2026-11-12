@@ -201,6 +201,9 @@ def parse_difficulty(raw: Any, parts: dict[str, Any]) -> list[Step]:
         if key in p.binds:
             raise CurriculumError(f"{where}: {e['param']} is driven by a `bind`, which would overwrite "
                                   f"the step value every body step")
+        why = p.why_not_stepped(key)
+        if why:
+            raise CurriculumError(f"{where}: {e['param']} cannot be stepped: {why}")
         k = e.get("steps", e.get("at_step"))
         lo = 1 if "steps" in e else 0
         if isinstance(k, bool) or not isinstance(k, int) or k < lo:
@@ -232,26 +235,25 @@ def parse_difficulty(raw: Any, parts: dict[str, Any]) -> list[Step]:
     return out
 
 
-def apply_difficulty(env, k: int | None) -> None:
-    """Set difficulty step `k` (None: the last) on `env`'s parts at episode start;
-    the episode's start and checkpoint snapshots get the same values."""
+def difficulty_step(env, k: int | None) -> int | None:
+    """Difficulty step `k` checked against the task (None: the last; None without a table)."""
     if not env.difficulty:
-        env.difficulty_level = None
-        return
+        return None
     n = env.difficulty_steps
     k = n - 1 if k is None else int(k)
     if not 0 <= k < n:
         raise CurriculumError(f"difficulty step {k} out of range: the task has {n} (0..{n - 1})")
+    return k
+
+
+def apply_difficulty(env, k: int | None) -> None:
+    """Set difficulty step `k` (None: the last) on `env`'s run-time values. `_reset_sim`
+    calls it after the room values come back and before parts reset and the plan, so
+    parts start at the step value and the start snapshot holds it."""
+    k = difficulty_step(env, k)
     env.difficulty_level = k
     for st in env.difficulty:
         env.parts[st.part].set_value(env.model, env.data, st.key, copy.deepcopy(st.values[k]), episode=True)
-    touched = {st.part for st in env.difficulty}
-    for attr in ("start_snap", "checkpoint_snap"):
-        snap = getattr(env, attr)
-        if snap is not None:
-            snap = copy.copy(snap)
-            snap.values = {**snap.values, **{n_: copy.deepcopy(env.parts[n_].live) for n_ in touched}}
-            setattr(env, attr, snap)
 
 
 # ---- the controller -------------------------------------------------------------------
@@ -377,6 +379,11 @@ def begin_segment(env, segment: int, to_goal: bool, layout: dict | None = None) 
         env._reset_sim(None, {"spawn": env.room.sample_spawn(None),
                               "parts": {n: xy.copy() for n, xy in snap.part_xy.items()}})
         env.restore_snapshot(snap)
+        if env.difficulty:            # the flag snapshot holds the check run's values: step them again
+            apply_difficulty(env, env._difficulty_k)
+            snap = copy.copy(snap)
+            snap.values = {**snap.values, **{st.part: copy.deepcopy(env.parts[st.part].live)
+                                             for st in env.difficulty}}
         env.checkpoint_snap = snap
     env.segment = {"index": segment, "end": "goal" if to_goal else segs[segment]["end"]}
 

@@ -81,7 +81,7 @@ parts:
 
 ## 함정
 
-함정(`trap` 분류)은 몸을 밀거나 넘어뜨리거나 떨어뜨립니다. 모두 `in`의 신호가 켜진 동안만 움직이고(`in`이 없으면 늘), 세기는 `power` 하나로 정합니다. `enabled: 0`이면 꺼집니다. `power`와 `enabled`는 실행 중 바꿀 수 있어서 설정 변경기, `bind`, 난이도 단계(아래)로 조절합니다.
+함정(`trap` 분류)은 몸을 밀거나 넘어뜨리거나 떨어뜨립니다. 모두 `in`의 신호가 켜진 동안만 움직이고(`in`이 없으면 늘), 세기는 `power` 하나로 정합니다. `enabled: 0`이면 꺼집니다(`in`이 없는 구덩이는 늘 열려 있어 끌 수 없고, `enable`·`enabled`를 쓰면 거절합니다. 켜고 끄려면 `in`을 주세요). `power`와 `enabled`는 실행 중 바꿀 수 있어서 설정 변경기, `bind`, 난이도 단계(아래)로 조절합니다.
 
 | 함정 | 프리셋 | `power` |
 |---|---|---|
@@ -98,7 +98,7 @@ parts:
 - 포탄은 미리 만든 `pool`개(기본 10)를 돌려 씁니다. `lifetime`초가 지나거나 모두 나가 있으면 가장 오래된 것을 거둬 다시 쏩니다. 저장본에 날아가는 포탄도 담깁니다.
 - 포탄은 버튼, 압력판, 구역을 누르지 않습니다. 맞히는 것은 과녁(`input/target`)뿐입니다. 과녁은 `min_speed` 이상으로 맞으면 `<이름>.hits`를 올리고 켜집니다(`mode: latch`는 켜진 채, `pulse`는 한 스텝).
 - 포탑(`trap/cannon_turret`)은 레버 같은 신호로 겨누고 신호가 켜질 때 한 발 쏩니다. `mpg check`는 `bind`가 낼 수 있는 겨눔 범위 전체에서 포물선을 계산해, 한 방향이라도 과녁 판에 맞으면 통과시킵니다. `spread`가 있으면 원뿔 전체가 판에 들어와야 맞힌 것으로 칩니다.
-- 넘어뜨리는 세기 기록(2026-11-12, 서 있는 몸, 0.4 m 거리, 옆과 앞에서 각 3번): 포탄 질량 × 속도가 0.5 N·s 이하면 한 번도 넘어지지 않았고, 0.6 N·s(0.1 kg, 6 m/s)부터 넘어지기 시작해 0.8 N·s(0.2 kg, 4 m/s)에서 6번 모두 넘어졌습니다. 그래서 기본값은 0.2 kg, 4 m/s입니다. 걷는 중에는 더 약해서, 0.4 N·s 포탄을 2.5초마다 맞은 해답이 20번 중 6번 넘어졌습니다.
+- 넘어뜨리는 세기 기록(2026-11-12, 서 있는 몸, 0.4 m 거리, 옆과 앞에서 각 3번): 포탄 질량 × 속도가 0.5 N·s 이하면 한 번도 넘어지지 않았고, 0.6 N·s(0.1 kg, 6 m/s, 앞)부터 넘어지기 시작해 0.8 N·s(0.2 kg, 4 m/s)에서 6번 중 4번, 1.0 N·s(0.2 kg, 5 m/s)에서 6번 모두 넘어졌습니다. 그래서 기본값은 0.2 kg, 5 m/s입니다. 걷는 중에는 더 약해서, 0.4 N·s 포탄을 2.5초마다 맞은 해답이 20번 중 6번 넘어졌습니다.
 - 포탄 질량(`shell_mass`)은 방을 지을 때만 정합니다. MuJoCo가 물체의 질량 행렬을 미리 계산해 두어서, 실행 중에 바꾸면 움직임이 틀어집니다.
 
 ## 조립 예
@@ -257,7 +257,7 @@ def majority(inputs, state, dt):
 | `enabled` | int |  | `1` | [0, 1] | 예 | 0 turns the trap off (setters, difficulty steps) |
 | `yaw` | float | deg | `0.0` | [-180, 180] |  | heading the cannon faces |
 | `height` | float | m | `0.15` | [0.05, 1.5] |  | muzzle height above the floor |
-| `power` | float | m/s | `4.0` | [0.5, 15] | 예 | launch speed |
+| `power` | float | m/s | `5.0` | [0.5, 15] | 예 | launch speed |
 | `shell_mass` | float | kg | `0.2` | [0.005, 1] |  | shell mass |
 | `shell_radius` | float | m | `0.025` | [0.01, 0.1] |  |  |
 | `period` | float | s | `2.0` | [0.2, 60] | 예 | fire: auto: time between bursts |
@@ -468,7 +468,7 @@ def majority(inputs, state, dt):
 
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
-| `enabled` | int |  | `1` | [0, 1] | 예 | 0 turns the trap off (setters, difficulty steps) |
+| `enabled` | int |  | `1` | [0, 1] | 예 | 0 closes the lid; only a pit with `in` can be switched |
 | `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | tile size [x, y] |
 | `on_fall` | enum |  | `fail` | `fail`, `reset` |  | fail: the episode ends; reset: back to the last checkpoint or the start |
 

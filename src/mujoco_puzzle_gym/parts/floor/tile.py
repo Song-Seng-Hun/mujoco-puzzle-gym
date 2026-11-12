@@ -132,6 +132,13 @@ class FloorTile(FloorPart):
             if key in (k, "on_" + k):
                 self.moves[k] = True
 
+    def why_not_stepped(self, key):
+        for k in ("tilt", "height"):
+            if key in (k, "on_" + k) and not self.moves[k]:
+                return (f"the tile has no {k} joint (its {k} never changes); give it `in` with "
+                        f"`on_{k}`, a setter or a `bind` on {k}")
+        return None
+
     # ---- scene ------------------------------------------------------------------
     def _hinge_axis(self) -> list[float]:
         return [1.0, 0.0, 0.0] if self.axis == "x" else [0.0, -1.0, 0.0]

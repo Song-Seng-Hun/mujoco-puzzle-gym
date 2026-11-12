@@ -2,8 +2,9 @@
 
 A trap acts while its `in` channels are on (`require` all / any; no `in`:
 always), `enable` is on and its run-time value `enabled` is 1 (a setter or a
-difficulty step, R21, can switch it). Its strength is `power`, whose unit each
-trap's schema states.
+difficulty step, R21, can switch it). A pit is the exception: without `in`
+it is always open and rejects `enable` / `enabled` (pit.py). Its strength is
+`power`, whose unit each trap's schema states.
 """
 
 from __future__ import annotations

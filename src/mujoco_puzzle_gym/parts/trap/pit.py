@@ -7,10 +7,12 @@ termination), `reset` puts the body back at the last checkpoint or the start
 (env.py), like room `on_fall: reset` (R37). What falls in lands on the catch
 plane.
 
-Without `in` the pit is always open. With `in` a lid covers it and slides
-away while the inputs are on (and `enable` and `enabled`, trap base); the lid
-is a collision toggle (contype / conaffinity, kept by snapshots), drawn only
-while closed.
+Without `in` the pit is always open and cannot be switched: `enable`,
+`enabled: 0` and a setter, `bind` or difficulty step on `enabled` are
+rejected (give the pit an `in`). With `in` a lid covers it and slides away
+while the inputs are on (and `enable` and `enabled`, trap base); the lid is a
+collision toggle (contype / conaffinity, kept by snapshots), drawn only while
+closed.
 
 Planning: an open pit is a hole (`hole_mask`, `hole_now`), so solution
 orders and solver paths go round it.
@@ -22,18 +24,22 @@ import mujoco
 import numpy as np
 
 from ...floor import TILE_THICKNESS
-from ...schema import Field
+from ...schema import Field, SchemaError
 from ..floor.tile import FloorPart
 from ..input._sense import in_rect
 from .base import Trap
 
 LID_RGBA = (0.45, 0.4, 0.35, 1.0)
 DARK = (0.08, 0.08, 0.08, 1.0)
+NO_SWITCH = ("a pit without `in` is always open, so `enable` / `enabled` cannot switch it; "
+             "give the pit an `in` to switch it")
 
 
 class Pit(FloorPart, Trap):
     state_keys = ("open", "fell")
     fields = (
+        Field("enabled", "int", 1, min=0, max=1, runtime=True,
+              doc="0 closes the lid; only a pit with `in` can be switched"),
         Field("on_fall", "enum", "fail", choices=("fail", "reset"),
               doc="fail: the episode ends; reset: back to the last checkpoint or the start"),
     )
@@ -41,8 +47,19 @@ class Pit(FloorPart, Trap):
     def __init__(self, name, cfg):
         super().__init__(name, cfg)
         self.on_fall = self.cfg["on_fall"]
+        if not self.inputs and (self.cfg.get("enable") or int(self.cfg["enabled"]) != 1
+                                or "enabled" in self.binds):
+            raise SchemaError(f"part {name!r}: {NO_SWITCH}")
         self.open = not self.inputs
         self.fell = False
+
+    def claim_value(self, key):
+        if key == "enabled" and not self.inputs:
+            raise SchemaError(f"part {self.name!r}: {NO_SWITCH}")
+        super().claim_value(key)
+
+    def why_not_stepped(self, key):
+        return NO_SWITCH if key == "enabled" and not self.inputs else super().why_not_stepped(key)
 
     def build(self, spec):
         body = spec.worldbody.add_body(name=self.body_name, pos=[*self.base_xy, 0.0])

@@ -293,6 +293,10 @@ class Part:
         """A setter targets `key` (called while the room loads, before `build`): parts
         that build moving joints only for changing values build them for it."""
 
+    def why_not_stepped(self, key: str) -> str | None:
+        """Why run-time value `key` cannot be a difficulty step (R21) here, or None."""
+        return None
+
     def reset_values(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
         """Run-time values back to the room values (env reset, before `reset`)."""
         self.load_values(model, data, self._live0)

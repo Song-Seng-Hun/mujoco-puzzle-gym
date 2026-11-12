@@ -23,9 +23,9 @@ the mass matrix of a lone free body from compile time (`mj_setConst`), so a
 shell whose `body_mass` changed later falls at mass_new / mass_old x g
 (measured 2026-11-12: 39 m/s^2 for 0.1 -> 0.4 kg).
 
-Default strength 0.2 kg at 4 m/s (0.8 N s): in the 2026-11-12 measurement
+Default strength 0.2 kg at 5 m/s (1.0 N s): in the 2026-11-12 measurement
 (plan step 12) one such shell knocked the standing body over 6 times out of 6
-from the side and the front; 0.5 N s or less (0.1 kg at 5 m/s) never did.
+from the side and the front (4 m/s: 4 of 6); 0.5 N s or less never did.
 
 Outputs: `<name>.fired` is 1 in the body step a shell left; `<name>.hits`
 counts shells that touched the walking body (once per shell, `substep`).
@@ -93,7 +93,7 @@ class Cannon(Trap):
     fields = (
         Field("yaw", "float", 0.0, unit="deg", min=-180.0, max=180.0, doc="heading the cannon faces"),
         Field("height", "float", 0.15, unit="m", min=0.05, max=1.5, doc="muzzle height above the floor"),
-        Field("power", "float", 4.0, unit="m/s", min=0.5, max=15.0, runtime=True, doc="launch speed"),
+        Field("power", "float", 5.0, unit="m/s", min=0.5, max=15.0, runtime=True, doc="launch speed"),
         Field("shell_mass", "float", 0.2, unit="kg", min=0.005, max=1.0, doc="shell mass"),
         Field("shell_radius", "float", 0.025, unit="m", min=0.01, max=0.1),
         Field("period", "float", 2.0, unit="s", min=0.2, max=60.0, runtime=True,
@@ -178,14 +178,16 @@ class Cannon(Trap):
                 cy, sy = math.cos(body.yaw), math.sin(body.yaw)
                 lv = np.asarray(body.lin_vel, float)
                 vel = np.array([cy * lv[0] - sy * lv[1], sy * lv[0] + cy * lv[1], 0.0])
-            for _ in range(3 if self.aim == "lead" else 1):
-                d = goal - c
+            start = c
+            for _ in range(4):          # fixed point: launch point (muzzle tip) and, for lead, flight time
+                d = goal - start
                 dist = math.hypot(d[0], d[1])
                 yaw = math.atan2(d[1], d[0])
                 arc = low_arc(dist, d[2], v)
                 pitch = arc if arc is not None else math.pi / 4
                 t = dist / max(v * math.cos(pitch), 1e-6)
                 goal = np.asarray(body.pos, float) + vel * t
+                start = c + direction(np.array(yaw), np.array(pitch)) * (MUZZLE + self.radius)
         return direction(np.array(yaw), np.array(pitch))
 
     def _shoot(self, model, data, body) -> None:

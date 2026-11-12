@@ -127,6 +127,7 @@ class PuzzleEnv(gym.Env):
             raise TaskError(str(exc)) from None
         self.difficulty_steps = len(self.difficulty[0].values) if self.difficulty else 1
         self.difficulty_level: int | None = None
+        self._difficulty_k: int | None = None                    # the step `reset` asked for
 
         hz = float(self.task["env"]["hz"])
         ratio = 1.0 / (hz * self.body.control_dt)
@@ -296,6 +297,8 @@ class PuzzleEnv(gym.Env):
         self.signals.reset()
         for p in self.parts.values():
             p.reset_values(self.model, self.data)
+        curriculum.apply_difficulty(self, self._difficulty_k)    # R21: before parts reset and the plan
+        for p in self.parts.values():
             p.reset(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
         self.body_state: BodyState = self.read_body()
@@ -421,11 +424,11 @@ class PuzzleEnv(gym.Env):
             seg, to_goal = lv["segment"], self.segment_draw.to_goal
             diff = lv.get("difficulty", diff)
         self.segment = None
+        self._difficulty_k = curriculum.difficulty_step(self, diff)
         if seg is None:
             self._reset_sim(self.np_random, opts.get("layout"))
         else:
             curriculum.begin_segment(self, int(seg), to_goal, opts.get("layout"))
-        curriculum.apply_difficulty(self, diff)                  # R21: at every episode start
         return self._obs(), self._info()
 
     def step(self, action):

@@ -162,6 +162,28 @@ def test_pit_lid_opens_with_the_signal(tmp_path):
     env.close()
 
 
+def test_pit_without_in_cannot_be_switched(tmp_path):
+    """No `in`: always open, so enable / enabled (value, setter, bind, difficulty step) are rejected."""
+    from mujoco_puzzle_gym.room import RoomError
+    from mujoco_puzzle_gym.task import TaskError
+    pit = {"name": "p", "preset": "trap/pit", "pos": [0.5, 0.5]}
+    bad = [[{**pit, "enabled": 0}], [SIG, {**pit, "enable": "s"}],
+           [SIG, {**pit, "bind": {"enabled": {"from": "s", "map": [0, 1, 0, 1]}}}],
+           [SIG, pit, {"name": "set", "type": "setter", "in": ["s"], "target": "p.enabled", "value": 0}]]
+    for i, parts in enumerate(bad):
+        with pytest.raises(RoomError, match="give the pit an `in`"):
+            open_room(tmp_path, parts, name=f"pitsw{i}")
+    with pytest.raises(TaskError, match="give the pit an `in`"):
+        open_room(tmp_path, [pit], task={"difficulty": [{"param": "p.enabled", "from": 0, "to": 1, "steps": 2}]},
+                  name="pitdiff")
+    env = open_room(tmp_path, [SIG, {**pit, "in": ["s"]}],                     # with `in` it may be switched
+                    task={"difficulty": [{"param": "p.enabled", "from": 0, "to": 1, "steps": 2}]}, name="pitok")
+    env.reset(seed=0, options={"difficulty": 0})
+    env.parts["s"].value = 1.0
+    tick(env)
+    assert not env.parts["p"].open
+
+
 def test_pit_is_a_hole_for_planning(tmp_path):
     from mujoco_puzzle_gym.logic import free_mask
     env = pit_env(tmp_path, "pitplan")
@@ -425,3 +447,33 @@ def test_knockdown_record(tmp_path, mass):
             rows.append(f"{side} {v:g} m/s: {falls}/{hits}")
         env.close()
     print(f"\nR16 record: shell {mass} kg, falls/hits: " + "; ".join(rows))
+
+
+def test_lead_hits_a_moving_target_where_it_will_be(tmp_path):
+    """`aim: lead` against a target moving at constant velocity: the shell comes down at the
+    target's height within 3 cm of where the target is then (shell radius 2.5 cm plus a few mm
+    of integration error; the aim is a fixed point over the flight time and the muzzle-tip
+    launch point that converges well within that).
+    `at_body` misses by about speed x flight time (~0.2 m)."""
+    from types import SimpleNamespace
+    misses = {}
+    for aim in ("lead", "at_body"):
+        env = cannon_env(tmp_path, f"lead_{aim}", aim=aim, power=4.0, pos=[0.0, 0.0])
+        c = env.parts["c"]
+        p0, v = np.array([1.5, 0.0, 0.15]), np.array([0.0, 0.5, 0.0])
+        body = SimpleNamespace(pos=p0.copy(), yaw=0.0, lin_vel=v.copy())
+        c._shoot(env.model, env.data, body)
+        i, t0 = next(iter(c.pool.out.items()))
+        prev = c.pool.pos(env.data, i)
+        while True:
+            mujoco.mj_step(env.model, env.data)
+            q = c.pool.pos(env.data, i)
+            if q[2] < p0[2] and c.pool.vel(env.data, i)[2] < 0:
+                break
+            prev = q
+        a = (prev[2] - p0[2]) / (prev[2] - q[2])                     # interpolate to the target height
+        land = prev + a * (q - prev)
+        t = env.data.time - t0 - (1 - a) * env.model.opt.timestep
+        misses[aim] = float(np.linalg.norm((land - (p0 + v * t))[:2]))
+    assert misses["lead"] < 0.03
+    assert misses["at_body"] > 0.1 and misses["at_body"] > 5 * misses["lead"]

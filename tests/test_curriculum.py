@@ -354,3 +354,104 @@ def test_bound_value_cannot_be_stepped(tmp_path):
     wind = {**WIND, "bind": {"power": {"from": "g", "map": [0.0, 1.0, 0.0, 4.0]}}}
     with pytest.raises(TaskError, match="bind"):
         open_room(tmp_path, [sig, wind], task={"difficulty": TABLE[:1]}, name="binddiff")
+
+
+def test_step_values_are_in_place_before_parts_reset(tmp_path):
+    """A stepped tile friction is on the geom from the first body step (no ramp from the room value)."""
+    from rooms import body_steps, open_room
+    tile = {"name": "ice", "preset": "trap/slippery_floor", "pos": [0.5, 0.5], "friction": [1.0, 0.005, 0.0001]}
+    table = [{"param": "ice.friction", "from": [1.0, 0.005, 0.0001], "to": [0.2, 0.005, 0.0001], "steps": 2}]
+    env = open_room(tmp_path, [tile], task={"difficulty": table}, name="ice")
+    t = env.parts["ice"]
+    env.reset(seed=0, options={"difficulty": 1})
+    assert env.model.geom_friction[t._gid][0] == pytest.approx(0.2)
+    body_steps(env, env.body.control_dt)
+    assert env.model.geom_friction[t._gid][0] == pytest.approx(0.2)
+    assert t.values(env.data)["friction"][0] == pytest.approx(0.2)
+    env.reset(seed=0, options={"difficulty": 0})
+    assert env.model.geom_friction[t._gid][0] == pytest.approx(1.0)
+    env.close()
+
+
+def test_pendulum_plan_uses_the_stepped_power(tmp_path):
+    from rooms import open_room
+    pend = {"name": "pe", "preset": "trap/pendulum", "pos": [0.0, 0.0], "power": 5.0}
+    table = [{"param": "pe.power", "from": 5.0, "to": 60.0, "steps": 2}]
+    env = open_room(tmp_path, [pend], task={"difficulty": table}, name="pend")
+    sweep = []
+    for k in (0, 1):
+        env.reset(seed=0, options={"difficulty": k})
+        sweep.append(int(env.parts["pe"].hole_mask(env.grid, env.signals.get).sum()))
+    assert sweep[1] > sweep[0]
+    env.close()
+
+
+def test_jointless_tile_tilt_cannot_be_stepped(tmp_path):
+    from rooms import open_room
+    tile = {"name": "t", "type": "floor_tile", "pos": [0.5, 0.5], "size": [0.4, 0.4]}
+    for key, frm, to in (("tilt", 0.0, 3.0), ("height", 0.0, 0.05)):
+        with pytest.raises(TaskError, match=f"no {key} joint.*setter"):
+            open_room(tmp_path, [tile], task={"difficulty": [{"param": f"t.{key}", "from": frm, "to": to,
+                                                              "steps": 2}]}, name=f"tile_{key}")
+    bound = {**tile, "bind": {"tilt": {"from": "g", "map": [0, 1, 0, 3]}}}   # has the joint, but bound
+    from test_doors import Source  # noqa: F401
+    with pytest.raises(TaskError, match="bind"):
+        open_room(tmp_path, [{"name": "g", "type": "t_signal", "pos": [1.0, -1.0]}, bound],
+                  task={"difficulty": [{"param": "t.tilt", "from": 0.0, "to": 3.0, "steps": 2}]}, name="tile_b")
+
+
+# ---- difficulty through training and evaluation --------------------------------------------
+class FakeLevelEnv(FakeSegmentEnv):
+    """One-step episodes at the drawn (segment, difficulty) level; always succeeds."""
+
+    def set_segment_draw(self, probs, to_goal=False, levels=None):
+        self.draw = (list(probs), to_goal, levels)
+
+    def reset(self, *, seed=None, options=None):
+        gym.Env.reset(self, seed=seed)
+        lv = self.draw[2][int(self.np_random.choice(len(self.draw[0]), p=self.draw[0]))]
+        self.lv = lv
+        self.started.append((lv["segment"], lv["difficulty"]))
+        return np.zeros(1, np.float32), {}
+
+    def step(self, action):
+        return np.zeros(1, np.float32), 0.0, True, False, {
+            "segment": self.lv["segment"], "segment_success": True, "difficulty": self.lv["difficulty"]}
+
+
+def test_wrapper_opens_difficulty_levels_and_logs(tmp_path):
+    vec = DummyVecEnv([FakeLevelEnv])
+    vec.seed(0)
+    cur = Curriculum("none", 1, advance_at=0.8, replay=0.2, window=5, names=["start->goal"], difficulties=3)
+    log = tmp_path / "curriculum.json"
+    wrapped = CurriculumVec(vec, cur, log)
+    wrapped.reset()
+    for _ in range(40):
+        wrapped.step(np.zeros((1, 3), np.float32))
+    wrapped.close()
+    entries = json.loads(log.read_text())
+    opened = [e["open"] for e in entries if e["event"] == "open"]
+    assert opened == [["start->goal@d0", "start->goal@d1"], ["start->goal@d0", "start->goal@d1", "start->goal@d2"]]
+    assert set(entries[-1]["rates"]) == {"start->goal@d0", "start->goal@d1", "start->goal@d2"}
+    assert {d for _, d in vec.envs[0].started} == {0, 1, 2}
+
+
+def test_mode_none_with_difficulty_draws_steps_in_the_env(asset_dir, tmp_path):
+    from mujoco_puzzle_gym.train import _curriculum
+    room = tmp_path / "windroom.yaml"
+    room.write_text(yaml.safe_dump({"name": "windroom", "size": [3.0, 3.0], "spawn": {"pos": [-1.0, -1.0]},
+                                    "parts": [WIND, {"name": "goal", "type": "goal", "pos": [1.3, 1.3]}]}))
+    task = load_task({"room": str(room), "difficulty": TABLE[:1]})
+    cur = _curriculum(task)
+    assert cur.mode == "none" and [cur.level_name(lv) for lv in cur.levels] == [f"start->goal@d{k}" for k in range(4)]
+    for _ in range(cur.window):
+        cur.record(0, True, 0)
+    env = PuzzleEnv(task=task)
+    env.set_segment_draw(cur.level_probs(), cur.to_goal, cur.levels)
+    seen = set()
+    for s in range(12):
+        _, info = env.reset(seed=s)
+        seen.add(info["difficulty"])
+        assert env.parts["w"].live["power"] == pytest.approx(1.0 + info["difficulty"])
+    assert seen == {0, 1}
+    env.close()

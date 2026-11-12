@@ -81,7 +81,7 @@ What expressions can use: channel names (a dotted name like `laps.count` is also
 
 ## Traps
 
-Traps (the `trap` group) push the body, knock it over or let it fall. Each one acts only while its `in` signal is on (always, without `in`), and one value, `power`, sets its strength. `enabled: 0` turns it off. `power` and `enabled` can change while running, so setters, `bind` and difficulty steps (below) tune them.
+Traps (the `trap` group) push the body, knock it over or let it fall. Each one acts only while its `in` signal is on (always, without `in`), and one value, `power`, sets its strength. `enabled: 0` turns it off (a pit without `in` is always open and cannot be switched; `enable` or `enabled` on it is rejected, so give it an `in` to switch it). `power` and `enabled` can change while running, so setters, `bind` and difficulty steps (below) tune them.
 
 | Trap | Preset | `power` |
 |---|---|---|
@@ -98,7 +98,7 @@ Traps (the `trap` group) push the body, knock it over or let it fall. Each one a
 - Shells come from a pool of `pool` prebuilt ones (default 10). After `lifetime` seconds, or when all are out, the oldest is taken back and fired again. Snapshots include shells in flight.
 - Shells never press buttons, pressure plates or zones; only targets (`input/target`) count them. A target hit at `min_speed` or faster raises `<name>.hits` and turns on (`mode: latch` stays on, `pulse` for one step).
 - A turret (`trap/cannon_turret`) aims by a signal such as a lever and fires once when its signal turns on. `mpg check` traces the ballistic path over the whole aim range the `bind` can produce and passes if any aim hits the target board. With `spread`, the whole cone has to land on the board.
-- Knockdown record (2026-11-12, standing body, 0.4 m away, from the side and the front, 3 shots each): shell mass × speed of 0.5 N·s or less never knocked it over; falls started at 0.6 N·s (0.1 kg, 6 m/s) and at 0.8 N·s (0.2 kg, 4 m/s) all 6 fell. The default is therefore 0.2 kg at 4 m/s. A walking body is weaker: with 0.4 N·s shells every 2.5 s, the solver fell in 6 of 20 runs.
+- Knockdown record (2026-11-12, standing body, 0.4 m away, from the side and the front, 3 shots each): shell mass × speed of 0.5 N·s or less never knocked it over; falls started at 0.6 N·s (0.1 kg, 6 m/s, front); at 0.8 N·s (0.2 kg, 4 m/s) 4 of 6 fell and at 1.0 N·s (0.2 kg, 5 m/s) all 6. The default is therefore 0.2 kg at 5 m/s. A walking body is weaker: with 0.4 N·s shells every 2.5 s, the solver fell in 6 of 20 runs.
 - Shell mass (`shell_mass`) is fixed when the room is built. MuJoCo precomputes the mass matrix of a free body, so changing the mass while running gives wrong motion.
 
 ## Assembly examples
@@ -257,7 +257,7 @@ Role `prop`, update stage `device`.
 | `enabled` | int |  | `1` | [0, 1] | yes | 0 turns the trap off (setters, difficulty steps) |
 | `yaw` | float | deg | `0.0` | [-180, 180] |  | heading the cannon faces |
 | `height` | float | m | `0.15` | [0.05, 1.5] |  | muzzle height above the floor |
-| `power` | float | m/s | `4.0` | [0.5, 15] | yes | launch speed |
+| `power` | float | m/s | `5.0` | [0.5, 15] | yes | launch speed |
 | `shell_mass` | float | kg | `0.2` | [0.005, 1] |  | shell mass |
 | `shell_radius` | float | m | `0.025` | [0.01, 0.1] |  |  |
 | `period` | float | s | `2.0` | [0.2, 60] | yes | fire: auto: time between bursts |
@@ -468,7 +468,7 @@ Role `prop`, update stage `device`.
 
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
-| `enabled` | int |  | `1` | [0, 1] | yes | 0 turns the trap off (setters, difficulty steps) |
+| `enabled` | int |  | `1` | [0, 1] | yes | 0 closes the lid; only a pit with `in` can be switched |
 | `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | tile size [x, y] |
 | `on_fall` | enum |  | `fail` | `fail`, `reset` |  | fail: the episode ends; reset: back to the last checkpoint or the start |
 
