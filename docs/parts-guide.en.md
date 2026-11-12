@@ -109,7 +109,7 @@ The `npc` category is a small robot that slides over the floor by itself (`type:
 |---|---|---|
 | `flee` | `npc/flee` | Runs the other way when the body comes within `sense`. When blocked it slides along the wall |
 | `follow` | `npc/follow` | Comes towards the body within `sense` and stops `keep` away |
-| `lure` | `npc/lure` | Comes towards the `bait` object while the body holds it. It stays still until grabbing (E3) arrives |
+| `lure` | `npc/lure` | Comes towards the `bait` object while the body holds it. Until grabbing (E3) arrives it stays still and cannot be herded |
 | `patrol` | `npc/patrol` | Drives round `path` (points measured from `pos`, a loop). Stops and waits while the body blocks the way |
 | `guard` | `npc/guard` | Keeps its post (`pos`); when the body comes within `sense + reach` it steps out up to `reach` to block it |
 | `shy_gaze` | `npc/shy_gaze` | Freezes while the body looks at its marker (gaze sensor, room `gaze:`) and creeps towards the body otherwise. `invert: true` swaps this |
@@ -120,7 +120,8 @@ The `npc` category is a small robot that slides over the floor by itself (`type:
 - Avoiding walls: it casts five rays, along the way it wants to go and at ±35° and ±70° from it, and takes the first clear one. With all five blocked it stops. The rules use no random numbers, so one seed gives one trajectory.
 - Channels: `<name>.moving` (1 while it moves), `<name>.on` (marker id of the button it stands on, -1 for none). The observation item `npcs` gives each robot's relative position, velocity, whether it moves and whether it is reacting (6 numbers).
 - A `speed` at or above the body's walking speed (about 0.16 m/s) is a warning in the `parts` stage of `mpg check` (not a failure): the body could not catch it.
-- A button only robots press (`trigger: npc`) counts as a switch in the solution order when it lies inside the `leash` of a robot that can be herded (`flee`, `follow`, `lure`). Write `herd <robot> <part>` (or `herd <robot> <x> <y>`) in the solution's `demo:`: a `flee` robot is driven from its far side, a `follow` or `lure` robot is led.
+- A `seek_button` robot's `button` (a button, zone, laser or pressure plate the robot can set off) counts as on in the solution order once the robot's `in` are on (with no `in`, from the start). The body is not sent onto it; the robot drives there and presses it. So a room "switch A -> robot (`in: [A]`) -> plate -> door" is solved by pressing A.
+- Any other input only robots set off (`trigger: npc`, no `objects` list) counts as a switch in the solution order when it lies inside the `leash` of a robot that can be herded (`flee`, `follow`; with no `leash`, anywhere). Write `herd <robot> <part>` (or `herd <robot> <x> <y>`) in the solution's `demo:`: a `flee` robot is driven from its far side, a `follow` robot is led. `lure` robots can be herded once grabbing (E3) arrives.
 
 ## Assembly examples
 

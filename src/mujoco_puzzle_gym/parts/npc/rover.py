@@ -3,8 +3,9 @@
 Body: a box chassis (`size` [x, y, z], `mass`) `CLEAR` above the floor on three
 joints of its root body: slide x, slide y (world axes) and a z hinge, each
 driven by a velocity actuator (force capped at `mass * FORCE_ACC`). It has no
-vertical joint, so it never sinks or tips; it collides with walls, the
-walking body, objects and other robots. Buttons, zones and lasers see its
+vertical joint, so it never sinks or tips: it stays at the floor height under
+its reset position (raised map cells, floor tiles) and a step is a wall to it.
+It collides with walls, the walking body, objects and other robots. Buttons, zones and lasers see its
 centre like an object's (sensor `trigger: npc | any`); a pressure plate counts
 its `mass` while its centre is over the plate (input/pressure.py), since a
 robot without a vertical joint puts no weight on the floor. It carries an
@@ -70,6 +71,7 @@ class Npc(Part):
     marker_anchor = "/chassis"
     marker_faces = markers.FACES_FLAT
     suffixes = (".moving", ".on")
+    floor_z = 0.0                # floor top under `pos`, set by the env before reset (R10/R37 heights)
     planar = True                # env warps / conveyors / springs move its slide joints
     state_keys = ("cmd", "wp", "timer", "acting", "on_id", "now")
     fields = (
@@ -143,9 +145,12 @@ class Npc(Part):
 
     @classmethod
     def add_room_parts(cls, parts):
-        """Check `button` / `bait` names; input parts an NPC can be herded onto
-        (trigger counts npc, inside a herdable robot's leash) count as switches
-        for the planner (R29: "plan hooks treat NPCs")."""
+        """Check `button` / `bait` names, then the plan hooks (R29: "plan hooks treat
+        NPCs") for input parts a robot sets off (trigger counts npc, no `objects` list):
+        - a seek_button robot's `button` is on for the planner once the robot's `in`
+          are on (no `in`: always), and the body is never sent onto it (role sensor);
+        - other such sensors inside a herdable robot's leash count as switches, so
+          the solution order can press them with `herd`."""
         npcs = [p for p in parts.values() if isinstance(p, Npc)]
         for n in npcs:
             for key in ("button", "bait"):
@@ -153,14 +158,29 @@ class Npc(Part):
                 if ref and ref not in parts:
                     raise SchemaError(f"part {n.name!r}: {key} {ref!r} is not a part "
                                       f"(parts: {sorted(parts)})")
+
+        def npc_sets_off(p) -> bool:
+            trig = getattr(p, "trigger", None)
+            return (p.stage == "input" and trig in TRIGGERS and "npc" in TRIGGERS[trig]
+                    and not getattr(p, "names", None))
+
+        for n in npcs:
+            target = parts[n.cfg["button"]] if n.behavior == "seek_button" else None
+            if target is not None and npc_sets_off(target):
+                target.plan_driver = n
+                target.role = "sensor"
         herders = [n for n in npcs if n.behavior in behaviors.HERDABLE]
         for p in parts.values():
-            trig = getattr(p, "trigger", None)
-            if p.stage != "input" or p.role != "sensor" or trig not in TRIGGERS or "npc" not in TRIGGERS[trig]:
+            if p.role != "sensor" or p.plan_driver is not None or not npc_sets_off(p):
                 continue
             if any(n.leash is None or in_rect(p.base_xy, (n.leash[:2] + n.leash[2:]) / 2,
                                               (n.leash[2:] - n.leash[:2]) / 2) for n in herders):
                 p.role = "switch"
+
+    def plan_drives(self, get) -> bool:
+        """Planning: whether this seek_button robot heads for its `button` (its `in`
+        on, read with `get`; no `in`: always)."""
+        return not self.inputs or self.plan_inputs_on(get)
 
     @classmethod
     def shift_cfg(cls, cfg, dx, dy):
@@ -223,6 +243,7 @@ class Npc(Part):
                 model.jnt_range[self._j[i]] = [self.leash[i] - self.xy[i], self.leash[i + 2] - self.xy[i]]
 
     def reset(self, model, data):
+        model.body_pos[self._bid, 2] = self.floor_z          # no z joint: stand on raised floor
         for i in range(3):
             data.qpos[self._q[i]] = data.qvel[self._v[i]] = data.ctrl[self._act[i]] = 0.0
         self.cmd = np.zeros(2)
@@ -298,7 +319,7 @@ class Npc(Part):
 
     def _steer(self, model, data, me, want: np.ndarray) -> np.ndarray | None:
         """First clear heading near unit `want` (rays, leash), or None."""
-        origin = np.array([me[0], me[1], CLEAR + self.half[2]])
+        origin = np.array([me[0], me[1], self.floor_z + CLEAR + self.half[2]])
         look = float(np.hypot(*self.half[:2])) + LOOK
         a0 = math.atan2(want[1], want[0])
 

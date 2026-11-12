@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mujoco_puzzle_gym.check import check, check_parts
+from mujoco_puzzle_gym.check import check, check_order, check_parts
 from mujoco_puzzle_gym.env import PuzzleEnv
 from mujoco_puzzle_gym.obs import npcs
 from mujoco_puzzle_gym.room import RoomError
@@ -185,6 +185,40 @@ def test_cornered_flee_slides_and_stops(asset_dir, tmp_path):
     assert -1.5 + 0.06 < p[0] < -1.5 + 0.15                # along it, not into it
 
 
+def test_stands_on_a_raised_floor_tile(asset_dir, tmp_path):
+    tile = {"name": "tile", "type": "floor_tile", "pos": [0.3, 0.3], "size": [0.8, 0.8], "height": 0.04}
+    env = npc_env(tmp_path, behavior="patrol", pos=[0.3, 0.3], path=[[0.0, 0.0], [0.2, 0.0]],
+                  extra=[tile])
+    bot = robot(env)
+    chassis = env.model.geom(bot.body_name + "/chassis").id
+    bottom = env.data.geom_xpos[chassis][2] - bot.half[2]
+    assert bottom == pytest.approx(0.04 + 0.006, abs=1e-6)            # CLEAR above the tile top
+    xs = []
+    body_steps(env, 4.0, every=lambda e: xs.append(bot.pos(e.data)[0]))
+    assert max(xs) > 0.48                                                # drives its path on it
+
+
+# ---- env moves (conveyor R12, warp R14) ----------------------------------------------------
+def test_conveyor_carries_a_robot(asset_dir, tmp_path):
+    belt = {"name": "c", "preset": "device/conveyor", "pos": [0.5, 0.5], "size": [1.2, 0.3],
+            "speed": 0.1}
+    env = npc_env(tmp_path, behavior="flee", pos=[0.2, 0.5], extra=[belt])   # body far: it stands
+    x0 = robot(env).pos(env.data)[0]
+    body_steps(env, 2.0)
+    assert robot(env).pos(env.data)[0] - x0 == pytest.approx(0.2, abs=0.02)
+
+
+def test_warp_pad_teleports_a_robot(asset_dir, tmp_path):
+    pad = {"name": "w", "type": "warp", "pos": [0.5, 0.5], "trigger": "npc",
+           "to": {"pos": [-0.5, 0.8], "yaw": 1.0}}
+    env = npc_env(tmp_path, behavior="flee", pos=[0.5, 0.5], extra=[pad])
+    tick(env)
+    env._run_requests()
+    bot = robot(env)
+    assert np.linalg.norm(bot.pos(env.data) - [-0.5, 0.8]) < 0.005
+    assert bot.yaw(env.data) == pytest.approx(1.0) and np.allclose(bot.vel(env.data), 0.0)
+
+
 # ---- determinism, snapshots ----------------------------------------------------------------
 def run_traj(path, seed):
     env = PuzzleEnv(room=path)
@@ -262,6 +296,7 @@ def test_speed_warning(asset_dir, tmp_path):
 
 @pytest.mark.parametrize("bot,demo,needle", [
     ({"behavior": "patrol", "path": [[0, 0], [0.2, 0]]}, ["herd bot b"], "cannot herd"),
+    ({"behavior": "lure", "bait": "b"}, ["herd bot b"], "cannot herd"),     # until the E3 grab
     ({"behavior": "flee"}, ["herd bot"], "herd <npc>"),
     ({"behavior": "flee"}, ["herd bot 1.0 x"], "two numbers"),
 ])
@@ -281,6 +316,47 @@ def test_npc_button_is_a_switch_for_the_planner(asset_dir):
     env = PuzzleEnv(room=HERD)
     assert env.parts["corner"].role == "switch"
     assert env.plan["ok"] and env.plan["order"] == ["corner", "door_a", "goal"]
+    env.close()
+
+
+@pytest.mark.parametrize("bot,sensor,role", [
+    ({"behavior": "flee"}, {"type": "zone", "trigger": "npc"}, "switch"),
+    ({"behavior": "flee"}, {"type": "zone", "objects": ["box"]}, "sensor"),   # robots never count
+    ({"behavior": "lure", "bait": "box"}, {"type": "button", "trigger": "npc"}, "sensor"),
+])
+def test_which_npc_sensors_the_planner_presses(asset_dir, tmp_path, bot, sensor, role):
+    box = {"name": "box", "type": "t_box", "pos": [1.0, -1.0]}
+    env = npc_env(tmp_path, pos=[0.0, 0.0], extra=[box, {"name": "z", "pos": [0.5, 0.5], **sensor}], **bot)
+    assert env.parts["z"].role == role
+
+
+def seek_room(tmp_path, target, name):
+    """Switch `a` sends a seek_button robot onto `plate`; the door behind it reads `plate`."""
+    import yaml
+    raw = {"name": name, "size": [2.6, 1.8], "wall": {"thickness": 0.06, "height": 0.25},
+           "walls": [{"from": [0.4, -0.9], "to": [0.4, -0.28]}, {"from": [0.4, 0.28], "to": [0.4, 0.9]}],
+           "spawn": {"pos": [-1.0, -0.5], "yaw": 0.0},
+           "parts": [{"name": "a", "type": "button", "kind": "oneshot", "pos": [-0.4, -0.5]},
+                     {"name": "plate", "pos": [-1.0, 0.6], **target},
+                     {"name": "bot", "type": "npc", "behavior": "seek_button", "pos": [-0.3, 0.5],
+                      "button": "plate", "in": ["a"], "mass": 0.3},
+                     {"name": "door", "preset": "device/sliding_door", "pos": [0.4, 0.0], "in": ["plate"]},
+                     {"name": "goal", "type": "goal", "pos": [1.0, 0.0], "radius": 0.15}]}
+    path = tmp_path / f"{name}.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return PuzzleEnv(room=path)
+
+
+@pytest.mark.parametrize("target", [
+    {"type": "pressure", "trigger": "npc", "size": [0.3, 0.3], "min_mass": 0.25},
+    {"type": "button", "trigger": "any"},          # the body could press it: still left to the robot
+])
+def test_seek_button_target_follows_the_robots_inputs(asset_dir, tmp_path, target):
+    env = seek_room(tmp_path, target, "seek_" + target["type"])
+    assert env.parts["plate"].role == "sensor"                       # the body is not sent onto it
+    res = check_order(env)
+    assert res["ok"] and res["order"] == ["a", "door", "goal"], res
+    assert run_episode(env, 0, ScriptedSolver(env))["success"]
     env.close()
 
 

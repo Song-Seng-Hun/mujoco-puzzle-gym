@@ -205,7 +205,7 @@ PR E2는 셋으로 나눈다(2026-11-12): E2a `feat/m2-devices` 10·11단계와 
      - 값: `behavior`, `size`, `mass`, `speed`(기본 0.08 m/s), `accel`, `sense`, `leash`, `keep`, `reach`, `path`, `button`, `bait`, `awake`, `asleep`, `invert`. 행동마다 필요한 값(`path`, `button`, `bait`)이 없으면 방을 읽을 때 거절한다.
      - 벽 피하기는 앞 0°, ±35°, ±70° 광선 5개(1 m). 앞이 막히면 여유가 큰 쪽부터 고른다. `leash`는 미끄럼 관절 범위(딱딱한 `solref_limit`)라 차거나 밀어도 벗어나지 않는다(2 m/s 차기에도 5 mm 안).
      - 신호 `<이름>.moving`, `<이름>.on`(버튼 위), 관측 `npcs`(로봇마다 상대 x·y, 몸 기준 상대 속도 x·y, moving, acting).
-     - `demo:`의 `herd <npc> <부품 | x y>`와 `herd.py`: flee는 감지 원을 돌아 뒤쪽 선 위로 간 뒤 천천히 밀고, follow·lure는 목표 너머 `keep`만큼 앞에서 이끈다. 감지 범위 밖으로 처지면 기다린다.
+     - `demo:`의 `herd <npc> <부품 | x y>`와 `herd.py`: flee는 감지 원을 돌아 뒤쪽 선 위로 간 뒤 천천히 밀고, follow는 목표 너머 `keep`만큼 앞에서 이끈다(lure는 E3부터). 감지 범위 밖으로 처지면 기다린다.
      - 시험 `tests/test_npc.py` 25개(그중 slow 1개: `herd.yaml` 점검). lure는 E3 잡기 뒤에 시험한다.
      - 예제 `examples/rooms/herd.yaml`(도망 로봇을 구석 버튼으로 몰아 문 열기) `mpg check` solver 20/20, 풀이 25.5–30.9 s(평균 27.5 s, 에피소드 40 s).
      - 계획과 다른 점:
@@ -217,8 +217,15 @@ PR E2는 셋으로 나눈다(2026-11-12): E2a `feat/m2-devices` 10·11단계와 
        - 압력판(`pressure`)은 `trigger`가 npc를 세면 판 안 로봇의 질량을 더한다.
        - `snapshot.MODEL_FIELDS`에 `jnt_range`를 더했다(배치 `random`이 `leash` 관절 범위를 옮긴다).
        - 워프·컨베이어·스프링은 로봇의 미끄럼 관절 값을 옮긴다(`shift`·`kick`·`teleport`).
-       - 몰 수 있는 로봇(flee, follow, lure)의 `leash` 안(없으면 어디든)에 있고 npc를 세는 버튼은 계획에서 `switch`로 본다. 그래야 풀이 순서가 그 버튼을 `herd`로 누를 수 있다.
+       - 몰 수 있는 로봇(flee, follow)의 `leash` 안(없으면 어디든)에 있고 npc를 세는 입력(`objects` 목록 없음)은 계획에서 `switch`로 본다. 그래야 풀이 순서가 그 입력을 `herd`로 누를 수 있다.
+       - `seek_button` 로봇의 `button`은 계획에서 로봇의 `in`이 켜지면 켜진 것으로 보고(`plan_driver`), 몸을 그 위로 보내지 않는다(`sensor`).
        - 정적 점검 `parts` 단계에 경고(실패 아님)를 더했다: `speed` 0.16 m/s 이상(몸 걷기 속도).
+   - 리뷰 반영 (2026-11-12, 사용자 승인 6건, 빠른 675 passed·1 skipped, slow `herd`·`warp_hop` 3 passed):
+     - `seek_button`의 협동 문: 로봇의 `button`이 어떤 경우에도 `switch`가 되지 않아 "스위치 A → 로봇(`in: [A]`) → 판 → 문" 방이 `order` 단계에서 실패했다. 입력 부품에 `plan_driver`를 두어, 계획에서 로봇의 `in`이 켜지면(`in` 없으면 늘) 그 입력도 켜진 것으로 본다. 로봇의 `in`이 순서상 뒤에 계산되는 채널일 수 있어, 그런 방에서만 `plan_channels`가 값이 멈출 때까지 다시 돈다. 몸이 누를 수 있는 버튼(`trigger: any`)이 목표여도 `sensor`로 내려 몸을 그 위로 보내지 않는다(몸과 로봇이 버튼 가운데서 부딪히지 않게).
+     - 로봇이 켤 수 없는 입력(`objects` 목록이 있는 구역)은 몰기용 `switch`로 올리지 않는다.
+     - `lure`를 몰 수 있는 행동(`HERDABLE`)에서 뺐다. `World.held`가 E3까지 비어 있어 `herd <lure 로봇>`이 끝나지 않는다. spec R29의 "`follow`/`lure`는 끌고 간다"는 E3에서 다시 넣는다(R 줄은 그대로).
+     - 시험 추가: 컨베이어(`push` move → `Npc.shift`), 워프 판(`trigger: npc` → `Npc.teleport`).
+     - 높은 바닥: `floor_tile`의 `height` 위에 둔 로봇이 바닥 0에 지어져 타일에 34 mm 묻히고 순찰을 거의 못 했다(점검 단계는 통과시켰다). 글자 지도 칸은 방을 지을 때 이미 올려 두어 문제가 없었다. 공처럼 env가 넣는 `floor_z`를 받아 `reset`에서 몸체 높이(`body_pos` z)로 쓰고, 벽 피하기 광선 높이도 그만큼 올린다. 위아래 관절이 없어서 계단은 로봇에게 벽이다.
 13. 예제 방(플랫폼·워프, 함정, 몰기), 가이드 갱신, `mpg bench`를 다시 잰다.
    - 구현 기록 (2026-11-12, 브랜치 `feat/m2-npc`):
      - 예제: 플랫폼은 `lift_spring.yaml`, 함정은 `trap_run.yaml`(E2a·E2b), 몰기 `herd.yaml`, 워프 `warp_hop.yaml`(막힌 벽 너머로 워프, solver 20/20, 평균 9.53 s)을 새로 더했다. 워프 예제에서 되돌림 판(`reset_pad`)은 뺐다. 계획이 되돌림 판을 피하지 않아 그 위를 걸어 8/20이었다.

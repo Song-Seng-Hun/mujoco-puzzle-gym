@@ -30,12 +30,21 @@ from .layout import Grid, Segment
 
 
 def plan_channels(parts: dict[str, Any], on: set[str]) -> dict[str, float]:
-    """Channel values once the input parts named in `on` are on (planning)."""
+    """Channel values once the input parts named in `on` are on (planning).
+
+    An input with a `plan_driver` (R29: a seek_button robot's `button`) reads
+    channels written later in the order, so such rooms repeat the pass until
+    the values settle."""
     order = parts.bus.order if hasattr(parts, "bus") else list(parts.values())
     vals: dict[str, float] = {}
     get = lambda ch: vals.get(ch, 0.0)  # noqa: E731
-    for p in order:
-        vals.update(p.plan_values(on, get))
+    passes = len(order) + 1 if any(p.plan_driver is not None for p in order) else 1
+    for _ in range(passes):
+        before = dict(vals)
+        for p in order:
+            vals.update(p.plan_values(on, get))
+        if vals == before:
+            break
     return vals
 
 

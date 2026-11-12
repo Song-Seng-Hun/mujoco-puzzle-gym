@@ -12,7 +12,8 @@ e.g. a button) counts its rectangle, anything else a disk of `AT_TARGET` m.
      (recomputed) line, slowly, and stand while there; the robot keeps
      running towards the target. If the body ends up more than `LOST_ANGLE`
      off the line, it approaches again.
-- follow and lure robots are led: the body walks to the point `keep + LEAD` m
+- follow robots are led (lure robots too once the E3 grab fills World.held):
+  the body walks to the point `keep + LEAD` m
   past the target on the robot -> target line, so the robot stopping `keep`
   short of the body stops on the target. It stands while the robot falls
   behind more than `WAIT` x `sense` (the robot follows only within `sense`).

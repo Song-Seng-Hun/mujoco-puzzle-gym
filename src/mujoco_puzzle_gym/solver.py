@@ -17,8 +17,8 @@ is passable, an opening trapdoor as a hole):
 - `wait <s>`: stand for s seconds;
 - `push <ball> to <target>`: push that ball (push.py) until the target counts
   it (a goal net) or is on (a pin);
-- `herd <npc> <part or x y>`: drive a flee robot from behind, or lead a follow /
-  lure robot, until its centre is on the target (herd.py, R29).
+- `herd <npc> <part or x y>`: drive a flee robot from behind, or lead a follow
+  robot, until its centre is on the target (herd.py, R29).
 After the last sub-goal, and in rooms without `demo:`, it follows the grid
 answer: the env's solution-order targets, pushing a ball for a target with
 `push_target` (goal nets, pins).

@@ -135,5 +135,6 @@ def sleepy(npc: "Npc", me, duck, dt) -> Intent:
 RULES = {"flee": flee, "follow": follow, "lure": lure, "patrol": patrol, "guard": guard,
          "shy_gaze": shy_gaze, "seek_button": seek_button, "sleepy": sleepy}
 #: Behaviours the scripted solver can move with `herd` (R29): it drives a flee
-#: robot from behind and leads a follow / lure robot.
-HERDABLE = ("flee", "follow", "lure")
+#: robot from behind and leads a follow robot. `lure` joins with the E3 grab
+#: (World.held stays empty until then, so a lure robot never moves).
+HERDABLE = ("flee", "follow")
