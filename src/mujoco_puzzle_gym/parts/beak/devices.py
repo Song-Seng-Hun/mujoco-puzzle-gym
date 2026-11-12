@@ -192,6 +192,20 @@ class Lever(HandleDevice):
         if self.cells is not None:
             self.value = float(self.cells[np.argmin(np.abs(self.cells - self.start))])
 
+    @classmethod
+    def add_room_parts(cls, parts):
+        """A lever whose `.angle` only `bind`s read (a turret's aim) is a setting, not a
+        switch: no `new_on` for pushing it to 1, no grid-answer target (R16, R28)."""
+        super().add_room_parts(parts)
+        for lv in parts.values():
+            if not isinstance(lv, Lever):
+                continue
+            ch = lv.name + ".angle"
+            binds = any(ch in p.watch for p in parts.values())
+            reads = any(ch in [*p.inputs, *([p.enable] if p.enable else [])] for p in parts.values())
+            if binds and not reads:
+                lv.role = "prop"
+
     def channel_cells(self, channel: str):
         """Values `<name>.angle` can rest at (the cannon ballistic check aims per cell);
         None when continuous."""

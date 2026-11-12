@@ -47,23 +47,30 @@ def lin_vel(env):
     return env.body_state.lin_vel
 
 
+def _obs_parts(env):
+    """Parts the `part_*` terms list: all but the hidden `_look_` planning switches (gaze.py)."""
+    from .gaze import LOOK_PREFIX
+
+    return [p for n, p in env.parts.items() if not n.startswith(LOOK_PREFIX)]
+
+
 @register_obs("part_pos", replace=True)
 def part_pos(env):
     """Privileged: every part's position relative to the body, heading frame (2 per part)."""
-    return np.concatenate([_to_body_frame(env, p.xy) for p in env.parts.values()])
+    return np.concatenate([_to_body_frame(env, p.xy) for p in _obs_parts(env)])
 
 
 @register_obs("part_state", replace=True)
 def part_state(env):
     """Privileged: every part's state in [0, 1] (switch on, door open fraction, goal reached)."""
-    return np.array([p.state() for p in env.parts.values()])
+    return np.array([p.state() for p in _obs_parts(env)])
 
 
 @register_obs("target_pos", replace=True)
 def target_pos(env):
     """Privileged: the current target (next part in the solution order), heading frame (2)."""
     t = env.current_target()
-    return _to_body_frame(env, t.xy) if t is not None else np.zeros(2)
+    return _to_body_frame(env, t.target_xy()) if t is not None else np.zeros(2)
 
 
 @register_obs("counters", replace=True)

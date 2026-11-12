@@ -5,8 +5,8 @@ weld (`eq_active`) between the head body carrying the beak-tip site
 (`BodyAdapter.grab_site()`) and the object, keeping their relative pose at that
 moment; the head and the objects do not collide. "Object" here is any
 grabbable part (a part with handles: the cube, R17, and the R28 objects,
-parts/object/grabbable.py) and the R28 devices worked by a handle (lever,
-dial, drawer, pull cord, parts/beak/devices.py), whose weld holds their handle
+parts/object/grabbable.py) and the R28 devices worked by a handle (grab
+lever, pull cord, parts/beak/devices.py), whose weld holds their handle
 body (`handle_body`, a knob on a ball joint) instead of a free body. A room with them gets the hidden input part
 `_beak` (first in the room order, so sensors see this body step's
 `World.held`); it builds one inactive weld per object once the body is in the

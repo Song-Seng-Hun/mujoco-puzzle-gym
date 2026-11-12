@@ -111,6 +111,10 @@ class ScriptedSolver:
         if env.current_target() is None:
             return STAND.copy()
         target = env.current_target()
+        if self._worked is not None and self._worked is not target:   # done with it (a cord turns
+            self._worked = None                                        # on mid-walk): let go
+            self.carrier.reset()
+            self.carrier.grab = -1.0
         if hasattr(target, "push_target"):
             return self.pusher.act(target)
         if getattr(target, "mount", None) == "wall":
@@ -119,7 +123,7 @@ class ScriptedSolver:
         if act is not None:
             return act
         self.carrier.head = -1.0
-        return self._steer(self.field(env.stage), target.xy)
+        return self._steer(self.field(env.stage), target.target_xy())
 
     def _work(self, target) -> np.ndarray | None:
         """Grid answer: work a lever / cord or look for a `_look_` switch (None: not one)."""

@@ -256,10 +256,16 @@ class PuzzleEnv(gym.Env):
 
     def warp(self, key, pose) -> None:
         """Move the walking body (key "body") or a free body (root body id) to `pose`.
-        A cube the beak holds goes along, keeping its pose to the head (R14, R18)."""
+        A free object the beak holds goes along, keeping its pose to the head (R14, R18);
+        a held device knob (R28) is let go."""
         if key == "body":
             beak = self.parts.get(BEAK_PART)
             held = beak.objects[beak.held] if beak is not None and beak.held is not None else None
+            jnt = int(self.model.body_jntadr[held.handle_bid]) if held is not None else -1
+            if held is not None and (jnt < 0 or self.model.jnt_type[jnt] != mujoco.mjtJoint.mjJNT_FREE):
+                beak._release(self.data)             # a device knob stays put: let it go (R28)
+                beak._write([False] * len(beak.objects))
+                held = None
             if held is None:
                 self._place_body(pose)
                 return

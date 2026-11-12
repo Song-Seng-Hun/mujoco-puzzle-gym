@@ -185,9 +185,18 @@ class Look(Part):
     fields = (Field("pos", "vec", [0.0, 0.0], length=2, unit="m", doc="unused (no body)"),)
 
     def __init__(self, watched: Part):
-        super().__init__(LOOK_PREFIX + watched.name, {"in": [watched.name + SEEN]})
         self.watched = watched
+        super().__init__(LOOK_PREFIX + watched.name, {"in": [watched.name + SEEN]})
         self.done = False
+
+    @property
+    def xy(self):
+        """The watched part's position (no body of its own)."""
+        return self.watched.xy
+
+    @xy.setter
+    def xy(self, value):
+        pass
 
     def reset(self, model, data):
         self.done = False

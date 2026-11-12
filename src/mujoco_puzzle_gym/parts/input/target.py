@@ -70,15 +70,21 @@ class Target(Part):
                 if isinstance(p, Target):
                     p.role, p.turrets = "switch", turrets
 
+    def _fire_parts(self) -> list:
+        by_name = {p.name: p for p in self.bus.order}
+        return [by_name[self.bus.writers[ch]] for c in self.turrets for ch in c.inputs]
+
+    def target_xy(self):
+        """With turrets: the first fire input (where `target_mask` is)."""
+        return self._fire_parts()[0].target_xy() if self.turrets else self.xy
+
     def target_mask(self, grid):
         """With turrets: where the body presses their fire inputs."""
         if not self.turrets:
             return super().target_mask(grid)
-        by_name = {p.name: p for p in self.bus.order}
         out = np.zeros_like(grid.X, dtype=bool)
-        for c in self.turrets:
-            for ch in c.inputs:
-                out |= by_name[self.bus.writers[ch]].target_mask(grid)
+        for p in self._fire_parts():
+            out |= p.target_mask(grid)
         return out
 
     def __init__(self, name, cfg):
