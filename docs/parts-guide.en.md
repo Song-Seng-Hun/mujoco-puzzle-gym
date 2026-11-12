@@ -161,7 +161,7 @@ Static phase:
 | `parts` | Per-part checks (a ball larger than the goal-net mouth, balls or coins that cannot be reached). An NPC robot as fast as the body is only a warning (`warnings`), not a failure |
 | `overlap` | Whether a part's solid body sinks more than 5 mm into a wall or another part in the default layout. Floor pads, flags and goal zones are skipped, and a door may overlap only its own walls (the walls of the gap it closes, and walls on the same line) |
 | `order` | Whether the signals and walls allow a solution order that reaches the goal. For text-map rooms, also whether parts sit on floor cells, and blocking ledges and slopes |
-| `actions` | Whether the task `actions` have what the solution needs: `grab` when an object must be carried (`grab` in `demo:`, or an input in the solution order only a grabbable object can set off), `head` when a wall button the solution presses has its top edge below the level beak tip (0.21 m) |
+| `actions` | Whether the task `actions` have what the solution needs: `grab` when an object must be carried or a handle device worked (`grab` or `pull` in `demo:`, an input in the solution order only a grabbable object can set off, or a handle device in the solution order), `head` when a wall button the solution presses has its top edge below the level beak tip (0.21 m) |
 
 The first three stages (`values`, `channels`, `demo`) fail while the room is being loaded, so in that case the result has only the failed stage and the solver stage is skipped. To run only the static phase, add `--static`.
 
@@ -170,7 +170,7 @@ Dynamic phase:
 | Stage | What it checks |
 |---|---|
 | `stability` | That the body does not fall or blow up numerically for 10 s at zero command |
-| `solver` | That a scripted solver that knows the answer solves at least 18 of 20 random layouts. If the room has `demo:` (`goto`, `press`, `wait`, `push <ball> to <goal_net>`, `herd <robot> <part>`), the solver follows that order first, and a grid solver takes over for the rest |
+| `solver` | That a scripted solver that knows the answer solves at least 18 of 20 random layouts. If the room has `demo:` (`goto`, `press`, `wait`, `push <ball> to <goal_net>`, `herd <robot> <part>`, `turn <lever> <value>`, `pull <cord>`, `look <part>`), the solver follows that order first, and a grid solver takes over for the rest |
 
 The solver stage saves a snapshot for each flag it passes in `runs/check/<room>/checkpoints/<flag>.pkl`.
 
@@ -238,6 +238,37 @@ Every object with handles is grabbed the same way as `cube` (same grab radius, l
 - Object kind in the `beak` obs: `cube` 1, `laundry` 2, `key` 3, `handle_ball` 4, `egg` 5, `stick` 6, none 0.
 - Solution `demo:` adds `drop <object> <part>`: carried as `place`, but let go with the head level (the egg-breaking solution). `place <object> <hook>` brings the leading handle to the peg tip. `press <button>` while holding a stick brings the stick end to the plate height.
 - Known limits: receivers count a broken egg too. Scripted solutions that put an object in a basket or on a scale succeed 8–10 times in 10, depending on the room and seed.
+
+## Devices the beak works
+
+A device stands in place and the body works it from its `facing` side (deg). Both are switches in the solution order, and their target area is the spot where the body stands to work them. Devices worked by a handle are held by the beak weld at a small knob body on a ball joint (grab radius, letting-go force and the `.held` and `.dropped` channels are the same as for objects).
+
+| Preset | Kind | Defaults | Use |
+|---|---|---|---|
+| `beak/lever` | `lever` `mode: push` | 3 cells (-1, 0, 1), up to 35°, starts at -1, paddle 7–12 cm up | The body pushes the paddle over with its chest. `<lever>.angle` gives the cell value |
+| `beak/pull_cord` | `pull_cord` | cord hung from 0.45 m, knob at 0.19 m, on after a 6 cm pull, `latch` | Hold the knob, turn round and walk away: the cord is drawn out |
+
+- Lever: `detents` is the number of cells (default 3; 0 is continuous, 1 is rejected). A joint spring pulls the arm to the nearest cell (`detent` N·m), and the channel gives only that cell's value. `mode: push` is a floor lever the body pushes from -1 toward 1 by walking forward from the `facing` side. The feet pass under the paddle (7 cm). `mode: grab` is a lever whose knob sits on top of an arm standing toward the body; the body holds it and steps sideways. Because of the measurements, its default `max_angle` is 10°, and the scripted solver does not turn it (below).
+- Pull cord: the cord is a 1D flexcomp, weightless through gravity compensation. Its top end hangs from a spring slider inside the arm, so pulling draws cord out, and `<cord>` turns on once `distance` is out. With `latch` it stays on until reset. The cord spring `stiffness` defaults to 2 N/m.
+- How to pull: hold the knob, turn clockwise in place until the back faces the device, then walk forward. The default body cannot walk backwards and barely turns counter-clockwise in place.
+
+```text
+  Seen from above (the facing side is down)
+
+   [post]─arm─o cord        1. stand at the knob and hold it
+               │
+               ●  knob      2. turn clockwise while holding
+               ▲
+              duck          3. walk forward: the cord is drawn out → on
+```
+
+- Measured (2026-11-12, default body, `max_hold_force` 3 N): holding a grab lever's knob and stepping to the body's right turned it 9.5–15.7° before the weld force passed 3 N and let go; stepping left, the body did not move (0.2° or less in 12 s). Without a grab, the same sidestep covers 0.19–0.25 m in 4 s. The push lever went over to 1 in 3.2–4.3 s, 5 of 5 without a fall. With the cord, turning while holding the knob took 4.5–5 s, and the solver had it on after 9–11 s in all (at a 4 N/m spring the walk stalls at 3.5–3.7 cm and it never turns on).
+- The dial and the drawer are not built. Holding a knob on a fixed path stalls the sidestep: the dial was dropped within 13° even when sidestepping and turning together, and the drawer moved only 5 mm when the body stepped sideways, so it never opened.
+- Object kind in the `beak` observation: `lever` 7, `pull_cord` 8.
+- Solution `demo:`: `turn <lever> <value>` (push levers only, and the value must be one of its cells; the body walks up, pushes, then stops, turns and walks off), `pull <cord>`, `look <part>` (when some part reads `<part>.seen`; the body centres that part in view and stands). The grid solver also pushes a lever to 1 and pulls a cord when one comes next in the solution order. With a pull cord the task `actions` need `grab`.
+- Turrets and levers: when a turret reads a lever's `.angle` through `bind`, `mpg check`'s ballistic check aims once per lever cell instead of over a continuous range. In a room with a turret that aims by a signal and fires when its signal turns on, the target board (`input/target`) becomes a switch in the solution order, and its target area is the spots of the parts that aim and fire the turret.
+- Example [`examples/rooms/turret.yaml`](../examples/rooms/turret.yaml): push the lever over one cell to aim the turret at the target, step on the pad to fire, and the door opens.
+- Known limits: the scripted solver does not turn grab levers (`turn` rejects them). A push lever is pushed one way (-1 → 1) by default; turning it back (1 → -1) pushes from the other side.
 
 ## Python plugins
 
@@ -562,6 +593,23 @@ Role `prop`, update stage `device`.
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | top edges with a hem the beak grabs: +x, -x, +y, -y |
 | `hem` | float | m | `0.01` | [0.004, 0.05] |  | how far a hem sticks out of its edge |
 
+### `lever`
+
+Role `switch`, update stage `input`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `facing` | float | deg | `0.0` | [-180, 180] |  | direction from the device to where the body works it |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs the knob this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding the knob takes more force |
+| `mode` | enum |  | `grab` | `grab`, `push` |  | grab: hold the knob, step sideways; push: walk into the paddle |
+| `detents` | int |  | `3` | [0, 9] |  | cells the arm clicks into (0: continuous, else >= 2) |
+| `max_angle` | float | deg | — | [5, 60] |  | arm turn either way (default: grab 10, push 35) |
+| `start` | float |  | — | [-1, 1] |  | value on reset (default: grab 0, push -1) |
+| `length` | float | m | `0.12` | [0.06, 0.25] |  | pivot to knob / paddle top |
+| `height` | float | m | `0.19` | [0.12, 0.3] |  | grab: knob height |
+| `detent` | float | N m | `0.03` | [0, 1] |  | torque pulling to the nearest cell at its edge (continuous: friction) |
+
 ### `npc`
 
 Role `prop`, update stage `device`.
@@ -654,6 +702,21 @@ Role `sensor`, update stage `input`.
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  |  |
 | `min_mass` | float | kg | `0.1` | [0.001, 100] | yes | mass needed to turn on |
 | `trigger` | enum |  | `object` | `body`, `object`, `npc`, `any` |  |  |
+
+### `pull_cord`
+
+Role `switch`, update stage `input`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `facing` | float | deg | `0.0` | [-180, 180] |  | direction from the device to where the body works it |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs the knob this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding the knob takes more force |
+| `anchor` | float | m | `0.45` | [0.3, 1] |  | height the cord hangs from |
+| `height` | float | m | `0.19` | [0.12, 0.3] |  | knob height at rest |
+| `distance` | float | m | `0.06` | [0.01, 0.25] |  | cord drawn out of the arm that turns it on (default: 6 cm, a turn and a step) |
+| `stiffness` | float | N/m | `2.0` | [0.5, 100] |  | spring pulling the cord back (stiffer: the body stalls pulling) |
+| `latch` | bool |  | `True` |  |  | stays on once pulled (until reset) |
 
 ### `pusher`
 
@@ -876,6 +939,8 @@ Role `switch`, update stage `input`.
 | `beak/hook` | `receptacle` | `shape: hook`, `size: [0.08, 0.08]`, `height: 0.19`, `peg: 0.06`, `tolerance: 0.04` |
 | `beak/key` | `key` | `mass: 0.02` |
 | `beak/laundry` | `laundry` | `size: [0.12, 0.1]`, `mass: 0.02` |
+| `beak/lever` | `lever` | `mode: push`, `detents: 3` |
+| `beak/pull_cord` | `pull_cord` | `distance: 0.06`, `latch: True` |
 | `beak/scale` | `pressure` | `trigger: object`, `size: [0.2, 0.2]`, `min_mass: 0.005` |
 | `beak/stick` | `stick` | `length: 0.2`, `mass: 0.02` |
 | `beak/wall_button_beak_low` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.15`, `size: [0.12, 0.06]` |

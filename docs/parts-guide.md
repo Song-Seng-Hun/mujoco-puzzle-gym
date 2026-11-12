@@ -161,7 +161,7 @@ parts:
 | `parts` | 부품별 점검(골대 입구보다 큰 공, 닿을 수 없는 공·코인). 몸만큼 빠른 NPC 로봇은 경고(`warnings`)만 하고 실패하지 않습니다 |
 | `overlap` | 기본 배치에서 부품의 단단한 몸체가 벽이나 다른 부품에 5 mm 넘게 박혔는지. 바닥 패드·깃발·골 구역은 빠지고, 문은 자기 벽(문이 막는 틈의 벽, 같은 선 위의 벽)과만 겹쳐도 됩니다 |
 | `order` | 신호와 벽으로 볼 때 골까지 가는 풀이 순서가 있는지. 글자 지도 방은 부품이 바닥 칸 위에 있는지와 막는 턱·경사도 |
-| `actions` | 풀이에 필요한 행동이 task `actions`에 있는지. 물체를 옮겨야 하면(`demo:`의 `grab`, 또는 풀이 순서에 잡을 수 있는 물체만 켤 수 있는 입력) `grab`, 풀이가 누르는 벽 버튼 판 윗변이 머리를 든 부리 끝(0.21 m)보다 낮으면 `head`가 있어야 합니다 |
+| `actions` | 풀이에 필요한 행동이 task `actions`에 있는지. 물체를 옮기거나 손잡이 장치를 다뤄야 하면(`demo:`의 `grab`·`pull`, 풀이 순서에 잡을 수 있는 물체만 켤 수 있는 입력, 손잡이 장치) `grab`, 풀이가 누르는 벽 버튼 판 윗변이 머리를 든 부리 끝(0.21 m)보다 낮으면 `head`가 있어야 합니다 |
 
 앞의 세 단계(`values`, `channels`, `demo`)는 방을 읽는 중에 실패하므로, 그때 결과에는 실패한 단계만 있고 해답 단계는 건너뜁니다. 정적 단계만 보려면 `--static`을 붙입니다.
 
@@ -170,7 +170,7 @@ parts:
 | 단계 | 보는 것 |
 |---|---|
 | `stability` | 명령 0으로 10초 동안 넘어지거나 계산이 터지지 않는지 |
-| `solver` | 정답을 아는 스크립트가 무작위 배치 20개 중 18개 이상을 푸는지. 방에 `demo:`(`goto`, `press`, `wait`, `push <공> to <골대>`, `herd <로봇> <부품>`)가 있으면 그 순서를 먼저 따르고, 나머지는 격자 해답이 이어 갑니다 |
+| `solver` | 정답을 아는 스크립트가 무작위 배치 20개 중 18개 이상을 푸는지. 방에 `demo:`(`goto`, `press`, `wait`, `push <공> to <골대>`, `herd <로봇> <부품>`, `turn <레버> <값>`, `pull <줄>`, `look <부품>`)가 있으면 그 순서를 먼저 따르고, 나머지는 격자 해답이 이어 갑니다 |
 
 해답 단계는 지나간 깃발마다 저장본을 `runs/check/<방>/checkpoints/<깃발>.pkl`에 남깁니다.
 
@@ -238,6 +238,37 @@ curriculum: {mode: forward, order: difficulty_first}
 - 관측 `beak`의 물체 종류: `cube` 1, `laundry` 2, `key` 3, `handle_ball` 4, `egg` 5, `stick` 6, 없으면 0.
 - 해답의 `demo:`에 `drop <물체> <부품>`이 더해집니다. `place`와 같이 옮기되 머리를 든 채 놓습니다(알을 깨는 해답). `place <물체> <걸이>`는 앞장선 손잡이를 걸이 끝에 맞춰 겁니다. 막대를 물고 `press <버튼>`을 하면 막대 끝을 판 높이에 맞춰 누릅니다.
 - 알려진 한계: 깨진 알도 받는 부품이 셉니다. 바구니·저울에 놓는 스크립트 해답은 방과 시드에 따라 10번 중 8–10번 성공합니다.
+
+## 부리로 움직이는 장치
+
+장치는 제자리에 서 있고, `facing`(도) 쪽에서 몸이 다룹니다. 둘 다 풀이 순서의 스위치이고, 목표 영역은 몸이 서서 다루는 자리입니다. 손잡이로 다루는 장치는 공 관절에 달린 작은 손잡이 몸체를 부리 용접으로 잡습니다(잡기 반경, 놓치는 힘, `.held`·`.dropped` 채널이 물체와 같습니다).
+
+| 프리셋 | 종류 | 기본값 | 쓰임 |
+|---|---|---|---|
+| `beak/lever` | `lever` `mode: push` | 칸 3개(-1, 0, 1), 최대 35°, -1에서 시작, 판 높이 7–12 cm | 몸이 가슴으로 판을 밀어 넘깁니다. `<레버>.angle`이 칸 값을 냅니다 |
+| `beak/pull_cord` | `pull_cord` | 0.45 m에서 늘어뜨린 줄, 손잡이 높이 0.19 m, 6 cm 당기면 켜짐, `latch` | 손잡이를 물고 돌아서서 걸어가면 줄이 끌려 나옵니다 |
+
+- 레버: `detents`가 칸 수입니다(기본 3, 0이면 연속, 1은 거절). 관절 용수철이 가장 가까운 칸으로 팔을 당기고(`detent` N·m), 채널은 그 칸 값만 냅니다. `mode: push`는 바닥 레버이고 몸이 `facing` 쪽에서 앞으로 걸어 판을 -1 → 1 쪽으로 밉니다. 발은 판 아래(7 cm)로 지나갑니다. `mode: grab`은 몸을 향해 선 팔 위의 손잡이를 물고 옆걸음으로 돌리는 레버입니다. 잰 값 때문에 기본 `max_angle`이 10°이고, 스크립트 해답은 이 레버를 돌리지 않습니다(아래).
+- 당김줄: 줄은 1D flexcomp이고 중력 보정으로 무게가 없습니다. 줄 위끝은 팔 안의 용수철 미닫이에 걸려 있어, 당기면 줄이 빠져나오고 `distance`만큼 나오면 `<줄>`이 켜집니다. `latch`면 리셋까지 켜진 채입니다. 줄 용수철 `stiffness` 기본 2 N/m.
+- 당기는 법: 손잡이를 문 채 제자리에서 시계 방향으로 돌아 장치를 등지고, 앞으로 걸어갑니다. 기본 몸은 뒤로 걷지 못하고, 제자리에서 반시계 방향으로는 거의 돌지 못합니다.
+
+```text
+  위에서 본 그림 (facing 쪽이 아래)
+
+   [기둥]─팔─o 줄          1. 손잡이 앞에 서서 문다
+             │
+             ●  손잡이      2. 문 채로 시계 방향으로 돈다
+             ▲
+            오리            3. 앞으로 걸어가면 줄이 끌려 나온다 → 켜짐
+```
+
+- 잰 값(2026-11-12, 기본 몸, `max_hold_force` 3 N): 잡는 레버 손잡이를 물고 옆걸음하면 몸 오른쪽으로 9.5–15.7° 돌다가 용접 힘이 3 N을 넘어 놓쳤고, 왼쪽으로는 몸이 움직이지 않았습니다(12초에 0.2° 이하). 같은 자리에서 잡지 않은 옆걸음은 4초에 0.19–0.25 m를 갑니다. 미는 레버는 5번 모두 넘어지지 않고 3.2–4.3초에 1까지 넘겼습니다. 당김줄은 손잡이를 문 채 도는 데 4.5–5초, 걸어 나가 켜지는 데까지 해답 기준 9–11초 걸렸습니다(용수철 4 N/m에서는 3.5–3.7 cm에서 걸음이 멈춰 켜지지 않습니다).
+- 다이얼과 서랍은 만들지 않았습니다. 고정된 길 위의 손잡이를 물면 옆걸음이 멈춥니다. 다이얼은 옆걸음과 회전을 섞어도 13° 안에서 놓쳤고, 서랍은 옆으로 디뎌도 5 mm밖에 움직이지 않아 열리지 않았습니다.
+- 관측 `beak`의 물체 종류: `lever` 7, `pull_cord` 8.
+- 해답의 `demo:`: `turn <레버> <값>`(미는 레버만, 값은 칸 하나. 레버 앞으로 걸어가 밀고, 서서 돈 뒤 물러남), `pull <줄>`, `look <부품>`(`<부품>.seen`을 읽는 부품이 있을 때, 그 부품을 시야 가운데 두고 섬). 격자 해답도 풀이 순서에 레버가 오면 1까지 밀고 줄은 당깁니다. 당김줄이 있으면 task `actions`에 `grab`이 있어야 합니다.
+- 포탑과 레버: 포탑이 `bind`로 레버 `.angle`을 읽으면 `mpg check`의 포물선 점검은 연속 범위 대신 레버의 칸마다 겨눕니다. 신호로 겨누고 켜질 때 쏘는 포탑이 있는 방에서는 과녁 판(`input/target`)이 풀이 순서의 스위치가 되고, 그 목표 영역은 포탑을 겨누고 쏘는 부품들의 자리입니다.
+- 예제 [`examples/rooms/turret.yaml`](../examples/rooms/turret.yaml): 레버를 한 칸 밀어 포탑을 과녁에 맞추고, 발판을 밟아 쏘면 문이 열립니다.
+- 알려진 한계: 잡는 레버는 스크립트 해답이 돌리지 않습니다(`turn`이 거절합니다). 미는 레버는 한쪽(-1 → 1)으로 미는 것이 기본이고, 되돌리기(1 → -1)는 반대편에서 밉니다.
 
 ## 파이썬 플러그인
 
@@ -562,6 +593,23 @@ def majority(inputs, state, dt):
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | top edges with a hem the beak grabs: +x, -x, +y, -y |
 | `hem` | float | m | `0.01` | [0.004, 0.05] |  | how far a hem sticks out of its edge |
 
+### `lever`
+
+역할 `switch`, 갱신 단계 `input`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `facing` | float | deg | `0.0` | [-180, 180] |  | direction from the device to where the body works it |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs the knob this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding the knob takes more force |
+| `mode` | enum |  | `grab` | `grab`, `push` |  | grab: hold the knob, step sideways; push: walk into the paddle |
+| `detents` | int |  | `3` | [0, 9] |  | cells the arm clicks into (0: continuous, else >= 2) |
+| `max_angle` | float | deg | — | [5, 60] |  | arm turn either way (default: grab 10, push 35) |
+| `start` | float |  | — | [-1, 1] |  | value on reset (default: grab 0, push -1) |
+| `length` | float | m | `0.12` | [0.06, 0.25] |  | pivot to knob / paddle top |
+| `height` | float | m | `0.19` | [0.12, 0.3] |  | grab: knob height |
+| `detent` | float | N m | `0.03` | [0, 1] |  | torque pulling to the nearest cell at its edge (continuous: friction) |
+
 ### `npc`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -654,6 +702,21 @@ def majority(inputs, state, dt):
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  |  |
 | `min_mass` | float | kg | `0.1` | [0.001, 100] | 예 | mass needed to turn on |
 | `trigger` | enum |  | `object` | `body`, `object`, `npc`, `any` |  |  |
+
+### `pull_cord`
+
+역할 `switch`, 갱신 단계 `input`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `facing` | float | deg | `0.0` | [-180, 180] |  | direction from the device to where the body works it |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs the knob this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding the knob takes more force |
+| `anchor` | float | m | `0.45` | [0.3, 1] |  | height the cord hangs from |
+| `height` | float | m | `0.19` | [0.12, 0.3] |  | knob height at rest |
+| `distance` | float | m | `0.06` | [0.01, 0.25] |  | cord drawn out of the arm that turns it on (default: 6 cm, a turn and a step) |
+| `stiffness` | float | N/m | `2.0` | [0.5, 100] |  | spring pulling the cord back (stiffer: the body stalls pulling) |
+| `latch` | bool |  | `True` |  |  | stays on once pulled (until reset) |
 
 ### `pusher`
 
@@ -876,6 +939,8 @@ def majority(inputs, state, dt):
 | `beak/hook` | `receptacle` | `shape: hook`, `size: [0.08, 0.08]`, `height: 0.19`, `peg: 0.06`, `tolerance: 0.04` |
 | `beak/key` | `key` | `mass: 0.02` |
 | `beak/laundry` | `laundry` | `size: [0.12, 0.1]`, `mass: 0.02` |
+| `beak/lever` | `lever` | `mode: push`, `detents: 3` |
+| `beak/pull_cord` | `pull_cord` | `distance: 0.06`, `latch: True` |
 | `beak/scale` | `pressure` | `trigger: object`, `size: [0.2, 0.2]`, `min_mass: 0.005` |
 | `beak/stick` | `stick` | `length: 0.2`, `mass: 0.02` |
 | `beak/wall_button_beak_low` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.15`, `size: [0.12, 0.06]` |
