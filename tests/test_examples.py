@@ -12,10 +12,11 @@ from mujoco_puzzle_gym.check import check
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOMS = sorted((ROOT / "examples/rooms").glob("*.yaml"))
-#: R24 kinds built so far (platforms and warps, traps, cubes: E2/E3).
+#: R24 kinds built so far (warps, traps, cubes: E2/E3).
 KINDS = {"logic_lock": "buttons and logic", "doors": "doors and trapdoors",
          "four_flags": "four checkpoints", "coin_room": "coins", "mini_soccer": "ball",
-         "two_rooms_map": "letter map", "stairs_map": "letter map"}
+         "two_rooms_map": "letter map", "stairs_map": "letter map",
+         "lift_spring": "platforms, springs and setters"}
 ROOM_PRESETS = [n for n in catalog.puzzle_preset_names()
                 if "map" in (r := yaml.safe_load((catalog.PRESET_ROOT / f"{n}.yaml").read_text()))
                 or "size" in r]
