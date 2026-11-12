@@ -1,5 +1,5 @@
 # Spec: mujoco-puzzle-gym 마일스톤 2 (부품 카탈로그, 신호, 체크포인트, 단계별 학습)
-Status: approved 2026-11-12 (E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
+Status: approved 2026-11-12 (E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
 View (read-only copy): (아직 없음)
 
 근거
@@ -82,7 +82,7 @@ View (read-only copy): (아직 없음)
 ### 입력 부품
 - R4: 버튼 3종.
   - 종류: `momentary`(누르는 동안만 1), `oneshot`(한 번 눌리면 계속 1), `toggle`(누를 때마다 0↔1).
-  - `mount: floor | wall`. 바닥형은 몸이나 물체가 올라서면 눌리고, 벽형은 부리 끝 사이트가 누름판에 닿으면 눌린다.
+  - `mount: floor | wall`. 바닥형은 몸이나 물체가 올라서면 눌리고, 벽형은 부리 끝 사이트가 누름판 앞 6 cm 안(뒤는 판 두께 + 1 cm)에 오면 눌린다(머리를 숙이고 벽에 붙으면 가슴이 먼저 닿아 부리 끝이 판에서 0.1–5.4 cm 떨어진다).
   - `trigger: body | object | npc | any`(버튼 기본 `body`)로 무엇에 눌리는지 정한다. `any`는 오리, 물체, NPC(R29)를 모두 포함하고 대포알과 끈 매듭(R31)은 포함하지 않는다. R5의 압력판·구역 `trigger`도 같다.
   - `enable`이 0이면 눌려도 출력이 바뀌지 않는다.
   - Check: `tests/test_buttons.py`가 종류 3개 × 설치 2곳 × enable 켬/끔의 출력 순서를 확인한다. 몸을 놓거나 부리 사이트를 옮기는 식으로 시험한다.
