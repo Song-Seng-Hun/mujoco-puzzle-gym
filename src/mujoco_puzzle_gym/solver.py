@@ -18,7 +18,14 @@ is passable, an opening trapdoor as a hole):
 - `push <ball> to <target>`: push that ball (push.py) until the target counts
   it (a goal net) or is on (a pin);
 - `herd <npc> <part or x y>`: drive a flee robot from behind, or lead a follow
-  robot, until its centre is on the target (herd.py, R29).
+  or lure robot, until its centre is on the target (herd.py, R29);
+- `grab <cube>`: walk up to a handle and close the beak on it (carry.py, R18);
+- `place <cube> <part>`: carry it until it is over the part, let go and wait
+  for it to rest.
+`press` on a wall button (and a wall button in the grid answer) walks up to
+the plate with the beak tip at its height. Head and grab values are kept
+between steps (a held cube stays held through later sub-goals until `place`)
+and go to the env through `env.scripted_action`.
 After the last sub-goal, and in rooms without `demo:`, it follows the grid
 answer: the env's solution-order targets, pushing a ball for a target with
 `push_target` (goal nets, pins).
@@ -40,6 +47,7 @@ STAND = np.array([-1.0, 0.0, 0.0], dtype=np.float32)
 
 class ScriptedSolver:
     def __init__(self, env):
+        from .carry import Carrier
         from .herd import Herder
         from .push import Pusher
 
@@ -49,6 +57,7 @@ class ScriptedSolver:
         self._live: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
         self.pusher = Pusher(env)          # `push` sub-goals and push targets (R38)
         self.herder = Herder(env)          # `herd` sub-goals (R29)
+        self.carrier = Carrier(env)        # `grab` / `place` sub-goals, wall buttons (R18)
         self.reset()
 
     def reset(self) -> None:
@@ -56,6 +65,9 @@ class ScriptedSolver:
         self._live = {}
         self.pusher.reset()
         self.herder.reset()
+        self.carrier.reset()
+        self.carrier.head = self.carrier.grab = -1.0
+        self.carrier.wall = None
         self.step_i = 0                    # current `demo:` entry
         self._wait = 0                     # env steps left in a `wait`
 
@@ -73,6 +85,13 @@ class ScriptedSolver:
         return self._fields[key]
 
     def act(self) -> np.ndarray:
+        c = self.carrier
+        return self.env.scripted_action(self._move(), c.head, c.grab)
+
+    def _move(self) -> np.ndarray:
+        act = self.carrier.off_wall()
+        if act is not None:
+            return act
         while self.in_demo:
             act = self._demo_act(self.demo[self.step_i])
             if act is not None:
@@ -80,12 +99,16 @@ class ScriptedSolver:
             self.step_i += 1
             self.pusher.reset()
             self.herder.reset()
+            self.carrier.reset()
         env = self.env
         if env.current_target() is None:
             return STAND.copy()
         target = env.current_target()
         if hasattr(target, "push_target"):
             return self.pusher.act(target)
+        if getattr(target, "mount", None) == "wall":
+            return self.carrier.press_wall_act(target) if not target.satisfied() else STAND.copy()
+        self.carrier.head = -1.0
         return self._steer(self.field(env.stage), target.xy)
 
     def _steer(self, field: np.ndarray, target_xy) -> np.ndarray:
@@ -149,9 +172,15 @@ class ScriptedSolver:
             return None if done else self.pusher.act(target, ball=ball)
         if cmd == "herd":
             return self.herder.act(env.parts[entry[1]], entry[2])
+        if cmd == "grab":
+            return self.carrier.grab_act(env.parts[entry[1]])
+        if cmd == "place":
+            return self.carrier.place_act(env.parts[entry[1]], env.parts[entry[2]])
         part = env.parts[entry[1]]
         if part.satisfied():
             return None
+        if getattr(part, "mount", None) == "wall":
+            return self.carrier.press_wall_act(part)
         if cmd == "goto" and part.role != "goal":
             iy, ix = env.grid.cell(env.body_state.pos[:2])
             if part.target_mask(env.grid)[iy, ix]:

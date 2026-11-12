@@ -109,7 +109,7 @@ The `npc` category is a small robot that slides over the floor by itself (`type:
 |---|---|---|
 | `flee` | `npc/flee` | Runs the other way when the body comes within `sense`. When blocked it slides along the wall |
 | `follow` | `npc/follow` | Comes towards the body within `sense` and stops `keep` away |
-| `lure` | `npc/lure` | Comes towards the `bait` object while the body holds it. Until grabbing (E3) arrives it stays still and cannot be herded |
+| `lure` | `npc/lure` | Comes towards the `bait` object (a cube) while the body holds it, stopping `keep` short |
 | `patrol` | `npc/patrol` | Drives round `path` (points measured from `pos`, a loop). Stops and waits while the body blocks the way |
 | `guard` | `npc/guard` | Keeps its post (`pos`); when the body comes within `sense + reach` it steps out up to `reach` to block it |
 | `shy_gaze` | `npc/shy_gaze` | Freezes while the body looks at its marker (gaze sensor, room `gaze:`) and creeps towards the body otherwise. `invert: true` swaps this |
@@ -121,7 +121,7 @@ The `npc` category is a small robot that slides over the floor by itself (`type:
 - Channels: `<name>.moving` (1 while it moves), `<name>.on` (marker id of the button it stands on, -1 for none). The observation item `npcs` gives each robot's relative position, velocity, whether it moves and whether it is reacting (6 numbers).
 - A `speed` at or above the body's walking speed (about 0.16 m/s) is a warning in the `parts` stage of `mpg check` (not a failure): the body could not catch it.
 - A `seek_button` robot's `button` (a button, zone, laser or pressure plate the robot can set off) counts as on in the solution order once the robot's `in` are on (with no `in`, from the start). The body is not sent onto it; the robot drives there and presses it. So a room "switch A -> robot (`in: [A]`) -> plate -> door" is solved by pressing A.
-- Any other input only robots set off (`trigger: npc`, no `objects` list) counts as a switch in the solution order when it lies inside the `leash` of a robot that can be herded (`flee`, `follow`; with no `leash`, anywhere). Write `herd <robot> <part>` (or `herd <robot> <x> <y>`) in the solution's `demo:`: a `flee` robot is driven from its far side, a `follow` robot is led. `lure` robots can be herded once grabbing (E3) arrives.
+- Any other input only robots set off (`trigger: npc`, no `objects` list) counts as a switch in the solution order when it lies inside the `leash` of a robot that can be herded (`flee`, `follow`, `lure` with a cube bait; with no `leash`, anywhere). Write `herd <robot> <part>` (or `herd <robot> <x> <y>`) in the solution's `demo:`: a `flee` robot is driven from its far side, a `follow` robot is led. For a `lure` robot, first `grab <bait>`, then `herd` leads it with the held bait.
 
 ## Assembly examples
 
@@ -141,6 +141,7 @@ All of these pass the solver stage of `mpg check` at least 18 times out of 20.
 | [`examples/rooms/trap_run.yaml`](../examples/rooms/trap_run.yaml) | Around a pit, past a bar spinning on the floor and through a weak crosswind to the goal | `trap/pit`, `trap/spinning_bar`, `trap/crosswind` |
 | [`examples/rooms/herd.yaml`](../examples/rooms/herd.yaml) | Herd a fleeing robot onto the corner button; the door is open while it stays there | `npc/flee`, `input/floor_momentary` (`trigger: npc`), `device/sliding_door` |
 | [`examples/rooms/warp_hop.yaml`](../examples/rooms/warp_hop.yaml) | A warp pad takes the body over a wall without a door to the goal | `warp` |
+| [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml) | Pick the cube off its stand with the beak and put it on the pressure plate to open the door | `cube`, `pressure`, `door` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | Two rooms, and stairs and a ramp, drawn as text maps | `button`, `door` |
 
 The ball assembly presets are whole rooms, so you can pass one to `mpg check` as is, or lay it down with `preset: puzzles/ball/bowling` and change values.
@@ -198,9 +199,17 @@ curriculum: {mode: forward, order: difficulty_first}
 - Values driven by `bind`, values out of range and size values are rejected when the room loads.
 - Without a draw (evaluation, a plain `reset`) the last step is used. `mpg eval runs/<id> --difficulty 1` picks a step.
 
-## No grabbing yet
+## Cubes and beak grabbing
 
-Cubes, beak grabbing, wall buttons and beak devices (the `beak` category) come in the next batch. Grabbing will then be simplified: when the beak tip touches an object and a grab command is given, the object is attached to the beak tip (a weld constraint), with no finger contact or slipping simulated.
+- `cube` is a box with handles (`size`, `mass`, `friction`, handle faces `handles` from `+x`, `-x`, `+y`, `-y`, `+z`; default the four sides). Pressure plates, sockets, object buttons and zones count it. When a room has a cube, inputs a cube can set off count as switches in the solution order.
+- Beak grabbing is a simulation simplification that does not carry over to the real duck. The simulated model has no beak joint, so when the beak tip (`mouth_tip`) is within `grab_radius` (default 4 cm) of a handle and the grab command goes above 0.5, a weld constraint between the head and the cube switches on. The head and the cube do not collide. At 0.5 or below it lets go. A cube heavier than the body's `max_lift_mass` (default 0.05 kg) is not grabbed and `beak.too_heavy` is 1. If holding takes more than `max_hold_force`, the cube is dropped and `<cube>.dropped` pulses; grabbing again needs the command to go down and up once.
+- The beak tip is 0.135–0.21 m above the floor, so a cube on the floor is out of reach. A cube on the front edge of a 0.17–0.19 m stand, handle towards the body, can be grabbed by walking into it. In a letter map a raised floor cell (`legend` `{type: floor, height: 0.18}`) is such a stand.
+- Channels: `beak.holding`, `beak.held_id` (marker id of the held cube, -1: none), `beak.too_heavy`, and per cube `<cube>.held`, `<cube>.dropped`. Floor buttons, pressure plates, zones and sockets do not count a held cube. Snapshots restore the hold too.
+- Obs item `beak`: holding, held object kind (cube 1, none 0), and the nearest handle relative to the beak tip (x, y, z in the heading frame). 5 values.
+- Wall buttons: `mount: wall` on a `button` makes a plate (`size`: [width, height]) on the wall face at `pos`, centred `height` up, facing `facing`. It is pressed while the beak tip is over the plate and within 6 cm of its face (with the head lowered against a wall the chest meets the wall first and the tip stays 4–5 cm off). `trigger` does not apply.
+- Upper-level actions: `task.yaml` `actions: [move]` (default) can add `head` (lower the head, 1 value: -1 level, 1 lowest) and `grab` (1 value, above 0.5 grabs), in that order. The action size is 3 plus those added.
+- Solution `demo:`: `grab <cube>` (walk up to a handle, match the head height, grab), `place <cube> <part>` (carry it over the part's centre, stop, let go, step away). Wall buttons are pressed with the head lowered, by `press <button>` or in the solution order.
+- Example [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml): pick the cube off its stand and put it on the pressure plate to open the door.
 
 ## Python plugins
 
@@ -267,9 +276,11 @@ Role `switch`, update stage `input`.
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
 | `kind` | enum |  | `momentary` | `momentary`, `oneshot`, `toggle` |  |  |
-| `mount` | enum |  | `floor` | `floor` |  | floor (wall buttons: E3) |
+| `mount` | enum |  | `floor` | `floor`, `wall` |  | floor: stepped on; wall: pressed with the beak tip |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what presses it: body, object, npc or any (not shells or rope knots) |
-| `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
+| `size` | vec | m | `[0.25, 0.25]` | [0.02, 2] |  | plate size [x, y]; wall: [width, height] |
+| `height` | float | m | `0.2` | [0.02, 1] |  | wall: plate centre above the floor |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | wall: the direction the plate faces (0 = +x) |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
 
 ### `cannon`
@@ -368,6 +379,20 @@ Role `prop`, update stage `logic`.
 | `wrap` | bool |  | `False` |  |  | past max -> min, below min -> max |
 | `target` | int |  | `1` | [-1e+06, 1e+06] |  | `<name>.reached` is 1 at count >= target |
 | `persist` | bool |  | `False` |  |  | keep the count when a snapshot is restored |
+
+### `cube`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
+| `mass` | float | kg | `0.03` | [0.001, 10] |  | above the body's max_lift_mass the beak cannot lift it |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
+| `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
 
 ### `door`
 
@@ -643,9 +668,11 @@ Role `switch`, update stage `input`.
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
 | `kind` | enum |  | `momentary` | `momentary`, `oneshot`, `toggle` |  |  |
-| `mount` | enum |  | `floor` | `floor` |  | floor (wall buttons: E3) |
+| `mount` | enum |  | `floor` | `floor`, `wall` |  | floor: stepped on; wall: pressed with the beak tip |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what presses it: body, object, npc or any (not shells or rope knots) |
-| `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
+| `size` | vec | m | `[0.25, 0.25]` | [0.02, 2] |  | plate size [x, y]; wall: [width, height] |
+| `height` | float | m | `0.2` | [0.02, 1] |  | wall: plate centre above the floor |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | wall: the direction the plate faces (0 = +x) |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
 | `latch` | bool |  | `True` |  |  | M1: stay on after the body leaves (oneshot); false: momentary |
 

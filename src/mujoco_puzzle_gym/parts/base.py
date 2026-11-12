@@ -100,6 +100,10 @@ class World:
     warp_until: dict[Any, float] = field(default_factory=dict)
     #: The walking body's adapter (its eye for the gaze sensor, R27).
     body: Any = None
+    #: Grab command this body step (R18/R19 `grab` action; above 0.5 closes the beak).
+    grab: float = -1.0
+    #: Site id of the beak tip (`BodyAdapter.grab_site`), -1 when the body has none.
+    beak_site: int = -1
 
     def kind_of(self, model: mujoco.MjModel, body_id: int) -> str | None:
         return self.kinds.get(int(model.body_rootid[body_id]))
@@ -215,6 +219,9 @@ class Part:
     def marker_face_size(self, face: str) -> float:
         """Side [m] of the largest square marker (white margin included) on `face`."""
         return 0.0
+
+    def attach_body(self, spec: mujoco.MjSpec, body) -> None:
+        """Scene hook after the walking body is in `spec` (the beak welds, grab.py)."""
 
     def needs_body(self, *caps: str) -> None:
         """Add capabilities this part needs whatever room.yaml says (R2b)."""

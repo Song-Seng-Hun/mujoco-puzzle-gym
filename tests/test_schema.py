@@ -48,7 +48,7 @@ def test_defaults_are_filled(repo_root):
 
 @pytest.mark.parametrize("index, key, value, needle", [
     (1, "width", 5.0, "width = 5.0 m is out of range [0.1, 2]"),
-    (0, "size", [0.3, 9.0], "size = [0.3, 9.0] m is out of range [0.05, 2]"),
+    (0, "size", [0.3, 9.0], "size = [0.3, 9.0] m is out of range [0.02, 2]"),
     (2, "radius", -0.1, "radius = -0.1 m is out of range [0.03, 1]"),
     (1, "axis", "z", "one of 'x', 'y'"),
     (0, "random", [-0.1, 0.0], "random = [-0.1, 0.0] m is out of range [0, 5]"),

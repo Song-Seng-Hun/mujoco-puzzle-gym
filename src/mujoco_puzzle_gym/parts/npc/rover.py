@@ -169,7 +169,7 @@ class Npc(Part):
             if target is not None and npc_sets_off(target):
                 target.plan_driver = n
                 target.role = "sensor"
-        herders = [n for n in npcs if n.behavior in behaviors.HERDABLE]
+        herders = [n for n in npcs if behaviors.can_herd(n, parts)]
         for p in parts.values():
             if p.role != "sensor" or p.plan_driver is not None or not npc_sets_off(p):
                 continue

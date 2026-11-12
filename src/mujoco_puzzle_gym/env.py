@@ -3,6 +3,10 @@
 - Action: Box [-1, 1]^3 = (forward, lateral, turn), mapped to a body command by
   the body adapter (`BodyAdapter.command_from_action`, which knows the walker's
   dead zones). One env step = `1 / hz` seconds = several body steps.
+  Task `actions: [move, head, grab]` (R19) adds one value each, in that order:
+  `head` lowers the head (-1 level .. 1 lowest, `BodyAdapter.set_head`), `grab`
+  closes the beak above 0.5 (grab.py). Without them the head stays level and the
+  beak open; the scripted solver sets them anyway (`scripted_action`).
 - Observation: concatenation of the task's `obs` items (registry.OBS), a Box as
   in M1. With a `camera` item or task `critic_obs` it is a Dict (R39):
   `vector` (the non-image items), `image` (uint8 C x H x W, camera only) and
@@ -154,13 +158,16 @@ class PuzzleEnv(gym.Env):
         if self.command_scale != 1.0:
             self.body.clip_commands = False
 
-        self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(3,), dtype=np.float32)
+        self.actions = list(self.task["actions"])
+        self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(2 + len(self.actions),), dtype=np.float32)
         self._renderer = None
         self._reset_sim(np.random.default_rng(0))
         self.observation_space = self._obs_space(self._obs())
 
     def _make_world(self) -> World:
         world = World(dt=self.body.control_dt, body=self.body)
+        site = self.body.grab_site()
+        world.beak_site = self.model.site(site).id if site is not None else -1
         world.kinds[int(self.model.body_rootid[self.body.root_body_id(self.model)])] = "body"
         for p in self.parts.values():
             if p.kind:
@@ -292,6 +299,7 @@ class PuzzleEnv(gym.Env):
         snapshot.load_model_values(self.model, self._model0)
         mujoco.mj_resetData(self.model, self.data)
         self.world.held.clear()
+        self.world.grab = -1.0
         self.world.requests.clear()
         self.world.warp_until.clear()
         self.checkpoint_snap = None
@@ -440,10 +448,31 @@ class PuzzleEnv(gym.Env):
             curriculum.begin_segment(self, int(seg), to_goal, opts.get("layout"))
         return self._obs(), self._info()
 
+    def _apply_extras(self, action) -> None:
+        """Task actions beyond `move` (R19): head level and grab command."""
+        for name, v in zip(self.actions[1:], np.asarray(action, dtype=np.float64)[3:]):
+            if name == "head":
+                self.body.set_head((float(np.clip(v, -1.0, 1.0)) + 1.0) / 2.0)
+            else:
+                self.world.grab = float(v)
+
+    def scripted_action(self, move, head: float = -1.0, grab: float = -1.0) -> np.ndarray:
+        """The env action for a scripted move (3 values) with head / grab values in
+        action units; those the task has no action for are set directly."""
+        extra = {"head": head, "grab": grab}
+        out = np.array([*np.asarray(move, dtype=np.float32)[:3],
+                        *[extra[n] for n in self.actions[1:]]], dtype=np.float32)
+        if "head" not in self.actions:
+            self.body.set_head((head + 1.0) / 2.0)
+        if "grab" not in self.actions:
+            self.world.grab = float(grab)
+        return out
+
     def step(self, action):
         on_before = {n for n, p in self.parts.items() if p.role == "switch" and p.satisfied()}
         self._warp_events = {"warped": [], "stage_changed": False}
-        cmd = self.body.command_from_action(action) * self.command_scale
+        self._apply_extras(action)
+        cmd = self.body.command_from_action(np.asarray(action)[:3]) * self.command_scale
         sane = self.advance(cmd)
         self.steps += 1
         on_after = {n for n, p in self.parts.items() if p.role == "switch" and p.satisfied()}

@@ -126,6 +126,17 @@ class BodyAdapter(ABC):
     def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
         """Restore `history_state` output; call after the MjData state is restored."""
 
+    # ---- beak (R18, R19) ---------------------------------------------------
+    def grab_site(self) -> str | None:
+        """Name of the beak-tip site in the compiled scene (weld grab, wall buttons),
+        or None when the body cannot grab."""
+        return None
+
+    def set_head(self, level: float) -> None:
+        """Lower the head: `level` 0 = level (standing pose) .. 1 = lowest the walker
+        takes while walking. Held until changed; `reset` sets it back to 0. Bodies
+        without a head command ignore it."""
+
     # ---- sensors (R39, R27) ------------------------------------------------
     def view_camera(self, model: mujoco.MjModel) -> int | None:
         """Id of the body's eye camera in the compiled scene (MuJoCo convention:

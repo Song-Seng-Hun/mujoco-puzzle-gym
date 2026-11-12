@@ -9,7 +9,7 @@ Rules are deterministic: no random numbers, so one seed gives one trajectory.
 
 - flee:        the body within `sense` -> straight away from it.
 - follow:      the body within `sense` -> towards it, stopping `keep` short.
-- lure:        the body holds the `bait` object (World.held, filled by the E3
+- lure:        the body holds the `bait` object (World.held, filled by the R18
                grab) and is within `sense` -> towards the bait, `keep` short.
 - patrol:      round `path` (offsets from `pos`, a loop); stops while the body
                is within `sense` and ahead of it (angle < BLOCK_ANGLE).
@@ -135,6 +135,13 @@ def sleepy(npc: "Npc", me, duck, dt) -> Intent:
 RULES = {"flee": flee, "follow": follow, "lure": lure, "patrol": patrol, "guard": guard,
          "shy_gaze": shy_gaze, "seek_button": seek_button, "sleepy": sleepy}
 #: Behaviours the scripted solver can move with `herd` (R29): it drives a flee
-#: robot from behind and leads a follow robot. `lure` joins with the E3 grab
-#: (World.held stays empty until then, so a lure robot never moves).
-HERDABLE = ("flee", "follow")
+#: robot from behind and leads a follow robot, and a lure robot while the body
+#: holds its bait (R18 grab; `demo:` `grab <bait>` first).
+HERDABLE = ("flee", "follow", "lure")
+
+
+def can_herd(npc, parts) -> bool:
+    """`npc` has a HERDABLE behaviour (lure: its bait can be grabbed)."""
+    if getattr(npc, "behavior", None) not in HERDABLE:
+        return False
+    return npc.behavior != "lure" or hasattr(parts.get(npc.cfg["bait"]), "handle_points")
