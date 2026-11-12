@@ -55,6 +55,7 @@ import mujoco
 import numpy as np
 
 from ... import markers
+from ...layout import Segment
 from ...schema import Field, SchemaError
 from ..base import Part
 
@@ -249,6 +250,16 @@ class Receptacle(Part):
         if self.shape == "box":
             return max(PLACE_TOL, float(min(self.half)) - self.wall_t - PLACE_MARGIN)
         return PLACE_TOL
+
+    def wall_segments(self) -> list[Segment]:
+        """Box: its four walls, which the scripted solver plans round (solver.py `plan_free`).
+        Not `blockers`: the reach and order checks would find the inside walled off."""
+        if self.shape != "box":
+            return []
+        hx, hy = self.half - self.wall_t / 2
+        x, y = self.xy
+        c = [(x - hx, y - hy), (x + hx, y - hy), (x + hx, y + hy), (x - hx, y + hy)]
+        return [Segment(c[i], c[(i + 1) % 4], self.wall_t) for i in range(4)]
 
     def _is_in(self, data, rid: int) -> bool:
         if self.shape == "hook":
