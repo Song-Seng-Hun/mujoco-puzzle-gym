@@ -2,5 +2,6 @@
 
 from .ball import Ball, Pin
 from .cube import Cube
+from .grabbable import Grabbable
 
-__all__ = ["Ball", "Cube", "Pin"]
+__all__ = ["Ball", "Cube", "Grabbable", "Pin"]

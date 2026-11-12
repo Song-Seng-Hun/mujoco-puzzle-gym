@@ -1,0 +1,5 @@
+# Laundry (R28): a light cloth (rigid plate, wrinkled look), 12 x 10 cm, 20 g,
+# grabbed by a hem on a top edge. Set: pos, handles (edges with a hem).
+type: laundry
+size: [0.12, 0.1]
+mass: 0.02

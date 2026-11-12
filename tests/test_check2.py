@@ -97,8 +97,8 @@ def test_door_is_exempt_only_from_its_own_wall(asset_dir, tmp_path):
 @pytest.mark.parametrize("demo, needle", [
     (["jump goal"], "unknown sub-goal 'jump'"),
     (["goto nowhere"], "no part named 'nowhere'"),
-    (["grab goal"], "is not a cube"),
-    (["place goal door_b"], "is not a cube"),
+    (["grab goal"], "is not a grabbable object"),
+    (["place goal door_b"], "is not a grabbable object"),
     (["wait soon"], "`wait <seconds>`"),
     (["press door_b"], "cannot press 'door_b'"),
     (["push goal to door_b"], "'goal' is not a ball"),

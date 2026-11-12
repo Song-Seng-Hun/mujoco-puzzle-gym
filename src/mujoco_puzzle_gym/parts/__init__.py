@@ -2,6 +2,7 @@
 
 from ..registry import register_part
 from .base import Part
+from .beak import Egg, HandleBall, Key, Laundry, Stick
 from .device import (Conveyor, Door, GoalNet, Pillar, Platform, Setter, Spring, SwingDoor,
                      Trapdoor, Turntable, Warp)
 from .floor import FloorTile
@@ -52,9 +53,15 @@ register_part("pendulum", Pendulum, replace=True)
 register_part("pit", Pit, replace=True)
 register_part("cannon", Cannon, replace=True)
 register_part("npc", Npc, replace=True)
+register_part("laundry", Laundry, replace=True)
+register_part("key", Key, replace=True)
+register_part("handle_ball", HandleBall, replace=True)
+register_part("egg", Egg, replace=True)
+register_part("stick", Stick, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
            "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
            "SwingDoor", "Trapdoor", "Warp", "FloorTile", "Coin", "CoinGroup", "CoinLock",
            "Ball", "Pin", "Cube", "GoalNet", "Platform", "Pillar", "Turntable", "Conveyor", "Spring",
-           "Setter", "Target", "Wind", "Pusher", "Spinner", "Pendulum", "Pit", "Cannon", "Npc"]
+           "Setter", "Target", "Wind", "Pusher", "Spinner", "Pendulum", "Pit", "Cannon", "Npc",
+           "Laundry", "Key", "HandleBall", "Egg", "Stick"]

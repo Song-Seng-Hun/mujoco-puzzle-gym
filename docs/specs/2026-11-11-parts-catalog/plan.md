@@ -261,6 +261,32 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - 벽 버튼(R4): 판 앞은 6 cm, 판 뒤는 판 두께 + 1 cm까지만 눌림으로 센다. 얇은 벽 건너편 부리 끝은 누르지 못한다(시험 추가).
      - 큐브 시험을 spec R17 Check대로 `tests/test_cube.py`로 옮겼다(15단계 "계획과 다른 점" 첫 줄은 이제 맞지 않음). 리셋하면 잡기가 풀리는 시험(`eq_active`, `World.held`, `beak.holding`)을 더했다.
 16b. 부리 기믹 프리셋(R28): 집을 물체 6종, 부리 장치 8종, `demo:`에 turn·pull 하위 목표 추가. 뒤로 걷지 않는 제약에 맞춰 당기기 방향을 정한다. `lever`와 `receptacle`의 걸이·바구니 프리셋도 여기서 만든다. 예제 `turret.yaml`. (7b단계에서 넘어온 일: `demo:`에 `look` 명령을 더해 `.seen` 문이 있는 방도 풀이가 통과하게 한다. 지금은 그런 방이 `order` 단계에서 실패한다.)
+   - PR 나누기 (2026-11-12, 사용자 승인 "E3b를 PR 3개로"): 16b는 세 PR로 나눈다.
+     - E3b-1 `feat/m2-beak-objects`: 집을 물체 6종(`cube_weight`, `laundry`, `key`, `handle_ball`, `egg`, `stick`), `receptacle`의 걸이·바구니 프리셋, 저울(`scale`), `wall_button_beak`(`low`, `mid`), 잡기를 큐브 밖 물체로 넓히기, 해답의 걸기·넣기·깨기·막대로 누르기.
+     - E3b-2 `feat/m2-beak-devices`: `lever`, `dial`, `drawer`, `pull_cord`, `demo:`의 turn·pull·look, 예제 `turret.yaml`.
+     - E3b-3 `feat/m2-dispenser`: `dispenser`.
+   - E3b-1 구현 기록 (2026-11-12, 브랜치 `feat/m2-beak-objects`): 잡을 수 있는 물체의 바탕 `Grabbable`(`parts/object/grabbable.py`, `cube`도 이것을 상속), 물체 `laundry`·`key`·`handle_ball`·`egg`·`stick`(`parts/beak/objects.py`), `receptacle`의 `shape: hook`, 받는 부품·압력판의 `.mass` 채널, 프리셋 11개(`beak/` 아래 `cube_weight`, `laundry`, `key`, `handle_ball`, `egg`, `stick`, `hook`, `basket`, `scale`, `wall_button_beak_low`, `wall_button_beak_mid`), 관측 `beak` 물체 종류 6가지(`obs.GRAB_KINDS`), `demo:`의 `drop`, 해답의 걸기·막대로 누르기(`carry.py`). 시험 `tests/test_beak_presets.py`: 빠른 19개(알 낙하 높이 0.02·0.035 m 안 깨짐, 0.08·0.15 m 깨짐, `on_break: fail`과 리셋, 들고 옮기는 동안 안 깨지고 놓으면 깨짐, 열쇠 7·8 대 `accept: [7]` 소켓, 관계없는 마커 번호 겹침 거절, 막대 창, 물지 않은 막대, 바구니 개수·질량, 저울 값, 걸기·저장본·다시 물어 빼기, 관측 종류, `drop` 읽기, 낮은·중간 벽 버튼의 `actions` 점검), slow 13개(프리셋 7가지 해답이 시드 5개 중 4개 이상 신호를 켬, 낮은·중간 벽 버튼 시드 3개씩).
+   - 잰 값:
+     - 알 `break_height` 0.05 m(0.99 m/s): 접촉 시작 법선 상대 속도. 부리에서 바닥으로 놓기 1.42 m/s(머리 가장 낮게)–1.86 m/s(머리 든 채, 자유 낙하와 맞음), 받침대에서 집어 바닥 판에 놓기 1.68–1.87 m/s, 집고 나르는 동안 0.24 m/s 이하(받침대에 밀면 0.49 m/s), 내려앉은 뒤 건드림 0.35 m/s 이하.
+     - 막대 누름 창: R4 창(판 앞 6 cm, 판 뒤 두께 + 1 cm)을 그대로 쓴다. 스크립트로 천천히 다가가 10/10 눌렀고 막대 끝은 판 면 앞 2.9–5.9 cm, 높이 차 2.7 cm 이하, 누르기 전 용접 힘 0.89 N 이하. 벽으로 그냥 걸어 들어가면 막대 끝이 벽에 닿고(−0.004 m) 6번 중 4번 힘 3 N을 넘어 놓쳤다(2번 눌림). 머리 1단위에 막대 끝 기울기 약 0.43 rad.
+     - 바구니 벽: 5 cm 벽은 몸이 걸리거나 타고 넘음(4번 중 3번 넘어짐). 10 cm 벽 너머로 머리를 든 부리 끝이 벽 면 앞 5.8–6.8 cm까지 닿음. 그래서 `basket` 벽 높이 0.1 m.
+     - 해답 성공(시드 10개, 한 번이라도 켜짐): 걸이 9–10, 빨래·바구니 10, 막대·벽 버튼 10, 알 깨기 10, 열쇠·소켓 9, 추·저울 9, 고리 공·바구니 8(바구니에서 2번 넘어짐), 낮은·중간 벽 버튼 6/6. `cube_plate` `mpg check`(`task_cube_plate.yaml`) 20/20, 평균 24.4 s.
+   - 계획과 다른 점:
+     - `Grabbable`은 `parts/beak`이 아니라 `parts/object/grabbable.py`에 두었다. `parts/object`와 `parts/beak` 사이 순환 import를 피하려는 것이다.
+     - `receptacle`에 `.mass`(담긴 물체 질량 합), `pressure`에 `.mass`(판 위 질량, 1 g 단위)를 모든 판에 더했다. 저울은 `pressure` 프리셋이다.
+     - `accept`에 마커 번호(정수)를 쓸 수 있게 했다. 그 번호는 소켓과 열쇠가 함께 달아도 된다(`markers.assign_ids`, 다른 겹침은 여전히 거절). 방향은 소켓 `angle_tolerance`만 본다.
+     - 깨기 해답은 `break` 대신 `drop <물체> <부품>`이다. `break`는 R34 하위 목표 이름으로 남겨 둔다.
+     - 걸이는 보이기만 하는 걸이와 숨은 weld다(걸이는 부딪히지 않고, 기둥과 잡을 수 있는 물체의 접촉은 끔). 물지 않은 물체의 손잡이가 걸이 끝 `tolerance` 안에 오면 건다.
+     - `check.py` `map_placement`가 벽 버튼(`mount: wall`)을 "벽 위"로 잘못 거절해서, 벽 부품은 크기 0으로 본다. 글자 지도 방에서 벽 버튼 `pos`는 바닥 칸 안(벽 면 0.9가 아니라 0.899)이어야 한다. 벽 칸 위면 몸체 높이가 벽 꼭대기(0.25 m)로 올라간다.
+     - `carry.py`: 놓을 자리에서 물체가 몸 옆에 걸려 제자리 돌기가 안 될 때 `STUCK`(1.5 s) 뒤 물러났다 다시 온다. 받는 부품이 `place_tolerance`를 주면 그 안에서 놓는다(바구니·저울은 가장자리 여유를 둔 안쪽). 물러날 때 앞에 고정된 것(벽, 바구니 벽)이 0.16 m 안이거나 방금 놓은 물체가 바로 앞이면 걸으며 돌지 않고 옆걸음으로 제자리 돈다(걸으며 돌면 넘어지거나 저울 위 큐브를 쓸어냄). 막대 끝·앞장선 손잡이 높이 맞추기는 이득을 거리에 따라 줄인다(`PITCH_PER_HEAD` 0.8, 잰 값 0.43에서는 넘침).
+     - `demo:` `grab`·`place`·`drop`은 손잡이가 있는 모든 물체를 받는다. 오류 문구는 "is not a grabbable object".
+   - 알려진 한계: 깨진 알도 받는 부품이 센다. 열쇠는 번호로만 맞추고 꽂는 방향은 소켓 각도 허용으로만 본다. 바구니 벽은 0.1 m 아래로 두면 해답이 넘어진다. 막대를 문 채 벽에 부딪히면 놓친다. 바구니·저울 놓기 해답은 시드에 따라 10번 중 8–10번.
+    - E3b-1 리뷰 반영 (2026-11-12, 사용자 승인: 1·2·5 반영, 4 기각, 알 기본값 A, 빠른 747 passed·1 skipped, slow `grab|button|cube|npc|examples|check2|beak` 34 passed):
+      - 마커 번호(R26): 같은 번호는 그 번호를 `accept`하는 받는 부품 하나와 물체 하나(소켓과 열쇠)만 함께 쓴다. 전에는 그 번호의 첫 주인하고만 견주어 소켓 뒤의 문이나 둘째 열쇠도 통과했다. 이제 앞선 주인 모두와 견준다. 시험 추가.
+      - 알 저장본 복원: 복원 때 지금 접촉과 속도로 `_touching`·`_v_prev`를 다시 채운다. 전에는 떨어지는 중에 복원하면 옛 속도로 충격을 재 바로 깨졌다. 시험 추가.
+      - 가이드 3종과 `warp.py`의 "큐브만" 문구를 잡을 수 있는 물체 전체로 고쳤다.
+      - 기각: 막대가 있으면 모든 벽 버튼의 먼 목표 원이 생기는 문제. 막대로만 닿는 버튼이면 `mpg check`의 풀이 단계에서 실패하므로 조용히 넘어가지 않는다.
+      - 알 `break_height`는 0.05 m 그대로(사용자 결정 A). 부리 끝이 바닥 위 13.5 cm 이상이라 바닥·바구니에 놓으면 깨진다. 성한 채 전하려면 걸이나 높은 받침을 쓴다. 가이드와 프리셋 설명에 적었다.
 16c. 애드온 장착대(R30): 먼저 공식 바퀴 모델과 합친 모델에서 `roller.onnx`를 나란히 돌려 OQ7을 정한다(자산 추가 받기는 사용자 승인 후). 그다음 장착대, 모드 전환, `crouch` 행동, 예제 `roller_rink.yaml`. `set_addon` 순서와 리셋·복원 경로, `crouch` 최소 속도, 바퀴 퍼즐 조립 프리셋 9종, 예제 `roller_route.yaml`.
 16d. 견인 끈(R31): 먼저 OQ9를 잰다(빈 방에서 썰매 질량·마찰을 올려 가며 velstand 넘어짐과 속도, 장력 기록). 그다음 `rope.py`(매듭, tendon, `connect` 구속, 채널), 부리 묶기·풀기, 끊어짐, `hitch_station`, 저장본·리셋 경로, 정적 점검 경고(문 폭, 꺾임, 질량), `tow`/`untow` 하위 목표, 프리셋 8종, 예제 `tow_yard.yaml`. 구속은 사이트 두 개 `connect`, 붙이기는 매듭 이동·속도 0 → `eq_active` 순서. 워프는 끈 묶음 전체, 고정 끝 끈은 먼저 풂. 매듭 고리 손잡이. NPC 목줄은 구동 이득 0. 매듭 20 g 이상·바닥만 충돌·트리거 제외, `reel_speed`, 순간이동·`set_addon` 전 끈 처리, `rope_door`.  NPC 끈 워프는 평면 관절 값으로, 이득·활동 영역은 끈 상태에서 다시 계산. `attach_failed`.
 16e. 주인과 동행(R32): `zone.attach_to` → `owner.py`(경로, 기다리기, 명령, `lost`) → 저장본 → `follow` 하위 목표 → 프리셋 8종 → 예제 `walkies.yaml`. `leash_walk`·`roller_walk`는 R31·R30 뒤. `stay` 동안 `near_ratio`·`lost`·`waits` 멈춤. `receptacle.attach_to`(NPC 자식 몸체). `attach_to` 부품은 상대 `pos`, `place()` 건너뜀, 위치는 `xpos`.

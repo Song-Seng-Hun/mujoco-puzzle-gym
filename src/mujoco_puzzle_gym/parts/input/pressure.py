@@ -11,6 +11,9 @@ robot whose centre is over the plate adds its `mass` when `trigger` counts npc.
 It reads the forces at `update` time, not the peak over the physics steps in
 between: a peak reads a 30 g cube dropped from 5 cm as 0.35 kg (spec R5), so
 it does not use the `substep` hook.
+
+Channels: its own (or `out`) 0/1, and `<name>.mass`, the counted mass [kg,
+rounded to 1 g] every body step (the `scale` preset, R28, reads it).
 """
 
 from __future__ import annotations
@@ -26,6 +29,8 @@ from ._sense import in_rect
 THICK = 0.004        # plate top above the floor [m]
 OFF_RGBA = (0.55, 0.55, 0.6, 1.0)
 ON_RGBA = (0.2, 0.8, 0.3, 1.0)
+PLACE_TOL = 0.03     # [m] scripted place: centre error to let go at (carry.py) ...
+PLACE_MARGIN = 0.06  # [m] ... or this far inside the plate edge (it may slide a few cm after)
 
 
 class PressurePlate(Part):
@@ -35,6 +40,7 @@ class PressurePlate(Part):
     marker_faces = markers.FACES_FLAT
     stage = "input"
     emits = True
+    suffixes = (".mass",)
     state_keys = ("on", "mass")
     fields = (
         Field("size", "vec", [0.25, 0.25], length=2, unit="m", min=0.05, max=2.0),
@@ -56,6 +62,7 @@ class PressurePlate(Part):
         self.on = False
         self.mass = 0.0
         self._f = np.zeros(6)
+        self._on_out = self.outputs[:-1]          # the 0/1 channels (the last is `.mass`)
 
     def build(self, spec):
         body = super().build(spec)
@@ -102,11 +109,12 @@ class PressurePlate(Part):
         self.mass = self.load_mass(model, data)
         if not self.enabled():
             return
+        self.write(round(self.mass, 3), self.outputs[-1])
         on = self.mass >= self.live["min_mass"]
         if on != self.on:
             self.on = on
             model.geom_rgba[self._gid] = ON_RGBA if on else OFF_RGBA
-            for ch in self.outputs:
+            for ch in self._on_out:
                 self.write(float(on), ch)
 
     def state(self):
@@ -114,6 +122,11 @@ class PressurePlate(Part):
 
     def satisfied(self):
         return self.on
+
+    def place_tolerance(self, obj) -> float:
+        """Scripted `place` (carry.py): let go once the object's centre is this close to
+        the plate centre (anywhere well inside the plate)."""
+        return max(PLACE_TOL, float(min(self.half)) - PLACE_MARGIN)
 
     def target_mask(self, grid):
         return grid.rect(self.xy, tuple(self.half))

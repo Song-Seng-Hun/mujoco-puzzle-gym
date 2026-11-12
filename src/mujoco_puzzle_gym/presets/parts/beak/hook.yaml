@@ -1,0 +1,9 @@
+# Hook (R28, R5 receptacle `hook`): a post with a peg 6 cm long at 0.19 m;
+# an object let go with a handle within 4 cm of the peg tip hangs there and
+# counts. Set: pos (the post), facing (where the peg points), accept.
+type: receptacle
+shape: hook
+size: [0.08, 0.08]
+height: 0.19
+peg: 0.06
+tolerance: 0.04

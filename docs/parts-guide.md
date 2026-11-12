@@ -7,7 +7,7 @@
 ## 부품, 프리셋, 조립 프리셋
 
 - **부품**은 `room.yaml`의 `parts:` 한 줄입니다. 종류(`type`)와 값들로 이루어집니다. 종류마다 받는 값과 단위, 기본값, 허용 범위가 정해져 있고(값 스키마), 범위 밖 값은 `mpg build`와 `mpg check`가 이유와 범위를 들어 거절합니다.
-- **부품 프리셋**은 부품 종류 하나와 기본값 묶음입니다. 코드는 없습니다. `src/mujoco_puzzle_gym/presets/parts/<분류>/<이름>.yaml`에 있고, 분류는 `input`(버튼·센서), `logic`(게이트·카운터·트랜시버), `device`(문·워프·골대·플랫폼·기둥·회전판·컨베이어·스프링·설정 변경기), `floor`, `trap`, `object`, `beak`, `npc`(스스로 움직이는 로봇)입니다. `beak`은 아직 비어 있습니다.
+- **부품 프리셋**은 부품 종류 하나와 기본값 묶음입니다. 코드는 없습니다. `src/mujoco_puzzle_gym/presets/parts/<분류>/<이름>.yaml`에 있고, 분류는 `input`(버튼·센서), `logic`(게이트·카운터·트랜시버), `device`(문·워프·골대·플랫폼·기둥·회전판·컨베이어·스프링·설정 변경기), `floor`, `trap`, `object`, `beak`, `npc`(스스로 움직이는 로봇)입니다.
 - **조립 프리셋**은 여러 부품을 묶은 것, 또는 방 하나 전체입니다. `presets/puzzles/<주제>/<이름>.yaml`에 있습니다.
 
 `mpg parts --json`은 등록된 부품과 값 스키마, 프리셋 목록을 냅니다. 직접 만든 부품까지 보려면 `--plugin my_parts`를 붙입니다.
@@ -161,7 +161,7 @@ parts:
 | `parts` | 부품별 점검(골대 입구보다 큰 공, 닿을 수 없는 공·코인). 몸만큼 빠른 NPC 로봇은 경고(`warnings`)만 하고 실패하지 않습니다 |
 | `overlap` | 기본 배치에서 부품의 단단한 몸체가 벽이나 다른 부품에 5 mm 넘게 박혔는지. 바닥 패드·깃발·골 구역은 빠지고, 문은 자기 벽(문이 막는 틈의 벽, 같은 선 위의 벽)과만 겹쳐도 됩니다 |
 | `order` | 신호와 벽으로 볼 때 골까지 가는 풀이 순서가 있는지. 글자 지도 방은 부품이 바닥 칸 위에 있는지와 막는 턱·경사도 |
-| `actions` | 풀이에 필요한 행동이 task `actions`에 있는지. 큐브를 옮겨야 하면(`demo:`의 `grab`, 또는 풀이 순서에 큐브만 켤 수 있는 입력) `grab`, 풀이가 누르는 벽 버튼 판 윗변이 머리를 든 부리 끝(0.21 m)보다 낮으면 `head`가 있어야 합니다 |
+| `actions` | 풀이에 필요한 행동이 task `actions`에 있는지. 물체를 옮겨야 하면(`demo:`의 `grab`, 또는 풀이 순서에 잡을 수 있는 물체만 켤 수 있는 입력) `grab`, 풀이가 누르는 벽 버튼 판 윗변이 머리를 든 부리 끝(0.21 m)보다 낮으면 `head`가 있어야 합니다 |
 
 앞의 세 단계(`values`, `channels`, `demo`)는 방을 읽는 중에 실패하므로, 그때 결과에는 실패한 단계만 있고 해답 단계는 건너뜁니다. 정적 단계만 보려면 `--static`을 붙입니다.
 
@@ -205,12 +205,39 @@ curriculum: {mode: forward, order: difficulty_first}
 - `cube`는 손잡이가 달린 상자입니다(`size`, `mass`, `friction`, 손잡이 면 `handles`: `+x`, `-x`, `+y`, `-y`, `+z` 중, 기본 옆면 넷). 압력판, 소켓, 물체 버튼과 구역이 셉니다. 방에 큐브가 있으면 큐브가 켤 수 있는 입력은 풀이 순서에서 발판으로 칩니다.
 - 부리로 집기는 실물 오리로 옮길 수 없는 시뮬레이션 단순화입니다. 시뮬레이션 모델에는 부리 관절이 없어서, 부리 끝(`mouth_tip`)이 손잡이에서 `grab_radius`(기본 4 cm) 안에 있을 때 잡기 명령이 0.5를 넘으면 머리와 큐브 사이 용접 구속을 켭니다. 머리와 큐브는 서로 부딪히지 않습니다. 0.5 이하로 내리면 놓습니다. 질량이 몸의 `max_lift_mass`(기본 0.05 kg)보다 크면 잡히지 않고 `beak.too_heavy`가 1이 됩니다. 붙들고 있는 힘이 `max_hold_force`를 넘으면 놓치고 `<큐브>.dropped`가 펄스로 나갑니다. 다시 잡으려면 명령을 한 번 내렸다 올려야 합니다.
 - 부리 끝은 바닥에서 0.135–0.21 m 높이라 바닥의 큐브에는 닿지 않습니다. 큐브는 높이 0.17–0.19 m 받침대 앞 모서리에 손잡이를 몸 쪽으로 두면 걸어 들어가며 잡을 수 있습니다. 글자 지도에서는 높은 바닥 칸(`legend`의 `{type: floor, height: 0.18}`)이 받침대입니다.
-- 채널: `beak.holding`, `beak.held_id`(잡은 큐브의 마커 번호, 없으면 -1), `beak.too_heavy`, 큐브마다 `<큐브>.held`, `<큐브>.dropped`. 잡힌 큐브는 바닥 버튼, 압력판, 구역, 소켓이 세지 않습니다. 저장본은 잡은 상태까지 되돌립니다. 워프는 물고 있는 큐브도 머리에 대한 자세를 지켜 함께 옮깁니다.
-- 관측 항목 `beak`: 잡고 있는지, 잡은 물체 종류(큐브 1, 없으면 0), 부리 끝에서 가장 가까운 손잡이까지의 상대 위치(몸 방향 기준 x, y, z). 5칸.
+- 채널: `beak.holding`, `beak.held_id`(잡은 물체의 마커 번호, 없으면 -1), `beak.too_heavy`, 잡을 수 있는 물체마다 `<물체>.held`, `<물체>.dropped`. 잡힌 물체는 바닥 버튼, 압력판, 구역, 소켓이 세지 않습니다. 저장본은 잡은 상태까지 되돌립니다. 워프는 물고 있는 물체도 머리에 대한 자세를 지켜 함께 옮깁니다.
+- 관측 항목 `beak`: 잡고 있는지, 잡은 물체 종류(큐브 1, 없으면 0, 다른 물체는 아래 절), 부리 끝에서 가장 가까운 손잡이까지의 상대 위치(몸 방향 기준 x, y, z). 5칸.
 - 벽 버튼: `button`에 `mount: wall`을 주면 벽 면(`pos`)에서 `height` 높이에 `facing` 방향을 보는 판(`size`: [너비, 높이])이 됩니다. 부리 끝이 판 위에 있고 판 앞 6 cm 안이면 눌립니다(벽에 붙어 머리를 숙이면 가슴이 먼저 닿아 부리 끝이 판에서 4–5 cm 떨어지기 때문입니다). 판 뒤로는 판 두께 + 1 cm까지만 셉니다. 얇은 벽 건너편의 오리는 누르지 못합니다. `trigger`는 쓰지 않습니다.
 - 상위 행동: `task.yaml`의 `actions: [move]`(기본)에 `head`(머리 숙이기 1칸: -1 그대로, 1 가장 낮게)와 `grab`(1칸, 0.5 초과면 잡기)을 이 순서로 더할 수 있습니다. 행동 크기는 3 + 더한 수입니다. 정책이 할 수 없는 일은 스크립트 해답도 하지 않습니다. 큐브를 옮기거나 낮은 벽 버튼을 누르는 방은 task에 `grab`·`head`가 없으면 `mpg check`의 `actions` 단계에서 실패합니다. 예: `mpg check examples/rooms/cube_plate.yaml --task examples/task_cube_plate.yaml`.
-- 해답의 `demo:`: `grab <큐브>`(손잡이 앞까지 걸어가 머리 높이를 맞춰 잡음), `place <큐브> <부품>`(부품 가운데 위로 옮겨 멈춘 뒤 놓고 물러남). 벽 버튼은 `press <버튼>`이나 풀이 순서로 머리를 숙여 누릅니다.
+- 해답의 `demo:`: `grab <물체>`(손잡이 앞까지 걸어가 머리 높이를 맞춰 잡음), `place <물체> <부품>`(부품 가운데 위로 옮겨 멈춘 뒤 놓고 물러남). 벽 버튼은 `press <버튼>`이나 풀이 순서로 머리를 숙여 누릅니다.
 - 예제 [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml): 받침대의 큐브를 집어 압력판에 올려 문을 엽니다.
+
+## 부리로 다루는 물체와 받는 부품
+
+`cube` 밖에도 손잡이가 있는 물체는 모두 같은 방식으로 집습니다(잡기 반경, 들 수 있는 질량, 놓치는 힘, `.held`·`.dropped` 채널이 같습니다). 프리셋은 `beak` 분류에 있습니다.
+
+| 프리셋 | 종류 | 기본값 | 쓰임 |
+|---|---|---|---|
+| `beak/cube_weight` | `cube` | 4 cm, 40 g | 저울·압력판에 올리는 추. 몸의 `max_lift_mass`(0.05 kg)보다 조금 가볍습니다 |
+| `beak/laundry` | `laundry` | 12 × 10 cm, 두께 6 mm, 20 g, 네 변 위에 단(`hem`) | 가벼운 빨래. 판은 단단하고 주름은 겉모양뿐입니다. 위쪽 단을 집습니다 |
+| `beak/key` | `key` | 20 g, 머리 4 cm, 몸통 5 cm, `-x` 끝에 고리 | 머리에 마커가 붙습니다. `accept: [<마커 번호>]`를 준 받는 부품만 받습니다 |
+| `beak/handle_ball` | `handle_ball` | 반지름 3 cm, 30 g, `-x` 쪽 고리 | 놓으면 굴러갑니다. 공 부품 `ball`과는 다릅니다 |
+| `beak/egg` | `egg` | 25 g, 반지름 2.2 cm, 높이 6 cm, 옆에 손잡이 넷, `break_height` 0.05 m, `on_break: fail` | 깨지면 `<알>.broken`이 1이 됩니다. 부리 끝이 바닥에서 13.5 cm 위라 바닥이나 바구니에 놓으면 깨집니다. 성한 채로 전하려면 걸이에 걸거나 높은 받침에 둡니다 |
+| `beak/stick` | `stick` | 길이 20 cm, 굵기 1.6 cm, 20 g, `-x` 끝에 손잡이 | 물고 있으면 먼 끝이 벽 버튼을 누릅니다 |
+| `beak/hook` | `receptacle` `shape: hook` | 기둥 8 × 8 cm, 높이 0.19 m에 길이 6 cm 걸이, `tolerance` 0.04 m | 걸이 끝 4 cm 안에서 놓은 물체가 걸립니다 |
+| `beak/basket` | `receptacle` `shape: box` | 30 × 30 cm, 벽 높이 10 cm, `require: count`, `count: 1` | `<바구니>.count`와 `<바구니>.mass`(kg)로 담긴 것을 셉니다 |
+| `beak/scale` | `pressure` `trigger: object` | 20 × 20 cm, `min_mass` 5 g | 숫자 채널 `<저울>.mass`(kg, 1 g 단위). 5 g부터 `<저울>`이 1 |
+| `beak/wall_button_beak_low` | `button` `mount: wall` | 판 12 × 6 cm, 가운데 높이 0.15 m, `oneshot` | 머리를 숙여야(`head` 행동) 닿습니다 |
+| `beak/wall_button_beak_mid` | `button` `mount: wall` | 판 12 × 6 cm, 가운데 높이 0.2 m, `oneshot` | 선 채로 부리 끝(0.21 m)이 닿습니다 |
+
+- 알: 닿기가 시작될 때의 법선 방향 상대 속도가 `break_height`에서 떨어진 속도(√(2·9.81·`break_height`), 기본 0.99 m/s) 이상이면 깨집니다. 기본 몸으로 잰 값(2026-11-12): 부리에서 바닥으로 놓으면 1.42 m/s(머리를 가장 낮게)–1.86 m/s(머리를 든 채), 받침대에서 집어 바닥 판에 놓으면 1.68–1.87 m/s, 집어 나르는 동안의 부딪힘은 0.24 m/s 이하(받침대에 밀어붙이면 0.49 m/s), 내려앉은 뒤 건드림은 0.35 m/s 이하입니다. 그래서 5 cm로 두면 놓을 때만 깨집니다. 기본 부품 값 `on_break`는 `none`(채널만), 프리셋은 `fail`(깨지면 에피소드 실패)입니다. 깨진 알은 색이 바뀌고, 저장본과 리셋이 되돌립니다.
+- 열쇠와 소켓: 받는 부품의 `accept`에는 이름과 종류 말고 마커 번호(정수)도 쓸 수 있습니다. 소켓이 같은 번호의 마커를 달아도 되고, 이때만 마커 번호가 겹쳐도 됩니다(다른 겹침은 여전히 거절). 방향은 소켓의 `angle_tolerance`로 봅니다.
+- 걸이: 물고 있지 않은 물체의 손잡이가 걸이 끝에서 `tolerance` 안에 오면 걸이에 고정되고 담긴 것으로 셉니다. 다시 물면 빠집니다. 걸이는 보이기만 하고 부딪히지 않는 논리 걸이입니다(기둥만 부딪히고, 기둥과 걸 수 있는 물체 사이 접촉은 끕니다). `facing`이 걸이 방향입니다.
+- 바구니: 벽이 10 cm보다 낮으면 몸이 걸려 넘어지거나 벽을 타고 넘습니다(5 cm 벽에서 4번 중 3번 넘어짐). 10 cm 벽 너머로는 머리를 든 부리 끝이 벽 면에서 5.8–6.8 cm 앞까지 닿습니다.
+- 막대: 물고 있는 막대의 먼 끝도 벽 버튼에서 부리 끝과 같은 창(판 앞 6 cm, 판 뒤로 판 두께 + 1 cm, 판 너비·높이 안)으로 셉니다. 잰 값: 스크립트로 천천히 다가가면 10번 모두 막대 끝이 판 면 앞 2.9–5.9 cm, 높이 차 2.7 cm 이하에서 눌렀고, 누르기 전 용접 힘은 0.89 N 이하였습니다. 벽으로 그냥 걸어 들어가면 6번 중 4번은 힘이 `max_hold_force`(3 N)를 넘어 막대를 놓칩니다. 머리를 숙이면 막대 끝이 크게 내려갑니다(머리 1단위에 약 0.43 rad).
+- 관측 `beak`의 물체 종류: `cube` 1, `laundry` 2, `key` 3, `handle_ball` 4, `egg` 5, `stick` 6, 없으면 0.
+- 해답의 `demo:`에 `drop <물체> <부품>`이 더해집니다. `place`와 같이 옮기되 머리를 든 채 놓습니다(알을 깨는 해답). `place <물체> <걸이>`는 앞장선 손잡이를 걸이 끝에 맞춰 겁니다. 막대를 물고 `press <버튼>`을 하면 막대 끝을 판 높이에 맞춰 누릅니다.
+- 알려진 한계: 깨진 알도 받는 부품이 셉니다. 바구니·저울에 놓는 스크립트 해답은 방과 시드에 따라 10번 중 8–10번 성공합니다.
 
 ## 파이썬 플러그인
 
@@ -387,13 +414,13 @@ def majority(inputs, state, dt):
 
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
-| `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
 | `mass` | float | kg | `0.03` | [0.001, 10] |  | above the body's max_lift_mass the beak cannot lift it |
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
-| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
-| `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
+| `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
 
 ### `door`
 
@@ -408,6 +435,23 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.25` | [0.05, 1] |  |  |
 | `open_dir` | enum |  | `1` | `1`, `-1` |  | slide toward +axis (1) or -axis (-1) |
 | `speed` | float | m/s | — | [0.02, 5] |  | opening speed (default: as fast as the motor moves it) |
+
+### `egg`
+
+역할 `prop`, 갱신 단계 `input`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.025` | [0.005, 0.2] |  |  |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `radius` | float | m | `0.022` | [0.01, 0.06] |  | egg radius (x, y) |
+| `height` | float | m | `0.06` | [0.02, 0.15] |  | egg height (z) |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a knob: +x, -x, +y, -y |
+| `handle_size` | float | m | `0.012` | [0.005, 0.05] |  |  |
+| `break_height` | float | m | `0.05` | [0.005, 2] | 예 | a contact starting as fast as a drop from this height breaks it |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: a broken egg fails the episode |
 
 ### `floor_tile`
 
@@ -464,6 +508,35 @@ def majority(inputs, state, dt):
 | `accepts` | list |  | `[]` |  |  | ball colours that count (empty: any) |
 | `need` | int |  | `1` | [1, 100] |  | balls in for the main channel |
 
+### `handle_ball`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.03` | [0.001, 10] |  | above the body's max_lift_mass the beak cannot lift it |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `radius` | float | m | `0.03` | [0.015, 0.1] |  |  |
+| `roll_friction` | float | m | `0.002` | [0, 0.05] |  | rolling friction (low: it rolls on once let go) |
+| `handles` | list |  | `['-x']` |  |  | faces with a ring handle: +x, -x, +y, -y |
+| `ring` | float | m | `0.012` | [0.005, 0.04] |  | ring radius |
+
+### `key`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.02` | [0.001, 1] |  |  |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `head` | float | m | `0.04` | [0.02, 0.1] |  | side of the square head (the marker sits on it) |
+| `shaft` | float | m | `0.05` | [0.01, 0.2] |  | shaft length along +x |
+| `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the ring sticks out of the head's -x end |
+
 ### `laser`
 
 역할 `switch`, 갱신 단계 `input`.
@@ -473,6 +546,21 @@ def majority(inputs, state, dt):
 | `to` | vec | m | 필수 |  |  | receiver position [x, y] |
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
+
+### `laundry`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.02` | [0.001, 1] |  | a light cloth |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `size` | vec | m | `[0.12, 0.1]` | [0.04, 0.4] |  | cloth [x, y] |
+| `thickness` | float | m | `0.006` | [0.002, 0.03] |  |  |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | top edges with a hem the beak grabs: +x, -x, +y, -y |
+| `hem` | float | m | `0.01` | [0.004, 0.05] |  | how far a hem sticks out of its edge |
 
 ### `npc`
 
@@ -595,21 +683,24 @@ def majority(inputs, state, dt):
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
 | `require` | enum |  | `all` | `all`, `count`, `mass`, `order` |  |  |
-| `shape` | enum |  | `box` | `box`, `plate` |  |  |
+| `shape` | enum |  | `box` | `box`, `plate`, `hook` |  |  |
 | `size` | vec | m | `[0.3, 0.3]` | [0.05, 2] |  |  |
 | `wall_height` | float | m | `0.06` | [0.01, 0.5] |  |  |
 | `wall_thickness` | float | m | `0.01` | [0.005, 0.1] |  |  |
-| `accept` | list |  | `[]` |  |  | object names or kinds that count (empty: any) |
+| `accept` | any |  | `[]` |  |  | object names, kinds or marker ids that count (empty: any) |
 | `count` | int |  | `1` | [1, 100] |  | require count: objects needed |
 | `mass` | float | kg | `0.1` | [0.001, 100] |  | require mass |
 | `order` | list |  | — |  |  | require order: names in the order they go in |
-| `tolerance` | float | m | `0.05` | [0.005, 1] |  | plate: position error |
+| `tolerance` | float | m | `0.05` | [0.005, 1] |  | plate: position error; hook: handle to peg tip |
 | `angle_tolerance` | float | deg | `15.0` | [0, 180] |  | plate: heading error |
 | `yaw` | float | deg | `0.0` | [-180, 180] |  | plate: wanted heading |
 | `angle_period` | float | deg | `90.0` | [1, 360] |  | plate: headings this far apart look the same |
 | `wrong` | enum |  | `ignore` | `ignore`, `eject`, `lock`, `fail` |  |  |
 | `eject_speed` | float | m/s | `1.0` | [0.1, 5] |  |  |
 | `close_on_ok` | bool |  | `False` |  |  |  |
+| `height` | float | m | `0.19` | [0.05, 1] |  | hook: peg height |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | hook: the way the peg points (0 = +x) |
+| `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
 
 ### `setter`
 
@@ -645,6 +736,20 @@ def majority(inputs, state, dt):
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it launches |
 | `cooldown` | float | s | `1.0` | [0.1, 60] |  | time a launched body or object ignores this spring |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
+
+### `stick`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.02` | [0.002, 0.5] |  |  |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `length` | float | m | `0.2` | [0.08, 0.5] |  | rod length along +x |
+| `width` | float | m | `0.016` | [0.006, 0.04] |  | square rod side |
+| `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the handle sticks out of the -x end |
 
 ### `swing_door`
 
@@ -764,6 +869,17 @@ def majority(inputs, state, dt):
 
 | 프리셋 | 부품 종류 | 값 |
 |---|---|---|
+| `beak/basket` | `receptacle` | `shape: box`, `size: [0.3, 0.3]`, `wall_height: 0.1`, `require: count`, `count: 1` |
+| `beak/cube_weight` | `cube` | `size: 0.04`, `mass: 0.04` |
+| `beak/egg` | `egg` | `break_height: 0.05`, `on_break: fail` |
+| `beak/handle_ball` | `handle_ball` | `radius: 0.03`, `mass: 0.03` |
+| `beak/hook` | `receptacle` | `shape: hook`, `size: [0.08, 0.08]`, `height: 0.19`, `peg: 0.06`, `tolerance: 0.04` |
+| `beak/key` | `key` | `mass: 0.02` |
+| `beak/laundry` | `laundry` | `size: [0.12, 0.1]`, `mass: 0.02` |
+| `beak/scale` | `pressure` | `trigger: object`, `size: [0.2, 0.2]`, `min_mass: 0.005` |
+| `beak/stick` | `stick` | `length: 0.2`, `mass: 0.02` |
+| `beak/wall_button_beak_low` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.15`, `size: [0.12, 0.06]` |
+| `beak/wall_button_beak_mid` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.2`, `size: [0.12, 0.06]` |
 | `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |

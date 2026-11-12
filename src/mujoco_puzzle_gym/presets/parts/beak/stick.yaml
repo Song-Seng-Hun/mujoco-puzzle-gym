@@ -1,0 +1,5 @@
+# Stick (R28): a 20 cm rod with a handle at its -x end; held, its far end
+# presses wall buttons as the beak tip does (R4 window). Set: pos, length.
+type: stick
+length: 0.2
+mass: 0.02

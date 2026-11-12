@@ -1,0 +1,5 @@
+# Key (R28): a flat key with a marker on its head and a ring at its -x end. A
+# receptacle with `accept: [<the key's marker id>]` takes it ("the socket with
+# the same number"; the socket may show that id too). Set: pos, marker: {id}.
+type: key
+mass: 0.02

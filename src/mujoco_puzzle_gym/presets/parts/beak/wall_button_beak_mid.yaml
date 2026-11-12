@@ -1,0 +1,7 @@
+# Beak wall button, mid (R28, R4): plate 12 x 6 cm centred 0.2 m up; the level
+# beak tip (0.21 m) reaches it standing. Set: pos (on the wall face), facing.
+type: button
+mount: wall
+kind: oneshot
+height: 0.2
+size: [0.12, 0.06]

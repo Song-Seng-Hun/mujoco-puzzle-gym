@@ -1,0 +1,5 @@
+# Ball with a ring handle (R28): 3 cm radius, 30 g, a ring on its -x side; it
+# rolls once let go. Not the R38 `ball`. Set: pos, handles.
+type: handle_ball
+radius: 0.03
+mass: 0.03

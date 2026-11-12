@@ -154,8 +154,9 @@ def npcs(env):
     return np.concatenate(rows) if rows else np.zeros(0)
 
 
-#: Object kinds the `beak` term numbers (1 = first); 0 = nothing held.
-GRAB_KINDS = ("cube",)
+#: Object kinds the `beak` term numbers (1 = first); 0 = nothing held. New kinds
+#: go at the end so the numbers of the old ones stay.
+GRAB_KINDS = ("cube", "laundry", "key", "handle_ball", "egg", "stick")
 
 
 @register_obs("beak", replace=True)

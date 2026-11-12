@@ -19,12 +19,14 @@ is passable, an opening trapdoor as a hole):
   it (a goal net) or is on (a pin);
 - `herd <npc> <part or x y>`: drive a flee robot from behind, or lead a follow
   or lure robot, until its centre is on the target (herd.py, R29);
-- `grab <cube>`: walk up to a handle and close the beak on it (carry.py, R18);
-- `place <cube> <part>`: carry it until it is over the part, let go and wait
-  for it to rest.
+- `grab <object>`: walk up to a handle and close the beak on it (carry.py, R18);
+- `place <object> <part>`: carry it until it is over the part, let go and wait
+  for it to rest; on a hook, hang it on the peg (R28);
+- `drop <object> <part>`: as place, letting go from the level head (R28 egg).
 `press` on a wall button (and a wall button in the grid answer) walks up to
-the plate with the beak tip at its height. Head and grab values are kept
-between steps (a held cube stays held through later sub-goals until `place`)
+the plate with the beak tip at its height, or with a held stick's far end
+(R28). Head and grab values are kept between steps (a held object stays held
+through later sub-goals until `place`)
 and go to the env through `env.scripted_action`.
 After the last sub-goal, and in rooms without `demo:`, it follows the grid
 answer: the env's solution-order targets, pushing a ball for a target with
@@ -57,7 +59,7 @@ class ScriptedSolver:
         self._live: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
         self.pusher = Pusher(env)          # `push` sub-goals and push targets (R38)
         self.herder = Herder(env)          # `herd` sub-goals (R29)
-        self.carrier = Carrier(env)        # `grab` / `place` sub-goals, wall buttons (R18)
+        self.carrier = Carrier(env)        # `grab` / `place` / `drop` sub-goals, wall buttons (R18)
         self.reset()
 
     def reset(self) -> None:
@@ -174,8 +176,8 @@ class ScriptedSolver:
             return self.herder.act(env.parts[entry[1]], entry[2])
         if cmd == "grab":
             return self.carrier.grab_act(env.parts[entry[1]])
-        if cmd == "place":
-            return self.carrier.place_act(env.parts[entry[1]], env.parts[entry[2]])
+        if cmd in ("place", "drop"):
+            return self.carrier.place_act(env.parts[entry[1]], env.parts[entry[2]], drop=cmd == "drop")
         part = env.parts[entry[1]]
         if part.satisfied():
             return None

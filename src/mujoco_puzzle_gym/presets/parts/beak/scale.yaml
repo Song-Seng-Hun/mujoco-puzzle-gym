@@ -1,0 +1,6 @@
+# Scale (R28): a pressure plate whose number channel `<name>.mass` is the mass
+# on it [kg, 1 g steps]; `<name>` is 1 from 5 g on. Objects only. Set: pos.
+type: pressure
+trigger: object
+size: [0.2, 0.2]
+min_mass: 0.005

@@ -1,0 +1,5 @@
+# Cube weight (R28, R17): a 4 cm, 40 g cube with a handle on each side face,
+# just under the body's max_lift_mass (0.05 kg). Set: pos, mass, handles.
+type: cube
+size: 0.04
+mass: 0.04

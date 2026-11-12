@@ -104,6 +104,8 @@ class World:
     grab: float = -1.0
     #: Site id of the beak tip (`BodyAdapter.grab_site`), -1 when the body has none.
     beak_site: int = -1
+    #: Far end of a held tool (the stick, R28): presses wall buttons as the beak tip does.
+    tool_tip: Any = None
 
     def kind_of(self, model: mujoco.MjModel, body_id: int) -> str | None:
         return self.kinds.get(int(model.body_rootid[body_id]))
