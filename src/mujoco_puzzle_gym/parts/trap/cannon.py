@@ -35,7 +35,7 @@ cannon aiming by `signal` and a target in the room, the shell path (gravity,
 no drag, from the muzzle) must hit the target's board at its `min_speed` or
 faster for at least one aim in the channel ranges: a bound value takes its
 `map` output range (per channel value when the source part lists them in
-`channel_cells(channel)`, e.g. lever cells, R28), an unbound one its value.
+`channel_cells(channel)`, e.g. lever detents, R28; None: continuous), an unbound one its value.
 With `spread` > 0 the whole cone (centre and 8 edge directions) must hit.
 """
 
@@ -268,8 +268,9 @@ class Cannon(Trap):
         ch, (i0, i1, o0, o1) = self.binds[key]
         src = parts.get(self.bus.writers.get(ch)) if self.bus is not None else None
         cells = getattr(src, "channel_cells", None)
-        if callable(cells):
-            ins = np.asarray(cells(ch), float)
+        cells = cells(ch) if callable(cells) else None
+        if cells is not None:
+            ins = np.asarray(cells, float)
         else:
             n = int(math.ceil(abs(o1 - o0) / AIM_STEP)) + 1
             ins = np.linspace(i0, i1, max(n, 2))

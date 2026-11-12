@@ -406,6 +406,11 @@ class Part:
         """Changes when `target_mask` changes (coin groups, R36); distance fields are cached per key."""
         return None
 
+    def target_xy(self) -> np.ndarray:
+        """Point the body heads for while this part is the target (`target_pos` obs, the
+        grid answer): the part itself, unless its target area is elsewhere."""
+        return self.xy
+
     def target_mask(self, grid: Grid) -> np.ndarray:
         """Cells where the body centre must be to satisfy this part."""
         return grid.disk(self.xy, 0.05)

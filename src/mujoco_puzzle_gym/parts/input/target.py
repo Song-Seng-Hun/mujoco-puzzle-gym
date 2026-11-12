@@ -10,6 +10,12 @@ hook). Output `mode: pulse` writes 1 for the body step of a hit, `latch` stays
 The board (`size` [width, height], centre `height` above the floor) stands on
 a thin post and faces `yaw` (deg, 0 = its face looks along +x). The ballistic
 check of a cannon that aims by signal (R16 `cannon_turret`) reads `face()`.
+
+Planning (R20): in a room with a turret (a cannon with `aim: signal` and
+`fire: edge`) a target is a switch whose target area is that of the parts
+writing the turrets' `in` channels (the fire button): the body turns it on
+by pressing fire, once the aim is set (`demo:` `turn <lever> <value>`; the
+ballistic check says some aim hits).
 """
 
 from __future__ import annotations
@@ -49,8 +55,37 @@ class Target(Part):
         Field("trigger", "enum", "shell", choices=("shell",), doc="only cannon shells count"),
     )
 
+    turrets: list = []
+
     def marker_face_size(self, face):
         return float(min(self.cfg["size"]))
+
+    @classmethod
+    def add_room_parts(cls, parts):
+        from ..trap.cannon import Cannon
+
+        turrets = [p for p in parts.values() if isinstance(p, Cannon) and p.aim == "signal" and p.fire == "edge"]
+        if turrets:
+            for p in parts.values():
+                if isinstance(p, Target):
+                    p.role, p.turrets = "switch", turrets
+
+    def _fire_parts(self) -> list:
+        by_name = {p.name: p for p in self.bus.order}
+        return [by_name[self.bus.writers[ch]] for c in self.turrets for ch in c.inputs]
+
+    def target_xy(self):
+        """With turrets: the first fire input (where `target_mask` is)."""
+        return self._fire_parts()[0].target_xy() if self.turrets else self.xy
+
+    def target_mask(self, grid):
+        """With turrets: where the body presses their fire inputs."""
+        if not self.turrets:
+            return super().target_mask(grid)
+        out = np.zeros_like(grid.X, dtype=bool)
+        for p in self._fire_parts():
+            out |= p.target_mask(grid)
+        return out
 
     def __init__(self, name, cfg):
         super().__init__(name, cfg)

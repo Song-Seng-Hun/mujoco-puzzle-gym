@@ -49,7 +49,8 @@ Demo (R20): `demo:` lists the scripted solver's sub-goals for `mpg check`, in
 order (strings): `goto <part>`, `press <part>`, `wait <seconds>`, `push <ball>
 to <net or pin>`, `herd <npc> <part or x y>` (R29), `grab <object>`, `place
 <object> <part>` (R18; a hook: hang it), `drop <object> <part>` (let go from
-the level head, R28). Objects are grabbable parts (cube, laundry, key, ...). After the last one the solver goes on with the grid
+the level head, R28), `turn <lever> <value>` (a push lever to that cell, R28),
+`turn <dial> <cell>` (R28), `pull <cord or drawer>` (R28), `look <part>` (until `<part>.seen`, R27). Objects are grabbable parts (cube, laundry, key, ...). After the last one the solver goes on with the grid
 answer (the solution order), so a demo may stop before the goal. Without
 `demo:` the solver uses the grid answer only.
 
@@ -101,14 +102,15 @@ class RoomError(ValueError):
         self.stage = stage
 
 
-DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop")
+DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop", "turn", "pull", "look")
 MAX_WAIT = 60.0                        # [s] longest `wait`
 
 
 def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
     """`demo:` entries as tuples: ("goto"|"press", part), ("wait", seconds),
     ("push", ball, target), ("herd", npc, part or (x, y)), ("grab", object),
-    ("place" | "drop", object, part). Raises RoomError (stage `demo`) naming the bad entry."""
+    ("place" | "drop", object, part), ("turn", lever, value), ("pull", cord), ("look", part).
+    Raises RoomError (stage `demo`) naming the bad entry."""
     if raw is None:
         return []
     if not isinstance(raw, list):
@@ -146,6 +148,8 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
             out.append(("wait", sec))
         elif cmd == "herd":
             out.append(_parse_herd(i, entry, args, parts, part))
+        elif cmd in ("turn", "pull", "look"):
+            out.append(_parse_device(i, entry, cmd, args, parts, part))
         elif cmd in ("grab", "place", "drop"):
             n = 1 if cmd == "grab" else 2
             if len(args) != n:
@@ -168,6 +172,46 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
                 raise RoomError(f"demo[{i}]: {target!r} does not accept {ball!r}", "demo")
             out.append(("push", ball, target))
     return out
+
+
+def _parse_device(i: int, entry: str, cmd: str, args: list[str], parts: dict[str, Any], part) -> tuple:
+    """("turn", lever or dial, value) / ("pull", cord or drawer) / ("look", part) (R28, R27)."""
+    from .gaze import LOOK_PREFIX
+
+    n = 2 if cmd == "turn" else 1
+    if len(args) != n:
+        form = {"turn": "turn <lever> <value>", "pull": "pull <cord or drawer>", "look": "look <part>"}[cmd]
+        raise RoomError(f"demo[{i}]: write `{form}`, got {entry!r}", "demo")
+    name = part(i, args[0])
+    p = parts[name]
+    kind = getattr(p, "object_kind", None)
+    if cmd == "pull":
+        if kind not in ("pull_cord", "drawer"):
+            raise RoomError(f"demo[{i}]: cannot pull {name!r}; pull a pull_cord or a drawer", "demo")
+        return ("pull", name)
+    if cmd == "look":
+        if LOOK_PREFIX + name not in parts:
+            raise RoomError(f"demo[{i}]: cannot look at {name!r}: no part reads {name + '.seen'!r} "
+                            f"(give it a marker and read that channel)", "demo")
+        return ("look", name)
+    if kind == "dial":
+        ok = [str(c) for c in range(p.n)]
+        if args[1] not in ok:
+            raise RoomError(f"demo[{i}]: `turn {name} <cell>` needs one of its cells 0..{p.n - 1}, "
+                            f"got {entry!r}", "demo")
+        return ("turn", name, float(args[1]))
+    if kind != "lever" or p.mode != "push":
+        raise RoomError(f"demo[{i}]: cannot turn {name!r}; the solver turns levers with mode: push "
+                        f"(holding a grab lever's knob stalls the sidestep, plan E3b-2)", "demo")
+    try:
+        value = float(args[1])
+    except ValueError:
+        value = math.nan
+    ok = p.cells if p.cells is not None else None
+    if not -1.0 <= value <= 1.0 or (ok is not None and not np.isclose(ok, value).any()):
+        want = f"one of its cells {[float(v) for v in ok]}" if ok is not None else "a value in -1..1"
+        raise RoomError(f"demo[{i}]: `turn {name} <value>` needs {want}, got {entry!r}", "demo")
+    return ("turn", name, value)
 
 
 def _parse_herd(i: int, entry: str, args: list[str], parts: dict[str, Any], part) -> tuple:

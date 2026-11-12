@@ -1,0 +1,8 @@
+# Lever (R28): a floor lever the body pushes over by walking into its paddle
+# from the facing side, -1 -> 0 -> 1 (3 detent cells; from the other side back
+# down). Its `<name>.angle` aims a cannon turret (R16; the ballistic check aims
+# per cell). `mode: grab` (hold the knob, step sideways) turns only about 10 deg
+# (measured), so push is the default. Set: pos, facing (the side it is pushed from).
+type: lever
+mode: push
+detents: 3

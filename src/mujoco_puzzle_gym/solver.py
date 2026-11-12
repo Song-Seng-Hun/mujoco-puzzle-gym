@@ -22,7 +22,12 @@ is passable, an opening trapdoor as a hole):
 - `grab <object>`: walk up to a handle and close the beak on it (carry.py, R18);
 - `place <object> <part>`: carry it until it is over the part, let go and wait
   for it to rest; on a hook, hang it on the peg (R28);
-- `drop <object> <part>`: as place, letting go from the level head (R28 egg).
+- `drop <object> <part>`: as place, letting go from the level head (R28 egg);
+- `turn <lever> <value>`: push a push lever to that cell; `turn <dial> <cell>`: walk
+  past the dial, looping round clockwise, until it is at that cell (R28);
+- `pull <cord or drawer>`: hold the knob, turn round, walk away until the cord is on
+  or the drawer latched open, then let go (R28);
+- `look <part>`: stand facing the part's marker until `<part>.seen` is 1 (R27).
 `press` on a wall button (and a wall button in the grid answer) walks up to
 the plate with the beak tip at its height, or with a held stick's far end
 (R28). Head and grab values are kept between steps (a held object stays held
@@ -30,7 +35,8 @@ through later sub-goals until `place`)
 and go to the env through `env.scripted_action`.
 After the last sub-goal, and in rooms without `demo:`, it follows the grid
 answer: the env's solution-order targets, pushing a ball for a target with
-`push_target` (goal nets, pins).
+`push_target` (goal nets, pins), pushing a lever to 1, pulling a cord and
+looking at a part for a `_look_` switch (gaze.py).
 """
 
 from __future__ import annotations
@@ -72,6 +78,7 @@ class ScriptedSolver:
         self.carrier.wall = None
         self.step_i = 0                    # current `demo:` entry
         self._wait = 0                     # env steps left in a `wait`
+        self._worked = None                # grid-answer device / look target the carrier works
 
     @property
     def in_demo(self) -> bool:
@@ -106,12 +113,40 @@ class ScriptedSolver:
         if env.current_target() is None:
             return STAND.copy()
         target = env.current_target()
+        if self._worked is not None and self._worked is not target:   # done with it (a cord turns
+            self._worked = None                                        # on mid-walk): let go
+            self.carrier.reset()
+            self.carrier.grab = -1.0
         if hasattr(target, "push_target"):
             return self.pusher.act(target)
         if getattr(target, "mount", None) == "wall":
             return self.carrier.press_wall_act(target) if not target.satisfied() else STAND.copy()
+        act = self._work(target)
+        if act is not None:
+            return act
         self.carrier.head = -1.0
-        return self._steer(self.field(env.stage), target.xy)
+        return self._steer(self.field(env.stage), target.target_xy())
+
+    def _work(self, target) -> np.ndarray | None:
+        """Grid answer: work a lever, dial, cord or drawer, or look for a `_look_` switch (None: not one)."""
+        from .gaze import Look
+
+        kind = getattr(target, "object_kind", None)
+        if not isinstance(target, Look) and kind not in ("lever", "dial", "pull_cord", "drawer"):
+            return None
+        c = self.carrier
+        if self._worked is not target:
+            self._worked = target
+            c.reset()
+        if isinstance(target, Look):
+            act = c.look_act(target.watched)
+        elif kind == "lever":
+            act = c.turn_act(target, 1.0)
+        elif kind == "dial":
+            act = c.dial_act(target, target.lo)
+        else:
+            act = c.pull_act(target)
+        return STAND.copy() if act is None else act
 
     def _steer(self, field: np.ndarray, target_xy) -> np.ndarray:
         env = self.env
@@ -178,6 +213,12 @@ class ScriptedSolver:
             return self.carrier.grab_act(env.parts[entry[1]])
         if cmd in ("place", "drop"):
             return self.carrier.place_act(env.parts[entry[1]], env.parts[entry[2]], drop=cmd == "drop")
+        if cmd == "turn":
+            return self.carrier.turn_act(env.parts[entry[1]], entry[2])
+        if cmd == "pull":
+            return self.carrier.pull_act(env.parts[entry[1]])
+        if cmd == "look":
+            return self.carrier.look_act(env.parts[entry[1]])
         part = env.parts[entry[1]]
         if part.satisfied():
             return None

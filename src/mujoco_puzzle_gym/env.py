@@ -256,10 +256,16 @@ class PuzzleEnv(gym.Env):
 
     def warp(self, key, pose) -> None:
         """Move the walking body (key "body") or a free body (root body id) to `pose`.
-        A cube the beak holds goes along, keeping its pose to the head (R14, R18)."""
+        A free object the beak holds goes along, keeping its pose to the head (R14, R18);
+        a held device knob (R28) is let go."""
         if key == "body":
             beak = self.parts.get(BEAK_PART)
             held = beak.objects[beak.held] if beak is not None and beak.held is not None else None
+            jnt = int(self.model.body_jntadr[held.handle_bid]) if held is not None else -1
+            if held is not None and (jnt < 0 or self.model.jnt_type[jnt] != mujoco.mjtJoint.mjJNT_FREE):
+                beak._release(self.data)             # a device knob stays put: let it go (R28)
+                beak._write([False] * len(beak.objects))
+                held = None
             if held is None:
                 self._place_body(pose)
                 return
@@ -325,8 +331,16 @@ class PuzzleEnv(gym.Env):
         self.zone = 0
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
-            if hasattr(self.parts[name], "floor_z"):          # free objects rest on raised floor
-                self.parts[name].floor_z = self.floor_height(xy)[0] or 0.0
+        for name, xy in layout["parts"].items():
+            obj = self.parts[name]
+            if hasattr(obj, "floor_z"):                         # free objects rest on raised floor
+                obj.floor_z = self.floor_height(xy)[0] or 0.0
+                for p in self.parts.values():                   # ... or in a drawer's tray (R28):
+                    put = p.carry_xy(obj) if hasattr(p, "carry_xy") else None
+                    if put is not None:                         # kept where it sits in the tray
+                        obj.place(self.model, put)
+                        layout["parts"][name] = put
+                        obj.floor_z = p.h
         self.body.reset(self.data, layout["spawn"])
         if self.floor is not None:
             self._place_body(layout["spawn"])

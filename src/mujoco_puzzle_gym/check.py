@@ -16,7 +16,9 @@ overlap:   at the nominal layout no solid part geometry sits in a wall or in
            do not count);
 actions:   the task actions cover what the plan needs (R19): `grab` when an
            object must be carried (a `grab` sub-goal in `demo:`, or an input in
-           the solution order that only a grabbable object sets off), `head` when a wall button
+           the solution order that only a grabbable object sets off) or a device
+           held by its knob (a `pull` sub-goal, a pull cord or grab lever in the
+           order, R28), `head` when a wall button
            the plan presses sits wholly below the level beak tip (the body's
            `beak_height`); without them a policy can never do it. Checked after
            `order`, on its solution order;
@@ -258,14 +260,16 @@ def check_solver(env: PuzzleEnv, seeds: int = 20, need: int = 18,
 
 
 def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
-    """Static: task actions the plan needs (R19). `grab`: a `grab` sub-goal, or a part
-    in `order` that a grabbable object sets off and the body cannot; `head`: a wall button in
+    """Static: task actions the plan needs (R19). `grab`: a `grab` / `pull` sub-goal, a part
+    in `order` that a grabbable object sets off and the body cannot, or a held device
+    (`grab_handle`, R28) in `order`; `head`: a wall button in
     `order` (or a `press` sub-goal) whose top edge is below the level beak tip."""
     demo = list(getattr(env.room, "demo", []) or [])
     objs = [p for p in env.parts.values() if isinstance(p, Grabbable)]
     why = []
     if "grab" not in env.actions:
-        need = [e[1] for e in demo if e[0] == "grab"]
+        need = [e[1] for e in demo if e[0] in ("grab", "pull")]
+        need += [n for n in order if getattr(env.parts[n], "grab_handle", False)]     # held devices (R28)
         need += [n for n in order if any(takes(env.parts[n], o) for o in objs)
                  and "body" not in TRIGGERS.get(getattr(env.parts[n], "trigger", None), ())]
         if need:

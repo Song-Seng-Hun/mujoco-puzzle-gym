@@ -1,15 +1,23 @@
-"""R28 beak gimmick presets (E3b-1): the objects (cube_weight, laundry, key,
-handle_ball, egg, stick) and receivers (hook, basket, scale, wall_button_beak
-low / mid).
+"""R28 beak gimmick presets: the objects (cube_weight, laundry, key, handle_ball,
+egg, stick), receivers (hook, basket, scale, wall_button_beak low / mid) (E3b-1),
+and the devices lever, dial, pull_cord and drawer (E3b-2), with the `look` sub-goal (R27).
 
 Fast: egg breaking, key / socket marker match, stick press window, basket count
 and mass, scale mass, hook hang and take-off, the `beak` obs kind, `demo:`
-parsing, `mpg check` stage `actions` for the two wall buttons.
+parsing, `mpg check` stage `actions` for the two wall buttons; lever cells,
+detents and snapshots, the turret ballistic check per lever cell, the pull
+cord's flexcomp, latch and snapshots, a held grab lever knob, `turn` / `pull`
+/ `look` parsing, `actions` for `pull`, a `.seen` door room's order and
+target point, the turret target point and aim lever role, warping with a held knob;
+dial cells, target, snapshots and aim role, drawer latch, strap off, contents depth,
+`actions` for a drawer.
 Slow: per preset, the scripted solution (`demo:`: grab, place, hang, drop,
-press) turns its signal on.
+press, turn, pull, look) turns its signal on; the grid answer pulls a cord and lets go,
+turns a dial and opens a drawer; `turn` sets a dial cell; a cube is grabbed from an opened drawer.
 """
 
 import math
+import re
 
 import mujoco
 import numpy as np
@@ -385,3 +393,553 @@ def test_beak_wall_buttons_are_pressed(asset_dir, tmp_path, which, seed):
     assert on is not None and not env.body_state.fallen
     if which == "low":
         assert min(heads) < -0.3                                  # the head went down (neck pitch)
+
+
+# ---- lever (E3b-2) -----------------------------------------------------------------------
+LEVER = {"name": "lv", "preset": "beak/lever", "pos": [0.6, 0.6], "facing": 180}
+
+
+def set_lever(env, deg):
+    lv = env.parts["lv"]
+    env.data.qpos[lv._qa] = math.radians(deg)
+    env.data.qvel[lv._va] = 0.0
+    mujoco.mj_forward(env.model, env.data)
+
+
+def test_lever_cells_and_detents(make):
+    env = make([LEVER, {**LEVER, "name": "lc", "pos": [-0.6, 0.6], "detents": 0}])
+    lv, lc = env.parts["lv"], env.parts["lc"]
+    assert lv.mode == "push" and lv.channel_cells("lv.angle").tolist() == [-1.0, 0.0, 1.0]
+    assert lc.channel_cells("lc.angle") is None and lv.channel_cells("other") is None
+    assert env.signals.get("lv.angle") == -1.0                    # push levers start leaning at the body
+    set_lever(env, -12.0)                                         # push: value = -q / 35 deg, nearest cell 0
+    body_steps(env, 1.0)
+    assert env.signals.get("lv.angle") == 0.0
+    assert abs(math.degrees(env.data.qpos[lv._qa])) < 1.0         # the detent pulled the arm to the cell
+    env.data.qpos[lc._qa] = math.radians(-7.0)
+    body_steps(env, 0.5)
+    assert env.signals.get("lc.angle") == pytest.approx(7.0 / 35.0, abs=0.02)   # continuous: stays
+
+
+def test_lever_detents_must_be_zero_or_two_and_up(tmp_path, asset_dir):
+    from rooms import open_room
+
+    with pytest.raises(RoomError, match="detents must be 0"):
+        open_room(tmp_path, [{**LEVER, "detents": 1}])
+
+
+def test_lever_snapshot_and_reset(make):
+    env = make([LEVER])
+    set_lever(env, -35.0)
+    body_steps(env, 0.3)
+    assert env.signals.get("lv.angle") == 1.0
+    snap = env.save_snapshot()
+    env.reset(seed=0)
+    assert env.signals.get("lv.angle") == -1.0 and env.parts["lv"].value == -1.0
+    env.restore_snapshot(snap)
+    assert env.signals.get("lv.angle") == 1.0                     # no step needed, no other cell on the way
+    body_steps(env, 0.5)
+    assert env.signals.get("lv.angle") == 1.0
+
+
+def test_the_beak_holds_a_grab_levers_knob(make):
+    env = make([{**LEVER, "mode": "grab", "pos": [0.5, 0.0]}])
+    lv = env.parts["lv"]
+    assert lv.max == pytest.approx(math.radians(10.0)) and env.signals.get("lv.angle") == 0.0
+    knob = lv.handle_points(env.data)[0]
+    env.body.teleport(env.data, (knob[0] - 0.085, knob[1], 0.0))
+    body_steps(env, 1.0)
+    env.body.shift(env.data, [*(knob[:2] - tip(env)[:2]), 0.0])
+    mujoco.mj_forward(env.model, env.data)
+    grab(env, seconds=0.2)
+    assert env.signals.get("beak.holding") == 1 and env.signals.get("lv.held") == 1
+    grab(env, on=False)
+    assert env.signals.get("beak.holding") == 0
+
+
+TURRET = [{"name": "fire", "preset": "input/floor_momentary", "pos": [-1.0, 0.25]},
+          {"name": "tur", "preset": "trap/cannon_turret", "pos": [-1.2, 0.75], "in": ["fire"], "aim_pitch": 17.0,
+           "bind": {"aim_yaw": {"from": "lv.angle", "map": [-1, 1, -30, 30]}}}]
+
+
+@pytest.mark.parametrize("aim, detents, ok", [(0.0, 3, True), (15.0, 3, False), (15.0, 0, True)])
+def test_turret_check_aims_per_lever_cell(asset_dir, tmp_path, aim, detents, ok):
+    """R16 ballistic check with a lever: a target 1.35 m off in the `aim` direction is hit by
+    a lever cell (-30, 0, 30 deg) only straight ahead; a continuous lever reaches 15 deg."""
+    from mujoco_puzzle_gym.check import check
+
+    a = math.radians(aim)
+    xy = [-1.2 + 1.35 * math.cos(a), 0.75 + 1.35 * math.sin(a)]
+    raw = {"name": f"tur_{detents}_{aim:g}", "size": [3.0, 2.0], "spawn": {"pos": [-1.2, -0.6], "yaw": 0.0},
+           "parts": [{**LEVER, "pos": [-0.5, -0.45], "detents": detents}, *TURRET,
+                     {"name": "t", "preset": "input/target", "pos": xy, "yaw": aim - 180.0},
+                     {"name": "goal", "type": "goal", "pos": [1.1, 0.0]}]}
+    path = tmp_path / f"{raw['name']}.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    res = check(path, static_only=True)
+    assert res["parts"]["ok"] is ok, res
+    if not ok:
+        assert "aim_yaw -30..30" in res["parts"]["reason"]
+
+
+def turret_env(asset_dir):
+    from pathlib import Path
+
+    return PuzzleEnv(room=Path(__file__).parents[1] / "examples/rooms/turret.yaml")
+
+
+def test_turret_target_points_at_the_fire_button_and_aim_is_no_switch(asset_dir):
+    """The target board's target area is the fire button, so `target_pos` points there; the
+    aim lever only feeds the turret's `bind`, so it is no switch and pays no `new_on`."""
+    from mujoco_puzzle_gym import obs
+
+    env = turret_env(asset_dir)
+    env.reset(seed=0)
+    t, fire, aim = env.current_target(), env.parts["fire"], env.parts["aim"]
+    assert t.name == "board" and t.target_xy().tolist() == fire.xy.tolist()
+    s = env.body_state
+    d = fire.xy - s.pos[:2]
+    want = [math.cos(s.yaw) * d[0] + math.sin(s.yaw) * d[1], -math.sin(s.yaw) * d[0] + math.cos(s.yaw) * d[1]]
+    assert obs.target_pos(env) == pytest.approx(want)
+    assert aim.role == "prop" and "aim" not in env.plan["order"]
+    env.data.qpos[aim._qa] = -aim.max                              # push lever to 1 (value = -q / max)
+    mujoco.mj_forward(env.model, env.data)
+    env.step(np.zeros(env.action_space.shape, dtype=np.float32))
+    assert env.signals.get("aim.angle") == 1.0 and env.events["new_on"] == 0
+
+
+def test_a_lever_read_by_a_door_stays_a_switch(make):
+    env = make([LEVER, {"name": "d", "preset": "device/sliding_door", "pos": [-0.6, -0.6], "in": ["lv.angle"]}])
+    assert env.parts["lv"].role == "switch"
+
+
+# ---- pull cord (E3b-2) -------------------------------------------------------------------
+CORD = {"name": "pc", "preset": "beak/pull_cord", "pos": [0.6, 0.6], "facing": 180}
+
+
+def test_pull_cord_is_a_flexcomp_hanging_still(make):
+    from mujoco_puzzle_gym.parts.beak.devices import CORD_NODES
+
+    env = make([CORD])
+    m = env.model
+    assert m.nflex == 1 and m.flex_dim[0] == 1 and m.flex_vertnum[0] == CORD_NODES
+    top = m.body("part/pc/cord_0").id
+    assert m.body_jntnum[top] == 0                                  # pinned to the slider
+    pc = env.parts["pc"]
+    body_steps(env, 1.0)
+    knob = pc.handle_points(env.data)[0]
+    assert knob[:2] == pytest.approx([0.6, 0.6], abs=0.005) and knob[2] == pytest.approx(0.19, abs=0.01)
+    assert abs(pc.drawn(env.data)) < 0.002 and env.signals.get("pc") == 0
+
+
+def test_pull_cord_turns_on_latches_and_resets(make):
+    env = make([CORD])
+    pc = env.parts["pc"]
+    env.data.qpos[pc._qa] = 0.065                                  # 6.5 cm drawn out
+    tick(env)
+    assert env.signals.get("pc") == 1
+    body_steps(env, 1.0)                                           # the spring draws it back in
+    assert pc.drawn(env.data) < 0.01 and env.signals.get("pc") == 1   # latched
+    snap = env.save_snapshot()
+    env.reset(seed=0)
+    assert env.signals.get("pc") == 0
+    env.restore_snapshot(snap)
+    assert env.signals.get("pc") == 1
+
+
+def test_warping_the_body_lets_a_held_cord_knob_go(make):
+    from mujoco_puzzle_gym.grab import BEAK_PART
+
+    env = make([CORD])
+    beak, pc = env.parts[BEAK_PART], env.parts["pc"]
+    beak._grab(env.model, env.data, beak.objects.index(pc))
+    knob = pc.handle_points(env.data)[0].copy()
+    env.warp("body", (-0.5, -0.5, 0.0))
+    assert beak.held is None and env.signals.get("beak.holding") == 0 and env.signals.get("pc.held") == 0
+    assert np.hypot(*(env.read_body().pos[:2] - [-0.5, -0.5])) < 0.05
+    assert pc.handle_points(env.data)[0] == pytest.approx(knob, abs=1e-6)   # the cord stays put
+
+
+# ---- `demo:` turn / pull / look parsing, `actions` ----------------------------------------
+@pytest.mark.parametrize("entry, needle", [
+    ("turn lv 0.5", "one of its cells [-1.0, 0.0, 1.0]"),
+    ("turn lv", "turn <lever> <value>"),
+    ("turn lg 1", "levers with mode: push"),
+    ("turn pc 1", "levers with mode: push"),
+    ("pull lv", "pull a pull_cord"),
+    ("look lv", "no part reads 'lv.seen'"),
+])
+def test_demo_turn_pull_look_errors(tmp_path, asset_dir, entry, needle):
+    with pytest.raises(RoomError, match=re.escape(needle)):
+        _demo_room(tmp_path, [entry])
+
+
+def _demo_room(tmp_path, demo):
+    raw = {"name": "dm", "size": [3.0, 3.0], "spawn": {"pos": [-1.0, -1.0], "yaw": 0.0},
+           "parts": [LEVER, {**LEVER, "name": "lg", "pos": [-0.6, 0.6], "mode": "grab"},
+                     {**CORD, "pos": [0.6, -0.6]}, {"name": "goal", "type": "goal", "pos": [1.3, 1.3]}],
+           "demo": demo}
+    path = tmp_path / "dm.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return PuzzleEnv(room=path)
+
+
+def test_demo_parses_turn_pull_look(tmp_path, asset_dir):
+    env = _demo_room(tmp_path, ["turn lv 0", "pull pc", "turn lv -1"])
+    assert env.room.demo == [("turn", "lv", 0.0), ("pull", "pc"), ("turn", "lv", -1.0)]
+
+
+@pytest.mark.parametrize("actions, ok", [(["move"], False), (["move", "grab"], True)])
+def test_check_asks_for_grab_to_pull(asset_dir, tmp_path, actions, ok):
+    from mujoco_puzzle_gym.check import check
+
+    path = beak_room(tmp_path, [{**CORD, "pos": [0.3, 0.0]}], ["pull pc"], stand=False, name="pull")
+    res = check(path, task={"actions": actions}, static_only=True)
+    assert res["actions"]["ok"] is ok, res["actions"]
+
+
+# ---- look (R27): a door that opens when looked at ----------------------------------------
+def look_room(tmp_path, demo=None, door=0.0):
+    raw = {"name": "look_door", "size": [2.0 + 2 * door, 1.4], "wall": {"thickness": 0.06, "height": 0.25},
+           "walls": [{"from": [door, -0.7], "to": [door, -0.28]}, {"from": [door, 0.28], "to": [door, 0.7]}],
+           "spawn": {"pos": [-0.7, -0.3], "yaw": 0.0, "random": [0.08, 0.1, 1.0]},
+           "parts": [{"name": "door", "preset": "device/sliding_door", "pos": [door, 0.0], "in": ["door.seen"],
+                      "mode": "oneshot"},
+                     {"name": "goal", "type": "goal", "pos": [door + 0.7, 0.0], "radius": 0.15}]}
+    if demo:
+        raw["demo"] = demo
+    path = tmp_path / "look_door.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+def test_look_target_is_the_watched_part_and_hidden_from_part_obs(asset_dir, tmp_path):
+    from mujoco_puzzle_gym import obs
+
+    env = PuzzleEnv(room=look_room(tmp_path, door=0.6))
+    env.reset(seed=0)
+    t = env.current_target()
+    assert t.name == "_look_door" and t.xy.tolist() == [0.6, 0.0]
+    s = env.body_state
+    d = np.array([0.6, 0.0]) - s.pos[:2]
+    want = [math.cos(s.yaw) * d[0] + math.sin(s.yaw) * d[1], -math.sin(s.yaw) * d[0] + math.cos(s.yaw) * d[1]]
+    assert obs.target_pos(env) == pytest.approx(want)
+    assert len(obs.part_pos(env)) == 2 * 3 and len(obs.part_state(env)) == 3   # door, goal, _gaze
+
+
+def test_a_seen_door_room_has_a_solution_order(asset_dir, tmp_path):
+    from mujoco_puzzle_gym.check import check
+
+    res = check(look_room(tmp_path, ["look door"]), static_only=True)
+    assert res["ok"], res
+    assert res["order"]["order"] == ["_look_door", "door", "goal"]
+
+
+# ---- slow: device sub-goals and look -----------------------------------------------------
+DEVICE_CASES = {    # (parts, demo, signal, value it must end at)
+    "lever to 1": ([{**LEVER, "pos": [0.3, 0.0]}], ["turn lv 1"], "lv.angle", 1.0),
+    "lever to 0": ([{**LEVER, "pos": [0.3, 0.0]}], ["turn lv 0", "wait 2"], "lv.angle", 0.0),
+    "lever 1 then back to -1": ([{**LEVER, "pos": [0.1, 0.0]}], ["turn lv 1", "turn lv -1", "wait 2"],
+                                "lv.angle", -1.0),
+    "pull cord": ([{**CORD, "pos": [0.3, 0.0]}], ["pull pc"], "pc", 1.0),
+}
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("case", list(DEVICE_CASES))
+def test_scripted_solution_works_the_device(asset_dir, tmp_path, case):
+    parts, demo, signal, value = DEVICE_CASES[case]
+    bad = {}
+    for seed in range(SEEDS):
+        path = beak_room(tmp_path, parts, demo, stand=False, name=f"dev_{seed}")
+        env = PuzzleEnv(task={"actions": ["move", "head", "grab"]}, room=path)
+        sol = ScriptedSolver(env)
+        env.reset(seed=seed)
+        sol.reset()
+        for _ in range(int(40 * env.hz)):
+            env.step(sol.act())
+            if not sol.in_demo or env.body_state.fallen:
+                break
+        if sol.in_demo or env.body_state.fallen or env.signals.get(signal) != value:
+            bad[seed] = (sol.step_i, env.body_state.fallen, env.signals.get(signal))
+        env.close()
+    assert SEEDS - len(bad) >= NEED, f"{case}: {bad}"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("demo", [None, ["look door"]])
+def test_look_opens_a_seen_door(asset_dir, tmp_path, demo):
+    from mujoco_puzzle_gym.check import check
+
+    res = check(look_room(tmp_path, demo), seeds=SEEDS, need=NEED, snap_dir=tmp_path)
+    assert res["ok"], res
+
+
+@pytest.mark.slow
+def test_grid_answer_pulls_the_cord_and_lets_go(asset_dir, tmp_path):
+    """No `demo:`: the grid answer pulls the cord (next in the order), lets the knob go once
+    it is on, and walks to the goal without a drop."""
+    raw = {"name": "pull_door", "size": [2.4, 1.4], "wall": {"thickness": 0.06, "height": 0.25},
+           "walls": [{"from": [0.3, -0.7], "to": [0.3, -0.28]}, {"from": [0.3, 0.28], "to": [0.3, 0.7]}],
+           "spawn": {"pos": [-0.8, -0.3], "yaw": 0.0, "random": [0.08, 0.1, 0.8]},
+           "parts": [{**CORD, "pos": [-0.3, 0.45], "facing": -90},
+                     {"name": "d", "preset": "device/sliding_door", "pos": [0.3, 0.0], "in": ["pc"]},
+                     {"name": "goal", "type": "goal", "pos": [0.9, 0.0], "radius": 0.15}]}
+    path = tmp_path / "pull_door.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    good = {}
+    for seed in range(SEEDS):
+        env = PuzzleEnv(task={"actions": ["move", "head", "grab"]}, room=path)
+        sol = ScriptedSolver(env)
+        env.reset(seed=seed)
+        sol.reset()
+        on = let_go = None
+        dropped = False
+        for i in range(int(40 * env.hz)):
+            _, _, term, trunc, info = env.step(sol.act())
+            dropped |= env.signals.get("pc.dropped") == 1
+            if on is None and env.signals.get("pc") == 1:
+                on = i
+            if on is not None and let_go is None and env.signals.get("beak.holding") == 0:
+                let_go = (i - on) / env.hz
+            if term or trunc:
+                break
+        good[seed] = (info["success"], on is not None, let_go, dropped)
+        env.close()
+    ok = [k for k, v in good.items() if v[0] and v[1] and v[2] is not None and v[2] < 0.5 and not v[3]]
+    assert len(ok) >= NEED, good
+
+
+# ---- dial and drawer (E3b-2 redesign, spec R28 2026-11-12) -------------------------------
+DIAL = {"name": "dl", "preset": "beak/dial", "pos": [0.6, 0.6], "facing": -90}
+DRAWER = {"name": "dr", "preset": "beak/drawer", "pos": [-0.6, 0.6], "facing": -90}
+
+
+def set_dial(env, rad):
+    dl = env.parts["dl"]
+    env.data.qpos[dl._qa] = rad
+    env.data.qvel[dl._va] = 0.0
+    mujoco.mj_forward(env.model, env.data)
+
+
+def test_dial_cells_target_and_detent(make):
+    env = make([{**DIAL, "target": [2, 3]}])
+    dl = env.parts["dl"]
+    assert dl.n == 4 and dl.channel_cells("dl.angle").tolist() == [0.0, 1.0, 2.0, 3.0]
+    assert env.signals.get("dl.angle") == 0 and env.signals.get("dl") == 0
+    set_dial(env, math.radians(170.0))                             # nearest cell 2 (180 deg)
+    body_steps(env, 2.0)
+    assert env.signals.get("dl.angle") == 2 and env.signals.get("dl") == 1
+    assert abs(math.degrees(env.data.qpos[dl._qa]) - 180.0) < 5.0  # the detent pulled it to the cell
+    set_dial(env, math.radians(360.0 + 95.0))                      # one way round and on: cell 1
+    body_steps(env, 0.3)
+    assert env.signals.get("dl.angle") == 1 and env.signals.get("dl") == 0
+
+
+def test_dial_cells_out_of_range_are_rejected(tmp_path, asset_dir):
+    from rooms import open_room
+
+    with pytest.raises(RoomError, match=re.escape("cells are 0..3, got 4")):
+        open_room(tmp_path, [{**DIAL, "target": [1, 4]}])
+
+
+def test_dial_snapshot_and_reset(make):
+    env = make([{**DIAL, "target": [3, 3]}])
+    set_dial(env, 3 * math.pi / 2)
+    body_steps(env, 0.3)
+    assert env.signals.get("dl") == 1
+    snap = env.save_snapshot()
+    env.reset(seed=0)
+    assert env.signals.get("dl.angle") == 0 and env.signals.get("dl") == 0
+    env.restore_snapshot(snap)
+    assert env.signals.get("dl.angle") == 3 and env.signals.get("dl") == 1   # no step, no cell between
+    body_steps(env, 0.5)
+    assert env.signals.get("dl.angle") == 3
+
+
+def test_dial_turns_one_way_only(make):
+    env = make([{**DIAL, "target": [2, 2]}])
+    dl = env.parts["dl"]
+    set_dial(env, math.radians(180.0))
+    body_steps(env, 1.0)
+    assert env.signals.get("dl.angle") == 2
+    assert env.model.jnt_range[dl._jid][0] == pytest.approx(1.7 * math.pi / 2)   # the stop followed it
+    for _ in range(int(2.0 * env.hz)):                              # a hard push the other way
+        env.data.qfrc_applied[dl._va] = -2.0
+        tick(env)
+    env.data.qfrc_applied[dl._va] = 0.0
+    body_steps(env, 0.5)
+    assert env.signals.get("dl.angle") == 2 and env.signals.get("dl") == 1
+    env.reset(seed=0)                                               # reset frees it again
+    assert env.model.jnt_range[dl._jid][0] == pytest.approx(-0.3 * math.pi / 2)
+
+
+def test_dial_blocks_planning_out_to_its_spokes(make):
+    dl = make([DIAL]).parts["dl"]
+    (seg,) = dl.blockers(False)
+    assert seg.thickness == pytest.approx(2 * dl.cfg["radius"]) and seg.thickness > 0.25
+
+
+def test_dial_target_from_above_to_is_rejected(tmp_path, asset_dir):
+    from rooms import open_room
+
+    with pytest.raises(RoomError, match=re.escape("needs from <= to, got [3, 0]")):
+        open_room(tmp_path, [{**DIAL, "target": [3, 0]}])
+
+
+def test_a_dial_only_a_turret_reads_is_no_switch(make):
+    env = make([DIAL, {"name": "tur", "preset": "trap/cannon_turret", "pos": [-1.2, 0.75], "in": ["dl"],
+                       "bind": {"aim_yaw": {"from": "dl.angle", "map": [0, 3, -30, 30]}}}])
+    assert env.parts["dl"].role == "switch"                         # its `<name>` fires the turret
+    env = make([DIAL, {"name": "fire", "preset": "input/floor_momentary", "pos": [-1.0, -0.5]},
+                {"name": "tur", "preset": "trap/cannon_turret", "pos": [-1.2, 0.75], "in": ["fire"],
+                 "bind": {"aim_yaw": {"from": "dl.angle", "map": [0, 3, -30, 30]}}}])
+    assert env.parts["dl"].role == "prop"
+
+
+def test_drawer_latches_open_and_its_strap_is_no_longer_grabbed(make):
+    from mujoco_puzzle_gym.grab import BEAK_PART
+
+    env = make([DRAWER, {"name": "c", "preset": "beak/cube_weight", "pos": [-0.6, 0.68]}])
+    dr, beak, c = env.parts["dr"], env.parts[BEAK_PART], env.parts["c"]
+    body_steps(env, 0.5)
+    assert c.pos(env.data)[2] == pytest.approx(0.17 + 0.02, abs=0.005)   # resting on the tray
+    beak._grab(env.model, env.data, beak.objects.index(dr))
+    env.data.qpos[dr._qa] = 0.149                                  # pulled out all the way
+    mujoco.mj_forward(env.model, env.data)
+    body_steps(env, 0.1)
+    assert env.signals.get("dr") == 1 and beak.held is None and env.signals.get("dr.held") == 0
+    assert env.model.jnt_range[dr._jid][0] > 0.14                   # latched: it stays open
+    assert all(beak.objects[i] is not dr for i in [beak.nearest(env.data)[0]])
+    snap = env.save_snapshot()
+    env.reset(seed=0)
+    assert env.signals.get("dr") == 0 and env.model.jnt_range[dr._jid][0] == 0.0
+    env.restore_snapshot(snap)
+    assert env.signals.get("dr") == 1 and env.model.jnt_range[dr._jid][0] > 0.14
+
+
+def test_drawer_contents_ride_with_a_jittered_drawer(make):
+    env = make([{**DRAWER, "random": [0.3, 0.3]}, {"name": "c", "preset": "beak/cube_weight", "pos": [-0.6, 0.68]}])
+    dr, c = env.parts["dr"], env.parts["c"]
+    moved = []
+    for seed in range(4):
+        env.reset(seed=seed)
+        moved.append(float(np.linalg.norm(dr.xy - dr.base_xy)))
+        body_steps(env, 0.5)
+        p = c.pos(env.data)
+        assert np.allclose(p[:2] - dr.xy, [0.0, 0.08], atol=0.01), (seed, dr.xy, p)
+        assert p[2] == pytest.approx(0.17 + 0.02, abs=0.005)       # on the tray, not the floor
+    assert max(moved) > 0.1                                          # the jitter did move it
+
+
+def test_beak_obs_skips_a_latched_drawers_strap(make):
+    from mujoco_puzzle_gym.obs import OBS
+
+    env = make([DRAWER])
+    dr = env.parts["dr"]
+    env.data.qpos[dr._qa] = 0.149
+    mujoco.mj_forward(env.model, env.data)
+    body_steps(env, 0.1)
+    assert env.signals.get("dr") == 1
+    assert OBS["beak"](env).tolist()[2:] == [0.0, 0.0, 0.0]         # no handle left to reach for
+
+
+def test_drawer_contents_must_be_within_the_beaks_reach(asset_dir, tmp_path):
+    from mujoco_puzzle_gym.check import check
+
+    raw = {"name": "deep", "size": [3.0, 3.0], "spawn": {"pos": [-1.0, -1.0], "yaw": 0.0},
+           "parts": [DRAWER, {"name": "c", "preset": "beak/cube_weight", "pos": [-0.6, 0.73]},
+                     {"name": "goal", "type": "goal", "pos": [1.3, 1.3]}]}
+    path = tmp_path / "deep.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    res = check(path, static_only=True)
+    assert not res["parts"]["ok"] and "sits 0.13 m deep in drawer 'dr'" in res["parts"]["reason"], res
+
+
+def test_demo_parses_dial_and_drawer(tmp_path, asset_dir):
+    raw = {"name": "dd", "size": [3.0, 3.0], "spawn": {"pos": [-1.0, -1.0], "yaw": 0.0},
+           "parts": [DIAL, DRAWER, {"name": "goal", "type": "goal", "pos": [1.3, 1.3]}],
+           "demo": ["turn dl 3", "pull dr"]}
+    path = tmp_path / "dd.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    assert PuzzleEnv(room=path).room.demo == [("turn", "dl", 3.0), ("pull", "dr")]
+    raw["demo"] = ["turn dl 4"]
+    path.write_text(yaml.safe_dump(raw))
+    with pytest.raises(RoomError, match=re.escape("needs one of its cells 0..3")):
+        PuzzleEnv(room=path)
+
+
+@pytest.mark.parametrize("actions, ok", [(["move"], False), (["move", "grab"], True)])
+def test_check_asks_for_grab_to_open_a_drawer(asset_dir, tmp_path, actions, ok):
+    from mujoco_puzzle_gym.check import check
+
+    path = beak_room(tmp_path, [{**DRAWER, "pos": [0.3, 0.3]}], ["pull dr"], stand=False, name="drw")
+    res = check(path, task={"actions": actions}, static_only=True)
+    assert res["actions"]["ok"] is ok, res["actions"]
+
+
+def gate_room(tmp_path, device, demo=None, extra=()):
+    """A divider with a door the device opens; the body starts on the device's side."""
+    raw = {"name": f"gate_{device['name']}", "size": [3.0, 2.4], "wall": {"thickness": 0.06, "height": 0.25},
+           "walls": [{"from": [0.7, -1.2], "to": [0.7, -0.28]}, {"from": [0.7, 0.28], "to": [0.7, 1.2]}],
+           "spawn": {"pos": [-1.1, -0.7], "yaw": 0.0, "random": [0.08, 0.1, 0.8]},
+           "parts": [device, *extra, {"name": "door", "preset": "device/sliding_door", "pos": [0.7, 0.0],
+                                       "in": [device["name"]]},
+                     {"name": "goal", "type": "goal", "pos": [1.2, 0.0], "radius": 0.15}]}
+    if demo:
+        raw["demo"] = demo
+    path = tmp_path / f"{raw['name']}.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+LONG = {"actions": ["move", "head", "grab"], "env": {"episode_seconds": 120.0}}
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("device", [{**DIAL, "pos": [-0.2, 0.5], "target": [2, 2]},
+                                    {**DRAWER, "pos": [-0.2, 0.6]}], ids=["dial", "drawer"])
+def test_grid_answer_works_the_dial_and_the_drawer(asset_dir, tmp_path, device):
+    from mujoco_puzzle_gym.check import check
+
+    res = check(gate_room(tmp_path, device), task=LONG, seeds=SEEDS, need=NEED, snap_dir=tmp_path)
+    assert res["ok"] and res["order"]["order"] == [device["name"], "door", "goal"], res
+
+
+@pytest.mark.slow
+def test_turn_sets_the_dial_to_a_chosen_cell(asset_dir, tmp_path):
+    bad = {}
+    for seed in range(SEEDS):
+        path = gate_room(tmp_path, {**DIAL, "pos": [-0.2, 0.5], "target": [3, 3]}, demo=["turn dl 3"])
+        env = PuzzleEnv(task=LONG, room=path)
+        sol = ScriptedSolver(env)
+        env.reset(seed=seed)
+        sol.reset()
+        for _ in range(int(90 * env.hz)):
+            env.step(sol.act())
+            if not sol.in_demo or env.body_state.fallen:
+                break
+        if sol.in_demo or env.body_state.fallen or env.signals.get("dl.angle") != 3:
+            bad[seed] = (env.body_state.fallen, env.signals.get("dl.angle"))
+        env.close()
+    assert SEEDS - len(bad) >= NEED, bad
+
+
+@pytest.mark.slow
+def test_pull_opens_the_drawer_and_the_cube_inside_is_grabbed(asset_dir, tmp_path):
+    bad = {}
+    for seed in range(SEEDS):
+        path = gate_room(tmp_path, {**DRAWER, "pos": [-0.2, 0.6]}, demo=["pull dr", "grab c"],
+                         extra=[{"name": "c", "preset": "beak/cube_weight", "pos": [-0.2, 0.68]}])
+        env = PuzzleEnv(task=LONG, room=path)
+        sol = ScriptedSolver(env)
+        env.reset(seed=seed)
+        sol.reset()
+        for _ in range(int(90 * env.hz)):
+            env.step(sol.act())
+            if not sol.in_demo or env.body_state.fallen:
+                break
+        if sol.in_demo or env.signals.get("dr") != 1 or env.signals.get("c.held") != 1:
+            bad[seed] = (sol.step_i, env.signals.get("dr"), env.signals.get("c.held"))
+        env.close()
+    assert SEEDS - len(bad) >= NEED, bad

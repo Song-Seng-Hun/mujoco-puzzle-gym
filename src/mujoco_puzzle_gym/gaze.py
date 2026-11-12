@@ -19,6 +19,13 @@ seconds without a break, 0 otherwise ("a door that opens when looked at" is a
 door with `in: [<part>.seen]`). The room adds a hidden `_gaze` part that writes
 these channels only for parts whose `.seen` some part reads.
 
+Planning (R20): each watched part also gets a hidden switch `_look_<part>`
+(no channel of its own): the solution order turns it on to make
+`<part>.seen` 1 (`GazeWatch.plan_values`). Its target area is the ring
+LOOK_NEAR..LOOK_FAR m round the part, and it counts as done once `.seen` was
+1 in the episode. The scripted solver looks with the `demo:` sub-goal `look
+<part>` and for a `_look_` switch in the grid answer (carry.py).
+
 Obs item `markers_seen` (fixed length): one slot per marker id used in the room,
 ascending: (seen now, x, y of the marker in the heading frame [m], x, y of the
 seen face's normal in the heading frame; 0 for a floor face), zeros when not
@@ -41,6 +48,8 @@ from .schema import Field
 
 GAZE_PART = "_gaze"
 SEEN = ".seen"
+LOOK_PREFIX = "_look_"
+LOOK_NEAR, LOOK_FAR = 0.35, 0.8   # [m] planning: where the body stands to look at a part
 MAX_SKIPS = 8          # robot geoms a ray may pass through on its way out of the head
 
 
@@ -147,6 +156,9 @@ class GazeWatch(Part):
         for ch in self.outputs:
             self.write(0.0, ch)
 
+    def plan_values(self, on, get):
+        return {p.name + SEEN: float(LOOK_PREFIX + p.name in on) for p in self.watched}
+
     def update(self, model, data, body):
         w = self.world
         if w is None or getattr(w, "body", None) is None:
@@ -161,8 +173,47 @@ class GazeWatch(Part):
             self.write(float(self.timers[i] >= self.gaze.dwell - 1e-9 and seen), self.outputs[i])
 
 
+class Look(Part):
+    """Hidden planning switch "look at `watched`" (see the module docstring): done once
+    `<watched>.seen` was 1 this episode."""
+
+    type_name = "look"
+    role = "switch"
+    stage = "input"
+    has_body = False
+    state_keys = ("done",)
+    fields = (Field("pos", "vec", [0.0, 0.0], length=2, unit="m", doc="unused (no body)"),)
+
+    def __init__(self, watched: Part):
+        self.watched = watched
+        super().__init__(LOOK_PREFIX + watched.name, {"in": [watched.name + SEEN]})
+        self.done = False
+
+    @property
+    def xy(self):
+        """The watched part's position (no body of its own)."""
+        return self.watched.xy
+
+    @xy.setter
+    def xy(self, value):
+        pass
+
+    def reset(self, model, data):
+        self.done = False
+
+    def update(self, model, data, body):
+        self.done = self.done or self.bus.on(self.watched.name + SEEN)
+
+    def satisfied(self):
+        return self.done
+
+    def target_mask(self, grid):
+        return grid.disk(self.watched.xy, LOOK_FAR) & ~grid.disk(self.watched.xy, LOOK_NEAR)
+
+
 def add_watch(parts: dict[str, Part], cfg: GazeConfig) -> None:
-    """Add the `_gaze` part when some part reads a `<part>.seen` channel.
+    """Add the `_gaze` part (and a `_look_<part>` switch per watched part) when some
+    part reads a `<part>.seen` channel.
 
     ValueError when the channel names a part without a marker."""
     reads = []
@@ -182,6 +233,10 @@ def add_watch(parts: dict[str, Part], cfg: GazeConfig) -> None:
                              f"(give it `marker:`)")
         watched.append(target)
     parts[GAZE_PART] = GazeWatch(GAZE_PART, watched, cfg)
+    for p in watched:
+        if LOOK_PREFIX + p.name in parts:
+            raise ValueError(f"part name {LOOK_PREFIX + p.name!r} is reserved for the gaze sensor")
+        parts[LOOK_PREFIX + p.name] = Look(p)
 
 
 @register_obs("markers_seen", replace=True)

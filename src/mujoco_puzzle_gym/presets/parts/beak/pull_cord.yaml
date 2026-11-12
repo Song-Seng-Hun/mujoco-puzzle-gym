@@ -1,0 +1,7 @@
+# Pull cord (R28): a light cord hanging from a gallows arm, its knob at beak
+# height. Hold the knob, turn round in place, walk away: it turns on once 6 cm
+# of cord is drawn out, and stays on. Set: pos (under the arm), facing (the
+# side the body works it from; the post stands on the other).
+type: pull_cord
+distance: 0.06
+latch: true

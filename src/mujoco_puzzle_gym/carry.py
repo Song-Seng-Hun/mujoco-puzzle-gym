@@ -25,6 +25,24 @@ used by solver.py. "Object": any grabbable part (cube, laundry, key, ...).
   on; then (`off_wall`, before anything else) walk off until APPROACH m away.
   Holding a stick, it does the same with the stick's far end instead of the
   beak tip (standing farther off by the stick's reach).
+- turn (a push lever, R28): walk to the point PUSH_START m out from the lever
+  on the side that pushes it toward the goal value (the facing side raises
+  it), then walk slowly at the lever until its cell is the goal; then walk off
+  PUSH_START m.
+- turn (a dial, R28): walk to the start of its pass line (PASS_OFF beside the
+  axis, PASS_FROM before it), face along it (clockwise in place), walk slowly
+  past (one cell a pass); until the cell is the goal, loop round clockwise
+  with walking turns (back along the line's far side, LOOP_PAST beyond its
+  start, then onto it again). Needs about 1 m clear on the facing side.
+- pull (a pull cord or a drawer, R28): close in on the knob as for grab, then turn round
+  in place clockwise (the body barely turns in place counter-clockwise from a
+  stand) until it faces away from the cord, and walk slowly on until the cord
+  is on; then let go. A drawer latches open during the turn. Holding PULL_STALL s
+  without progress (the body pivots round the knob), it lets go and comes again.
+- look (R27): walk to a point LOOK_DIST m in front of a face of the part's
+  marker (a top face: on the body's side of it), then turn to face the marker
+  (walking slowly while turning) and stand until `<part>.seen` is 1 (done once
+  it was 1 in the episode: a door that opens when seen slides its marker away).
 The head and grab values are kept by the solver between env steps (`head`,
 `grab`, in action units: head -1 level .. 1 lowest, grab > 0.5 closed).
 """
@@ -55,6 +73,13 @@ TURN_GAIN = 2.5
 FACING = 0.4
 LOOK = 0.25
 STAND = np.array([-1.0, 0.0, 0.0], dtype=np.float32)
+PUSH_START = 0.35    # [m] push lever: start the push this far out (and walk off as far)
+BACK_STEP = -1.0     # action[1] while turning off a pushed lever (step right as it turns right)
+PULL_STALL = 6.0     # [s] pull: holding this long without drawing 1 cm more: let go, come again
+DIAL_AIM = 0.3       # [m] dial: steer at the pass line this far ahead
+LOOP_PAST = 0.1      # [m] dial: walk back this far past the start of the line before turning in
+LOOK_DIST = 0.6      # [m] look: stand this far from the marker (gaze max_dist 2 m, max_tilt 70 deg)
+LOOK_AIM = 0.1       # [rad] look: facing the marker this well, stand
 BLOCK_Z = 0.05       # [m] obstacle ray from the trunk centre at this height ...
 BLOCK_DIST = 0.16    # [m] ... hitting within this (footprint front 0.11 m) blocks walking off
 NOT_GROUP_3 = np.array([1, 1, 1, 0, 1, 1], dtype=np.uint8)   # the body's collision geoms are group 3
@@ -74,6 +99,7 @@ class Carrier:
 
     def reset(self) -> None:
         self.phase = "approach"
+        self._look = None
         self._point = None
         self._field = None
         self._settle = 0
@@ -303,3 +329,155 @@ class Carrier:
         reach = float(np.linalg.norm((tool.tip_point(env.data) - self._tip())[:2]))
         return self._close_in(button.xy + button.normal * (APPROACH + reach), np.array([*deep, z]),
                               lambda: tool.tip_point(env.data))
+
+    # ---- devices (R28) and looking (R27) ------------------------------------------------
+    def turn_act(self, lever, goal: float) -> np.ndarray | None:
+        """Push lever `lever` until its value is `goal`, then walk off (a dial: `dial_act`)."""
+        if getattr(lever, "object_kind", None) == "dial":
+            return self.dial_act(lever, int(goal))
+        if self.phase == "away":
+            return self._back_off(lever)
+        done = bool(np.isclose(lever.value, goal))
+        if lever.cells is None and self.phase == "in":         # continuous: once pushed past it
+            done |= (lever.value - goal) * self._push_dir >= 0.0
+        if done:
+            if self.phase == "approach":
+                return None
+            self.phase, self._settle = "away", 0
+            return self._back_off(lever)
+        if self.phase == "approach":
+            self._push_dir = 1.0 if goal > lever.value else -1.0
+            act = self._walk(lever.xy + lever.f * self._push_dir * PUSH_START)
+            if act is not None:
+                return act
+            self.phase = "in"
+        self.head = -1.0
+        return self.steer(lever.xy, SLOW)
+
+    def _back_off(self, lever) -> np.ndarray | None:
+        """After a push: stand SETTLE / 3 s, turn round in place clockwise (walking on
+        while turning drags the paddle on to the next cell), walk PUSH_START m off."""
+        env = self.env
+        self._settle += 1
+        if self._settle < SETTLE / 3 * env.hz:
+            return STAND.copy()
+        back = lever.f * self._push_dir
+        if np.linalg.norm(env.body_state.pos[:2] - lever.xy) >= PUSH_START:
+            return None
+        err = _wrap(math.atan2(back[1], back[0]) - env.body_state.yaw)
+        if abs(err) > FACING:
+            return np.array([-1.0, BACK_STEP, -1.0], dtype=np.float32)
+        return np.array([1.0, 0.0, float(np.clip(TURN_GAIN * err, -1.0, 1.0))], dtype=np.float32)
+
+    def dial_act(self, dial, goal: int) -> np.ndarray | None:
+        """Walk past the dial on its pass line (one cell a pass) until its cell is `goal`;
+        between passes loop round clockwise (walking turns) to the start of the line."""
+        from .parts.beak.devices import PASS_FROM, PASS_OFF, PASS_TO
+
+        if dial.cell == goal:
+            return None
+        env = self.env
+        s = env.body_state
+        w = dial.walk
+        along = float((s.pos[:2] - dial.xy) @ w)
+        heading = math.atan2(w[1], w[0])
+        self.head = -1.0
+        if self.phase == "approach":
+            act = self._walk(dial.pass_start())
+            if act is not None:
+                return act
+            self.phase = "align"
+        if self.phase == "align":                       # face along the line (clockwise in place)
+            if abs(_wrap(heading - s.yaw)) > FACING:
+                return np.array([-1.0, 0.0, -1.0], dtype=np.float32)
+            self.phase = "line"
+        if self.phase == "line":
+            if along > PASS_TO:
+                self.phase = "turn_back"
+            else:                                       # pure pursuit onto the line, 0.3 m ahead
+                aim = dial.xy + dial.f * PASS_OFF + w * (along + DIAL_AIM)
+                return self.steer(aim, SLOW)
+        if self.phase == "turn_back":
+            if abs(_wrap(heading + math.pi - s.yaw)) > FACING:
+                return np.array([1.0, 0.0, -1.0], dtype=np.float32)
+            self.phase = "back"
+        if self.phase == "back":
+            if along > -PASS_FROM - LOOP_PAST:
+                err = _wrap(heading + math.pi - s.yaw)
+                return np.array([1.0, 0.0, float(np.clip(TURN_GAIN * err, -1.0, 1.0))], dtype=np.float32)
+            self.phase = "turn_in"
+        if abs(_wrap(heading - s.yaw)) > FACING:         # turn_in: clockwise onto the line
+            return np.array([1.0, 0.0, -1.0], dtype=np.float32)
+        self.phase = "line"
+        return self.steer(dial.xy + dial.f * PASS_OFF + w * (along + DIAL_AIM), SLOW)
+
+    def pull_act(self, cord) -> np.ndarray | None:
+        """Hold the knob (a cord's or a drawer's strap), turn round clockwise, walk on until
+        the cord is on / the drawer latched open. No progress for PULL_STALL s while holding
+        (the body pivots round the knob instead of turning): let go and come again."""
+        env = self.env
+        if cord.satisfied():
+            self.grab = -1.0
+            return None
+        self.grab = -1.0 if self.phase == "approach" else 1.0     # no grab while walking up
+        if self.held() is not cord:
+            if self.phase in ("turn", "walk"):         # let go on the way: come again
+                self.reset()
+                self.grab = -1.0
+            knob = cord.handle_points(env.data)[0]
+            self._pulled, self._stall = cord.progress(env.data), 0
+            return self._close_in(knob[:2] + cord.f * APPROACH, knob)
+        p = cord.progress(env.data)
+        if p > self._pulled + 0.01:
+            self._pulled, self._stall = p, 0
+        self._stall += 1
+        if self._stall > PULL_STALL * env.hz:
+            self.reset()
+            self.grab = -1.0
+            return STAND.copy()
+        err = _wrap(math.atan2(cord.f[1], cord.f[0]) - env.body_state.yaw)
+        if self.phase != "walk" and abs(err) > FACING:
+            self.phase = "turn"
+            return np.array([-1.0, 0.0, -1.0], dtype=np.float32)
+        self.phase = "walk"
+        return np.array([SLOW, 0.0, float(np.clip(TURN_GAIN * err, -1.0, 1.0))], dtype=np.float32)
+
+    def look_act(self, part) -> np.ndarray | None:
+        """Stand in front of `part`'s marker and face it until `<part>.seen` is 1."""
+        from . import markers
+
+        from .gaze import LOOK_PREFIX
+
+        env = self.env
+        if env.parts[LOOK_PREFIX + part.name].satisfied():          # `.seen` was 1 this episode
+            return None
+        if self._look is None:
+            self._look = self._look_spot(part, markers.face_poses(env.data, markers.geom_ids(env.model, part)))
+        point, centre = self._look
+        if self.phase == "approach":
+            act = self._walk(point)
+            if act is not None:
+                return act
+            self.phase = "in"
+        self.head = -1.0
+        s = env.body_state
+        err = _wrap(math.atan2(centre[1] - s.pos[1], centre[0] - s.pos[0]) - s.yaw)
+        if abs(err) > LOOK_AIM:
+            return np.array([SLOW, 0.0, float(np.sign(err))], dtype=np.float32)
+        return STAND.copy()
+
+    def _look_spot(self, part, faces) -> tuple[np.ndarray, np.ndarray]:
+        """(standing point, marker centre) of the face whose point is nearest on the free grid."""
+        env = self.env
+        free = self._free()
+        here = env.body_state.pos[:2]
+        field = env.grid.distance(free, env.grid.disk(here, env.grid.res * 2))
+        best, best_d = None, np.inf
+        for _, c, n in faces:
+            out = n[:2] if abs(n[2]) < 0.7 else here - c[:2]
+            p = c[:2] + out / max(float(np.linalg.norm(out)), 1e-9) * LOOK_DIST
+            cell = env.grid.cell(p)
+            d = env.grid.lookup(field, p) if free[cell] else np.inf
+            if best is None or d < best_d:
+                best, best_d = (p, c[:2].copy()), d
+        return best

@@ -1,0 +1,10 @@
+# Dial (R28): a floor dial with 4 spokes at 0.07-0.12 m (the feet pass under).
+# Walking past it on the line 0.10 m beside its axis pushes one spoke: one
+# cell (90 deg) a pass, one way only. `<name>.angle` is the cell (0..3) and can
+# aim a cannon turret (R16, per cell); `<name>` is 1 while the cell is in
+# `target`. Set: pos, facing (the side of the walking line; the body walks
+# past with the axis on its left, and loops round clockwise for the next pass,
+# so leave about 1 m clear on that side), target.
+type: dial
+spokes: 4
+target: [1, 1]

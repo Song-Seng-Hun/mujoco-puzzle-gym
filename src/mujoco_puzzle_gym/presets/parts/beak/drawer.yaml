@@ -1,0 +1,9 @@
+# Drawer (R28): a tray at stand height (0.17 m) in a cabinet; a weightless
+# 0.1 m strap on its front ends in a knob at beak height. Hold the knob and turn
+# round in place clockwise: the tray slides out 0.15 m and latches open
+# (`<name>` 1); the strap is then no longer grabbable. Objects placed in the
+# tray (within 0.09 m of its front) ride out with it and can be grabbed.
+# Set: pos (the cabinet's front), facing (the side it opens to).
+type: drawer
+travel: 0.15
+strap: 0.1

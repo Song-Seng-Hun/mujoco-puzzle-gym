@@ -47,23 +47,30 @@ def lin_vel(env):
     return env.body_state.lin_vel
 
 
+def _obs_parts(env):
+    """Parts the `part_*` terms list: all but the hidden `_look_` planning switches (gaze.py)."""
+    from .gaze import LOOK_PREFIX
+
+    return [p for n, p in env.parts.items() if not n.startswith(LOOK_PREFIX)]
+
+
 @register_obs("part_pos", replace=True)
 def part_pos(env):
     """Privileged: every part's position relative to the body, heading frame (2 per part)."""
-    return np.concatenate([_to_body_frame(env, p.xy) for p in env.parts.values()])
+    return np.concatenate([_to_body_frame(env, p.xy) for p in _obs_parts(env)])
 
 
 @register_obs("part_state", replace=True)
 def part_state(env):
     """Privileged: every part's state in [0, 1] (switch on, door open fraction, goal reached)."""
-    return np.array([p.state() for p in env.parts.values()])
+    return np.array([p.state() for p in _obs_parts(env)])
 
 
 @register_obs("target_pos", replace=True)
 def target_pos(env):
     """Privileged: the current target (next part in the solution order), heading frame (2)."""
     t = env.current_target()
-    return _to_body_frame(env, t.xy) if t is not None else np.zeros(2)
+    return _to_body_frame(env, t.target_xy()) if t is not None else np.zeros(2)
 
 
 @register_obs("counters", replace=True)
@@ -156,7 +163,7 @@ def npcs(env):
 
 #: Object kinds the `beak` term numbers (1 = first); 0 = nothing held. New kinds
 #: go at the end so the numbers of the old ones stay.
-GRAB_KINDS = ("cube", "laundry", "key", "handle_ball", "egg", "stick")
+GRAB_KINDS = ("cube", "laundry", "key", "handle_ball", "egg", "stick", "lever", "pull_cord", "drawer")
 
 
 @register_obs("beak", replace=True)
@@ -173,7 +180,10 @@ def beak(env):
     if b.held is not None:
         kind = float(GRAB_KINDS.index(b.objects[b.held].object_kind) + 1)
     tip = env.data.site_xpos[b._site]
-    pts = np.concatenate([o.handle_points(env.data) for o in b.objects]) - tip
+    pts = [o.handle_points(env.data) for o in b.objects if getattr(o, "grabbable_now", True)]
+    if not pts:                                         # e.g. only a latched drawer: no handle
+        return np.array([float(b.held is not None), kind, 0.0, 0.0, 0.0])
+    pts = np.concatenate(pts) - tip
     d = pts[int(np.argmin(np.linalg.norm(pts, axis=1)))]
     yaw = env.body_state.yaw
     c, sn = np.cos(yaw), np.sin(yaw)
