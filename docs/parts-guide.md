@@ -205,11 +205,11 @@ curriculum: {mode: forward, order: difficulty_first}
 - `cube`는 손잡이가 달린 상자입니다(`size`, `mass`, `friction`, 손잡이 면 `handles`: `+x`, `-x`, `+y`, `-y`, `+z` 중, 기본 옆면 넷). 압력판, 소켓, 물체 버튼과 구역이 셉니다. 방에 큐브가 있으면 큐브가 켤 수 있는 입력은 풀이 순서에서 발판으로 칩니다.
 - 부리로 집기는 실물 오리로 옮길 수 없는 시뮬레이션 단순화입니다. 시뮬레이션 모델에는 부리 관절이 없어서, 부리 끝(`mouth_tip`)이 손잡이에서 `grab_radius`(기본 4 cm) 안에 있을 때 잡기 명령이 0.5를 넘으면 머리와 큐브 사이 용접 구속을 켭니다. 머리와 큐브는 서로 부딪히지 않습니다. 0.5 이하로 내리면 놓습니다. 질량이 몸의 `max_lift_mass`(기본 0.05 kg)보다 크면 잡히지 않고 `beak.too_heavy`가 1이 됩니다. 붙들고 있는 힘이 `max_hold_force`를 넘으면 놓치고 `<큐브>.dropped`가 펄스로 나갑니다. 다시 잡으려면 명령을 한 번 내렸다 올려야 합니다.
 - 부리 끝은 바닥에서 0.135–0.21 m 높이라 바닥의 큐브에는 닿지 않습니다. 큐브는 높이 0.17–0.19 m 받침대 앞 모서리에 손잡이를 몸 쪽으로 두면 걸어 들어가며 잡을 수 있습니다. 글자 지도에서는 높은 바닥 칸(`legend`의 `{type: floor, height: 0.18}`)이 받침대입니다.
-- 채널: `beak.holding`, `beak.held_id`(잡은 큐브의 마커 번호, 없으면 -1), `beak.too_heavy`, 큐브마다 `<큐브>.held`, `<큐브>.dropped`. 잡힌 큐브는 바닥 버튼, 압력판, 구역, 소켓이 세지 않습니다. 저장본은 잡은 상태까지 되돌립니다. 워프는 물고 있는 큐브도 머리에 대한 자세를 지켜 함께 옮깁니다.
+- 채널: `beak.holding`, `beak.held_id`(잡은 물체의 마커 번호, 없으면 -1), `beak.too_heavy`, 잡을 수 있는 물체마다 `<물체>.held`, `<물체>.dropped`. 잡힌 물체는 바닥 버튼, 압력판, 구역, 소켓이 세지 않습니다. 저장본은 잡은 상태까지 되돌립니다. 워프는 물고 있는 물체도 머리에 대한 자세를 지켜 함께 옮깁니다.
 - 관측 항목 `beak`: 잡고 있는지, 잡은 물체 종류(큐브 1, 없으면 0, 다른 물체는 아래 절), 부리 끝에서 가장 가까운 손잡이까지의 상대 위치(몸 방향 기준 x, y, z). 5칸.
 - 벽 버튼: `button`에 `mount: wall`을 주면 벽 면(`pos`)에서 `height` 높이에 `facing` 방향을 보는 판(`size`: [너비, 높이])이 됩니다. 부리 끝이 판 위에 있고 판 앞 6 cm 안이면 눌립니다(벽에 붙어 머리를 숙이면 가슴이 먼저 닿아 부리 끝이 판에서 4–5 cm 떨어지기 때문입니다). 판 뒤로는 판 두께 + 1 cm까지만 셉니다. 얇은 벽 건너편의 오리는 누르지 못합니다. `trigger`는 쓰지 않습니다.
 - 상위 행동: `task.yaml`의 `actions: [move]`(기본)에 `head`(머리 숙이기 1칸: -1 그대로, 1 가장 낮게)와 `grab`(1칸, 0.5 초과면 잡기)을 이 순서로 더할 수 있습니다. 행동 크기는 3 + 더한 수입니다. 정책이 할 수 없는 일은 스크립트 해답도 하지 않습니다. 큐브를 옮기거나 낮은 벽 버튼을 누르는 방은 task에 `grab`·`head`가 없으면 `mpg check`의 `actions` 단계에서 실패합니다. 예: `mpg check examples/rooms/cube_plate.yaml --task examples/task_cube_plate.yaml`.
-- 해답의 `demo:`: `grab <큐브>`(손잡이 앞까지 걸어가 머리 높이를 맞춰 잡음), `place <큐브> <부품>`(부품 가운데 위로 옮겨 멈춘 뒤 놓고 물러남). 벽 버튼은 `press <버튼>`이나 풀이 순서로 머리를 숙여 누릅니다.
+- 해답의 `demo:`: `grab <물체>`(손잡이 앞까지 걸어가 머리 높이를 맞춰 잡음), `place <물체> <부품>`(부품 가운데 위로 옮겨 멈춘 뒤 놓고 물러남). 벽 버튼은 `press <버튼>`이나 풀이 순서로 머리를 숙여 누릅니다.
 - 예제 [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml): 받침대의 큐브를 집어 압력판에 올려 문을 엽니다.
 
 ## 부리로 다루는 물체와 받는 부품
@@ -222,7 +222,7 @@ curriculum: {mode: forward, order: difficulty_first}
 | `beak/laundry` | `laundry` | 12 × 10 cm, 두께 6 mm, 20 g, 네 변 위에 단(`hem`) | 가벼운 빨래. 판은 단단하고 주름은 겉모양뿐입니다. 위쪽 단을 집습니다 |
 | `beak/key` | `key` | 20 g, 머리 4 cm, 몸통 5 cm, `-x` 끝에 고리 | 머리에 마커가 붙습니다. `accept: [<마커 번호>]`를 준 받는 부품만 받습니다 |
 | `beak/handle_ball` | `handle_ball` | 반지름 3 cm, 30 g, `-x` 쪽 고리 | 놓으면 굴러갑니다. 공 부품 `ball`과는 다릅니다 |
-| `beak/egg` | `egg` | 25 g, 반지름 2.2 cm, 높이 6 cm, 옆에 손잡이 넷, `break_height` 0.05 m, `on_break: fail` | 깨지면 `<알>.broken`이 1이 됩니다 |
+| `beak/egg` | `egg` | 25 g, 반지름 2.2 cm, 높이 6 cm, 옆에 손잡이 넷, `break_height` 0.05 m, `on_break: fail` | 깨지면 `<알>.broken`이 1이 됩니다. 부리 끝이 바닥에서 13.5 cm 위라 바닥이나 바구니에 놓으면 깨집니다. 성한 채로 전하려면 걸이에 걸거나 높은 받침에 둡니다 |
 | `beak/stick` | `stick` | 길이 20 cm, 굵기 1.6 cm, 20 g, `-x` 끝에 손잡이 | 물고 있으면 먼 끝이 벽 버튼을 누릅니다 |
 | `beak/hook` | `receptacle` `shape: hook` | 기둥 8 × 8 cm, 높이 0.19 m에 길이 6 cm 걸이, `tolerance` 0.04 m | 걸이 끝 4 cm 안에서 놓은 물체가 걸립니다 |
 | `beak/basket` | `receptacle` `shape: box` | 30 × 30 cm, 벽 높이 10 cm, `require: count`, `count: 1` | `<바구니>.count`와 `<바구니>.mass`(kg)로 담긴 것을 셉니다 |

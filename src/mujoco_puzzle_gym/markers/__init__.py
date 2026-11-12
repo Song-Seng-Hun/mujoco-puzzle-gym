@@ -144,22 +144,26 @@ def parse(part: "Part", value: Any) -> Marker | None:
 def assign_ids(parts: dict[str, "Part"]) -> None:
     """Give AUTO markers the lowest free ids (room order) and reject duplicates.
 
-    Parts with the same `marker_clone_of` (copies of one object) share one id."""
-    used: dict[int, tuple[str, Any]] = {}
+    Parts with the same `marker_clone_of` (copies of one object) share one id,
+    and so may one receiver that accepts the id (`marker_match`) and one object
+    it takes (a socket and its key)."""
+    used: dict[int, list[tuple[str, Any]]] = {}
     clones: dict[Any, int] = {}
+
+    def pair(a, b, mid) -> bool:
+        return mid in getattr(a, "marker_match", ()) and getattr(b, "object_kind", None) is not None
+
     for name, p in parts.items():
         m = getattr(p, "marker", None)
         if m is None or m.id == AUTO:
             continue
         group = getattr(p, "marker_clone_of", None)
-        if m.id in used:
-            other, ogroup = used[m.id]
-            shared = m.id in getattr(p, "marker_match", ()) or m.id in getattr(parts[other], "marker_match", ())
-            if (group is None or group != ogroup) and not shared:
+        for other, ogroup in used.get(m.id, ()):
+            o = parts[other]
+            if (group is None or group != ogroup) and not (pair(p, o, m.id) or pair(o, p, m.id)):
                 raise SchemaError(f"parts {other!r} and {name!r} both have marker id {m.id}; "
                                   f"give one another id or leave it out for a free one")
-        else:
-            used[m.id] = (name, group)
+        used.setdefault(m.id, []).append((name, group))
         if group is not None:
             clones.setdefault(group, m.id)
     free = (i for i in range(N_IDS) if i not in used)

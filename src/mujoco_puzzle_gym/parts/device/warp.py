@@ -16,7 +16,7 @@ pad. After a warp the moved body or object ignores every warp pad for
 
 The body moves with `BodyAdapter.teleport` (walking controller history and
 velocity cleared) onto the floor height at the destination; an object keeps
-its height above the floor and its orientation, with zero velocity. A cube the
+its height above the floor and its orientation, with zero velocity. An object the
 beak holds moves with the body, keeping its pose to the head (the weld's
 relative pose), with zero velocity; on `to` and `next_stage` alike. The env
 carries out the move (`World.requests`). Carrying ropes along comes with ropes.

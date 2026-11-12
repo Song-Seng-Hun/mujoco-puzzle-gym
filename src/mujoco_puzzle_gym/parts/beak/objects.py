@@ -296,7 +296,8 @@ class Egg(Grabbable):
     def break_speed(self) -> float:
         return math.sqrt(2.0 * 9.81 * float(self.live["break_height"]))
 
-    def substep(self, model, data):
+    def _contacts(self, model, data) -> dict[int, np.ndarray]:
+        """Bodies touching the egg now, with the first contact normal of each."""
         now: dict[int, np.ndarray] = {}
         for i in range(data.ncon):
             c = data.contact[i]
@@ -305,6 +306,10 @@ class Egg(Grabbable):
                 now.setdefault(b2, c.frame[:3].copy())
             elif b2 == self._bid:
                 now.setdefault(b1, c.frame[:3].copy())
+        return now
+
+    def substep(self, model, data):
+        now = self._contacts(model, data)
         for b, normal in now.items():
             if b in self._touching:
                 continue
@@ -324,7 +329,9 @@ class Egg(Grabbable):
     def load_state(self, model, data, st):
         super().load_state(model, data, st)
         model.geom_rgba[self._shell] = BROKEN_RGBA if self.broken else EGG_RGBA
-        self._touching, self._hit = set(), 0.0
+        mujoco.mj_forward(model, data)          # contacts of the restored state
+        self._touching, self._hit = set(self._contacts(model, data)), 0.0
+        self._v_prev = data.qvel[self._v:self._v + 3].copy()
 
 
 # ---- stick --------------------------------------------------------------------------------

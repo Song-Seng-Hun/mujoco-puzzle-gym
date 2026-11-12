@@ -63,6 +63,20 @@ def test_egg_survives_being_carried(make):
     assert env.signals.get("e.broken") == 1
 
 
+def test_restoring_a_resting_egg_while_it_falls_does_not_break_it(make):
+    env = make([{"name": "e", "preset": "beak/egg", "pos": [0.8, 0.8]}])     # preset: on_break fail
+    body_steps(env, 0.3)
+    snap = env.save_snapshot()                                     # resting on the floor
+    e = env.parts["e"]
+    e.put(env.data, [0.8, 0.8, e.height / 2 + 0.3])
+    mujoco.mj_forward(env.model, env.data)
+    body_steps(env, 0.2)                                           # falling, not yet landed
+    assert env.data.qvel[e._v + 2] < -1.0 and env.signals.get("e.broken") == 0
+    env.restore_snapshot(snap)
+    body_steps(env, 0.5)
+    assert env.signals.get("e.broken") == 0 and not e.failed()
+
+
 # ---- key and socket ----------------------------------------------------------------------
 @pytest.mark.parametrize("key_id, ok", [(7, 1), (8, 0)])
 def test_key_turns_on_only_the_socket_with_its_number(make, key_id, ok):
@@ -83,6 +97,20 @@ def test_two_unrelated_parts_still_cannot_share_a_marker(tmp_path, asset_dir):
         open_room(tmp_path, [{"name": "k", "preset": "beak/key", "pos": [0.8, 0.8], "marker": {"id": 7}},
                              {"name": "s", "preset": "input/socket", "pos": [0.5, -0.5], "accept": [8],
                               "marker": {"id": 7}}])
+
+
+@pytest.mark.parametrize("second", [
+    {"name": "d", "preset": "device/sliding_door", "pos": [0.0, 0.9], "marker": {"id": 7}},
+    {"name": "k2", "preset": "beak/key", "pos": [-0.8, 0.8], "marker": {"id": 7}},
+])
+def test_a_socket_shares_its_number_with_one_object_only(tmp_path, asset_dir, second):
+    from rooms import open_room
+
+    with pytest.raises(RoomError, match="marker id 7"):
+        open_room(tmp_path, [{"name": "s", "preset": "input/socket", "pos": [0.5, -0.5], "accept": [7],
+                              "marker": {"id": 7}},
+                             {"name": "k", "preset": "beak/key", "pos": [0.8, 0.8], "marker": {"id": 7}},
+                             second])
 
 
 # ---- stick -------------------------------------------------------------------------------
