@@ -274,6 +274,8 @@ class Carrier:
             if not rest:
                 return STAND.copy()
             self.phase, self.head = "away", -1.0
+        if obj.parked:                      # consumed (R5): nothing left to knock off, stay
+            return None
         return self._walk_off(obj.pos(env.data)[:2], AWAY)
 
     def _walk_off(self, xy, dist) -> np.ndarray | None:
