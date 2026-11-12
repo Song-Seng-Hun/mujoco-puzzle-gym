@@ -79,6 +79,28 @@ parts:
 - 値の連結`bind`: すべての部品が受け取る値です。`bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}`のように、実行中に変えられる数値をチャンネルに直線でつなぎ、体のステップごとに値の範囲で切って適用します。同じ値を`bind`と設定変更器の両方が変える場合は拒否します。
 - 解の順序と解答は、プラットフォームと回転台のマス、せり上がる柱のマスを避けて進みます。体が乗ったまま耐えられるかは歩行ポリシーが学んだ範囲の外なので、記録だけを取ります。2026-11-12の記録: プラットフォーム0.1・0.3 m/s、ベルト0.1・0.2 m/sで3秒間転びませんでした。
 
+## 罠
+
+罠(`trap`分類)は体を押したり、倒したり、落としたりします。どれも`in`の信号がオンの間だけ動き(`in`がなければ常に)、強さは`power`一つで決めます。`enabled: 0`で止まります(`in`のない穴は常に開いていて止められず、`enable`や`enabled`を書くと拒否します。切り替えるには`in`を与えます)。`power`と`enabled`は実行中に変えられるので、設定変更器、`bind`、難易度段階(後述)で調整します。
+
+| 罠 | プリセット | `power` |
+|---|---|---|
+| 風 `wind` | `trap/crosswind` | 区域内の体と物体を押す力 [N]、向きは`yaw` |
+| 押し板 `pusher` | `trap/pusher` | 板が箱から出て戻る速さ [m/s] |
+| 回転バー `spinner` | `trap/spinning_bar` | 床の高さのバーの回転速度 [deg/s] |
+| 振り子 `pendulum` | `trap/pendulum` | 振れ幅 [deg]、周期は`period` |
+| 穴 `pit` | `trap/pit` | なし。落ちると`on_fall: fail`(エピソード失敗)か`reset`(出発点かチェックポイントへ)。`in`があるとオフの間はふたが閉じています |
+| 大砲 `cannon` | `trap/cannon`, `trap/cannon_turret` | 砲弾を撃ち出す速さ [m/s] |
+| 滑る床、粘つく床 | `trap/slippery_floor`, `trap/sticky_floor` | 床タイル(`floor_tile`)の摩擦 |
+
+- 解く順序と解答スクリプトは、穴、回転バーと振り子が掃く範囲、押し板が出る範囲を穴とみなして回り込みます。
+- 大砲は`period`秒ごとに`burst`発撃ちます(`fire: edge`なら信号がオンになるたびに)。狙い`aim`は`fixed`(`yaw` + `aim_yaw`、`aim_pitch`)、`at_body`(今の体の位置)、`lead`(体が向かう先)、`signal`(`aim_yaw`と`aim_pitch`を`bind`でチャンネルにつなぐ)です。`spread`は狙いの周りの円錐の半角です。`<名前>.fired`は撃った瞬間に1ステップだけオン、`<名前>.hits`は体に当たった数です。
+- 砲弾は前もって作った`pool`個(既定10)を使い回します。`lifetime`秒たつか、全部出ていれば一番古いものを回収して撃ち直します。スナップショットには飛んでいる砲弾も入ります。
+- 砲弾はボタン、圧力板、区域を押しません。数えるのは的(`input/target`)だけです。的は`min_speed`以上で当たると`<名前>.hits`を増やしてオンになります(`mode: latch`はオンのまま、`pulse`は1ステップ)。
+- 砲台(`trap/cannon_turret`)はレバーのような信号で狙い、信号がオンになった瞬間に一発撃ちます。`mpg check`は`bind`が出せる狙いの範囲全体で放物線を計算し、一方向でも的の板に当たれば通します。`spread`があれば円錐全体が板に入る必要があります。
+- 倒れる強さの記録(2026-11-12、立っている体、距離0.4 m、横と前から各3回):砲弾の質量 × 速さが0.5 N·s以下では一度も倒れず、0.6 N·s(0.1 kg、6 m/s、前)から倒れはじめ、0.8 N·s(0.2 kg、4 m/s)では6回中4回、1.0 N·s(0.2 kg、5 m/s)では6回とも倒れました。そのため既定値は0.2 kg、5 m/sです。歩いている体はもっと弱く、0.4 N·sの砲弾を2.5秒ごとに受けた解答スクリプトは20回中6回倒れました。
+- 砲弾の質量(`shell_mass`)は部屋を組むときだけ決めます。MuJoCoが物体の質量行列を前もって計算しておくため、実行中に変えると動きが狂います。
+
 ## 組み立ての例
 
 どれも`mpg check`の解答段階を20回中18回以上通ります。
@@ -94,6 +116,7 @@ parts:
 | `puzzles/ball/bowling` | ボールでピン三本のどれか一本を倒すと(`<ピン>.down`)ドアが開きます | `ball`, `pin` |
 | `puzzles/ball/color_sort` | 色別のゴールネット二つにボールを分けて入れ、カウンターでドアを開けます | `ball`, `goal_net`, `counter` |
 | [`examples/rooms/lift_spring.yaml`](../examples/rooms/lift_spring.yaml) | ボタン一つでドアが開き、エレベーターが上がり、設定変更器でスプリングがオンになってボールが跳ね始めます | `device/elevator`, `device/spring_pad`, `device/setter`, `device/sliding_door` |
+| [`examples/rooms/trap_run.yaml`](../examples/rooms/trap_run.yaml) | 穴を回り込み、床で回るバーの横と弱い横風の中を通ってゴールへ | `trap/pit`, `trap/spinning_bar`, `trap/crosswind` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 文字マップで描いた二つの部屋、階段と坂 | `button`, `door` |
 
 ボールの組み立てプリセットは部屋一つ全体なので、そのまま`mpg check`に渡してもよく、`preset: puzzles/ball/bowling`で敷いて値を変えて使ってもかまいません。
@@ -134,6 +157,22 @@ mpg check examples/rooms/four_flags.yaml
 mpg train task.yaml --minutes 60 --curriculum forward
 mpg eval runs/<id> --full --segments
 ```
+
+### 難易度段階
+
+`task.yaml`の`difficulty:`は、罠の強さのような値を段階的に上げます。実行中に変えられる値(「可」)かエピソード開始時に変えられる値だけが対象です。
+
+```yaml
+difficulty:
+  - {param: cannon_a.power, from: 2.0, to: 5.0, steps: 4}   # 段階0..3で2, 3, 4, 5
+  - {param: wind_a.enabled, from: 0, to: 1, at_step: 2}      # 段階2からオン
+curriculum: {mode: forward, order: difficulty_first}
+```
+
+- `steps: n`は`from`から`to`までをn段階に分け、`at_step: k`は段階kから`to`になります。行ごとに段階数が違えば一番長いものに合わせ、短い行は最後の値のままです。
+- 段階的な学習は(区間、難易度)の組を一つずつ開きます。`order: difficulty_first`(既定)は一つの区間の難易度を上げきってから次の区間へ、`segment_first`は一つの難易度ですべての区間を開いてから次の難易度へ進みます。レベル名は`<区間>@d<段階>`で、`curriculum.json`とエピソード記録に残ります。
+- `bind`がかかっている値、範囲外の値、大きさの値は部屋を読むときに拒否します。
+- 抽選なしで動かすと(評価、ただの`reset`)最後の段階です。`mpg eval runs/<id> --difficulty 1`のように段階を選べます。
 
 ## つかむ動作はまだありません
 
@@ -208,6 +247,28 @@ def majority(inputs, state, dt):
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what presses it: body, object, npc or any (not shells or rope knots) |
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
+
+### `cannon`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 可 | 0 turns the trap off (setters, difficulty steps) |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | heading the cannon faces |
+| `height` | float | m | `0.15` | [0.05, 1.5] |  | muzzle height above the floor |
+| `power` | float | m/s | `5.0` | [0.5, 15] | 可 | launch speed |
+| `shell_mass` | float | kg | `0.2` | [0.005, 1] |  | shell mass |
+| `shell_radius` | float | m | `0.025` | [0.01, 0.1] |  |  |
+| `period` | float | s | `2.0` | [0.2, 60] | 可 | fire: auto: time between bursts |
+| `burst` | int |  | `1` | [1, 10] | 可 | shells per burst |
+| `spread` | float | deg | `0.0` | [0, 30] | 可 | half angle of the random cone around the aim |
+| `aim` | enum |  | `fixed` | `fixed`, `at_body`, `lead`, `signal` |  | fixed: yaw + aim_yaw, aim_pitch; at_body / lead: at the body (now / ahead); signal: aim_yaw, aim_pitch from channels (bind) |
+| `aim_yaw` | float | deg | `0.0` | [-180, 180] | 可 | aim left / right of `yaw` |
+| `aim_pitch` | float | deg | `10.0` | [-30, 80] | 可 | aim elevation |
+| `lifetime` | float | s | `3.0` | [0.2, 30] |  | a shell is parked after this |
+| `pool` | int |  | `10` | [1, 50] |  | shells built in advance (reused) |
+| `fire` | enum |  | `auto` | `auto`, `edge` |  | auto: every `period` while active; edge: one burst per rising edge of `in` |
 
 ### `checkpoint`
 
@@ -363,6 +424,21 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
 
+### `pendulum`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 可 | 0 turns the trap off (setters, difficulty steps) |
+| `height` | float | m | `0.6` | [0.1, 2] |  | pivot above the floor |
+| `length` | float | m | `0.45` | [0.05, 1.9] |  | pivot to ball centre |
+| `radius` | float | m | `0.06` | [0.01, 0.3] |  | ball radius |
+| `mass` | float | kg | `0.5` | [0.01, 5] |  | ball mass |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | swing direction |
+| `period` | float | s | `1.6` | [0.3, 10] | 可 | one full swing |
+| `power` | float | deg | `40.0` | [0, 80] | 可 | swing amplitude while active |
+
 ### `pillar`
 
 役割`prop`、更新段階`device`。
@@ -386,6 +462,16 @@ def majority(inputs, state, dt):
 | `down_angle` | float | deg | `45.0` | [5, 90] |  | tilt from upright that counts as down |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
 
+### `pit`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 可 | 0 closes the lid; only a pit with `in` can be switched |
+| `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | tile size [x, y] |
+| `on_fall` | enum |  | `fail` | `fail`, `reset` |  | fail: the episode ends; reset: back to the last checkpoint or the start |
+
 ### `platform`
 
 役割`prop`、更新段階`device`。
@@ -408,6 +494,18 @@ def majority(inputs, state, dt):
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  |  |
 | `min_mass` | float | kg | `0.1` | [0.001, 100] | 可 | mass needed to turn on |
 | `trigger` | enum |  | `object` | `body`, `object`, `npc`, `any` |  |  |
+
+### `pusher`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 可 | 0 turns the trap off (setters, difficulty steps) |
+| `size` | vec | m | `[0.3, 0.1]` | [0.03, 1.5] |  | paddle [width, height] |
+| `stroke` | float | m | `0.3` | [0.05, 1.5] |  | how far the paddle runs out |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | direction it pushes (0: +x) |
+| `power` | float | m/s | `0.3` | [0.02, 2] | 可 | paddle speed |
 
 ### `receiver`
 
@@ -452,6 +550,18 @@ def majority(inputs, state, dt):
 | `value` | any |  | 必須 |  |  | new value (checked against the target value's schema) |
 | `revert` | bool |  | `False` |  |  | put the old value back when the signal turns off |
 
+### `spinner`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 可 | 0 turns the trap off (setters, difficulty steps) |
+| `length` | float | m | `0.4` | [0.05, 1.5] |  | hub to each tip |
+| `height` | float | m | `0.03` | [0.01, 0.3] |  | bar centre above the floor |
+| `thickness` | float | m | `0.03` | [0.01, 0.1] |  |  |
+| `power` | float | deg/s | `90.0` | [-720, 720] | 可 | turn rate while active (+: counter-clockwise) |
+
 ### `spring`
 
 役割`prop`、更新段階`device`。
@@ -492,6 +602,19 @@ def majority(inputs, state, dt):
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
 | `latch` | bool |  | `True` |  |  | M1: stay on after the body leaves (oneshot); false: momentary |
+
+### `target`
+
+役割`sensor`、更新段階`input`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.2, 0.2]` | [0.03, 2] |  | board [width, height] |
+| `height` | float | m | `0.2` | [0.05, 2] |  | board centre above the floor |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | direction the face looks |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 可 | slowest hit that counts |
+| `mode` | enum |  | `latch` | `pulse`, `latch` |  | pulse: 1 for the body step of a hit; latch: stays 1 |
+| `trigger` | enum |  | `shell` | `shell` |  | only cannon shells count |
 
 ### `transmitter`
 
@@ -535,6 +658,19 @@ def majority(inputs, state, dt):
 | `routes` | any |  | — |  |  | conditional destinations: [{when: expr, to: dest}, ..., {else: dest}] |
 | `cooldown` | float | s | `1.0` | [0, 60] |  | time a warped body or object ignores warp pads |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
+
+### `wind`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 可 | 0 turns the trap off (setters, difficulty steps) |
+| `size` | vec | m | `[0.6, 0.6]` | [0.05, 5] |  | zone size [x, y] |
+| `height` | float | m | `0.4` | [0.05, 2] |  | zone height above the floor |
+| `yaw` | float | deg | `0.0` | [-180, 180] | 可 | direction the wind blows (0: +x, 90: +y) |
+| `power` | float | N | `1.0` | [0, 20] | 可 | force on each body or object in the zone |
+| `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it pushes |
 
 ### `zone`
 
@@ -580,6 +716,7 @@ def majority(inputs, state, dt):
 | `input/object_zone` | `zone` | `trigger: object`, `size: [0.4, 0.4]`, `height: 0.3` |
 | `input/pressure_plate` | `pressure` | `trigger: object`, `size: [0.25, 0.25]`, `min_mass: 0.1` |
 | `input/socket` | `receptacle` | `shape: plate`, `size: [0.2, 0.2]`, `tolerance: 0.05`, `angle_tolerance: 15.0` |
+| `input/target` | `target` | `size: [0.2, 0.2]`, `height: 0.2`, `mode: latch` |
 | `logic/and` | `gate` | `op: and` |
 | `logic/counter` | `counter` | `start: 0`, `target: 3` |
 | `logic/delay` | `gate` | `op: delay`, `seconds: 1.0` |
@@ -594,7 +731,14 @@ def majority(inputs, state, dt):
 | `object/ball` | `ball` | `radius: 0.05`, `mass: 0.05`, `elasticity: 0.5` |
 | `object/bowling_pin` | `pin` | `radius: 0.02`, `height: 0.12`, `mass: 0.03` |
 | `object/heavy_ball` | `ball` | `radius: 0.08`, `mass: 0.5`, `elasticity: 0.2` |
+| `trap/cannon` | `cannon` | `aim: at_body` |
+| `trap/cannon_turret` | `cannon` | `fire: edge`, `aim: signal`, `spread: 0.0`, `burst: 1` |
+| `trap/crosswind` | `wind` | `size: [0.6, 1.0]`, `height: 0.4`, `yaw: 90.0`, `power: 1.0` |
+| `trap/pendulum` | `pendulum` | `height: 0.6`, `length: 0.45`, `power: 40.0`, `period: 1.6` |
+| `trap/pit` | `pit` | `size: [0.3, 0.3]`, `on_fall: fail` |
+| `trap/pusher` | `pusher` | `size: [0.3, 0.1]`, `stroke: 0.3`, `power: 0.3` |
 | `trap/slippery_floor` | `floor_tile` | `size: [0.4, 0.4]`, `friction: [0.2, 0.005, 0.0001]` |
+| `trap/spinning_bar` | `spinner` | `length: 0.4`, `height: 0.03`, `power: 90.0` |
 | `trap/sticky_floor` | `floor_tile` | `size: [0.4, 0.4]`, `friction: [2.0, 0.02, 0.01]` |
 
 ### 組み立てプリセット

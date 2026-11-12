@@ -205,7 +205,7 @@ def _field_rows(fields) -> list[str]:
     rows = ["| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |", "|---|---|---|---|---|---|---|"]
     for f in fields:
         rows.append(f"| `{f.name}` | {f.kind} | {_cell(f.unit)} | {_default(f)} | {_range(f)} | "
-                    f"{'예' if f.runtime else ''} | {_cell(f.doc)} |")
+                    f"{'예' if f.runtime else '에피소드 시작' if f.episode else ''} | {_cell(f.doc)} |")
     return rows
 
 

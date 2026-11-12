@@ -44,7 +44,7 @@ Every command accepts `--json` and exits non-zero on failure.
 | `mpg parts` | Registered parts, value schemas and the preset list (`--json`), value tables (`--markdown`) |
 | `mpg train <task.yaml> --minutes N` | Train for a set time; results in `runs/<id>/` |
 | `mpg diagnose runs/<id>` | Classify the failure cause, with evidence numbers and a failure video |
-| `mpg eval runs/<id>` | Success rate and mean time on held-out layouts (`--policy random` for a baseline). `--onnx policy.onnx --task task.yaml` evaluates an exported policy without pickle |
+| `mpg eval runs/<id>` | Success rate and mean time on held-out layouts (`--policy random` for a baseline). `--onnx policy.onnx --task task.yaml` evaluates an exported policy without pickle. `--difficulty k` runs at difficulty step k (default: the last) |
 | `mpg export-onnx runs/<id>` | Export the policy as `policy.onnx` and `policy.json` (for sharing) |
 | `mpg render runs/<id>` | MP4 of a success episode |
 | `mpg demo` | Video of the bundled trained policy solving the example room (`demo.mp4`) |
@@ -112,6 +112,7 @@ mpg eval runs/<id> --full --segments
 - `--curriculum reverse`: starts from the last segment to the goal and moves the start point earlier. `none` (the default) runs from the start to the goal.
 - The same values can go in task.yaml as `curriculum: {mode: forward, advance_at: 0.8, replay: 0.2, window: 50, snapshots: null}`. `snapshots` is the snapshot folder (empty means `runs/check/<room>/checkpoints`).
 - Progress is recorded in `runs/<id>/curriculum.json` with the time, the open segments and the success rate per segment.
+- With `difficulty:` in task.yaml (steps of values such as trap strength; see [difficulty steps in the parts guide](parts-guide.en.md#difficulty-steps)), training opens (segment, difficulty) pairs one at a time. `curriculum.order: difficulty_first` (the default) raises every step of a segment before the next segment; `segment_first` opens every segment at one step before the next. Level names in `curriculum.json` are `<segment>@d<step>`.
 - Flags are part of the solution order, so the `progress` reward and the `target_pos` observation go through the flags in turn. The `checkpoints` observation term is the next flag (one-hot, the last slot is the goal) and whether each flag has been reached.
 - `mpg eval --full` reports the success rate from the start to the goal with no snapshots (`full_success_rate`), and `--segments` the success rate per segment (`segment_success_rates`). With both, it also reports the share of runs where every segment succeeded but the full run failed (`chain_gap_rate`).
 

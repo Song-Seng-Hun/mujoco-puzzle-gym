@@ -132,3 +132,31 @@ def test_cli_flags(flag_run, capsys):
     assert code == 0 and out["ok"]
     assert {"full_success_rate", "segment_success_rates", "chain_gap_rate"} <= set(out)
     assert np.isclose(out["segment_success_rates"]["f2->goal"], 1.0)
+
+
+# ---- R21 difficulty steps in evaluation ----------------------------------------------------
+@pytest.fixture
+def diff_run(asset_dir, tmp_path):
+    room = tmp_path / "windroom.json"
+    room.write_text(json.dumps({"name": "windroom", "size": [3.0, 3.0], "spawn": {"pos": [-1.0, -1.0]},
+                                "parts": [{"name": "w", "preset": "trap/crosswind", "pos": [0.5, 0.5]},
+                                          {"name": "goal", "type": "goal", "pos": [1.3, 1.3]}]}))
+    task = {"room": str(room), "env": {"hz": 10, "episode_seconds": 0.5},
+            "difficulty": [{"param": "w.power", "from": 1.0, "to": 3.0, "steps": 3}]}
+    return fake_run(tmp_path, task, algo="t_stand")
+
+
+def test_eval_runs_at_the_chosen_or_last_difficulty(diff_run, capsys):
+    assert ev.evaluate(diff_run, episodes=1, workers=1)["difficulty"] == 2          # default: the last
+    assert ev.evaluate(diff_run, episodes=1, workers=1, full=True)["difficulty"] == 2
+    code = cli.main(["eval", str(diff_run), "--episodes", "1", "--workers", "1", "--difficulty", "0", "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0 and out["difficulty"] == 0
+    code = cli.main(["eval", str(diff_run), "--episodes", "1", "--workers", "1", "--difficulty", "3", "--json"])
+    assert code == 1 and "out of range" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_eval_onnx_rejects_difficulty(tmp_path, capsys):
+    code = cli.main(["eval", "--onnx", str(tmp_path / "policy.onnx"), "--task", str(tmp_path / "t.yaml"),
+                     "--difficulty", "1", "--json"])
+    assert code == 1 and "--difficulty" in json.loads(capsys.readouterr().out)["error"]

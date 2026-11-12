@@ -1,0 +1,8 @@
+# Cannon turret (R16): a tool the body works. One shot per rising edge of `in`
+# (a button); aim follows channels through `bind` (levers). Not aimed at the body.
+# Set: pos, yaw, in, bind: {aim_yaw: {from, map}, aim_pitch: {from, map}}.
+type: cannon
+fire: edge
+aim: signal
+spread: 0.0
+burst: 1

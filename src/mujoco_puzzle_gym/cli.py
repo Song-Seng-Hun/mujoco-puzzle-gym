@@ -194,9 +194,11 @@ def _eval(args: argparse.Namespace) -> dict[str, Any]:
     if args.onnx:
         if args.run or not args.task:
             raise CommandError("--onnx takes --task task.yaml and no run folder")
-        if args.full or args.segments or args.policy != "trained" or args.stochastic:
+        if (args.full or args.segments or args.policy != "trained" or args.stochastic
+                or args.difficulty is not None):
             raise CommandError("--onnx runs the deterministic policy from the start; "
-                               "--full, --segments, --policy and --stochastic are for run folders")
+                               "--full, --segments, --difficulty, --policy and --stochastic are for "
+                               "run folders")
         try:
             return evaluate_onnx(args.onnx, args.task, episodes=args.episodes, workers=args.workers)
         except _run_errors() as exc:
@@ -206,7 +208,7 @@ def _eval(args: argparse.Namespace) -> dict[str, Any]:
     try:
         return evaluate(args.run, episodes=args.episodes, policy=args.policy,
                         deterministic=not args.stochastic, workers=args.workers,
-                        full=args.full, segments=args.segments)
+                        full=args.full, segments=args.segments, difficulty=args.difficulty)
     except _run_errors() as exc:
         raise CommandError(str(exc)) from exc
 
@@ -227,6 +229,8 @@ def _configure_eval(p: argparse.ArgumentParser) -> None:
     p.add_argument("--segments", action="store_true",
                    help="also run every checkpoint segment from its snapshot: segment_success_rates; "
                         "with --full also chain_gap_rate (R22)")
+    p.add_argument("--difficulty", type=int, default=None,
+                   help="difficulty step to run at (R21 task `difficulty`; default: the last, hardest)")
     p.add_argument("--trust", action="store_true",
                    help="open run folders and snapshots outside ./runs/ (pickle can run code)")
 

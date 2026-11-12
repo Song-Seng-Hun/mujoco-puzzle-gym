@@ -38,6 +38,11 @@
   Conveyors (R12) and springs (R15) ask the same way: `("move", part, key,
   delta)` shifts and `("kick", part, key, velocity)` launches the body or a
   free object (`push`).
+- Pits (R16) with `on_fall: reset` send a fall into them back like room
+  `on_fall: reset`; with `fail` the pit's `failed()` ends the episode.
+- Difficulty steps (R21, task `difficulty:`): every reset applies step
+  `options["difficulty"]` (or the drawn level's, or the last step);
+  `info["difficulty"]` reports it.
 - Segments (R21, curriculum.py): `reset(options={"segment": i})` starts segment
   i (checkpoint flag i's snapshot; `"to_goal": True` runs on to the goal), or a
   worker draws i from `set_segment_draw`. A segment episode ends with success at
@@ -97,7 +102,8 @@ class PuzzleEnv(gym.Env):
         self.floor = self.room.floor_map(self.parts)
         self.zone_spawns = self.room.zone_spawns()
         self._needs_start = (any(p.role == "warp" for p in self.parts.values())
-                             or self.room.on_fall == "reset")
+                             or self.room.on_fall == "reset"
+                             or any(getattr(p, "on_fall", None) == "reset" for p in self.parts.values()))
         self.start_snap: snapshot.Snapshot | None = None
         self.zone = 0
         self._warp_events: dict[str, Any] = {"warped": [], "stage_changed": False}
@@ -115,6 +121,13 @@ class PuzzleEnv(gym.Env):
         self.segment: dict[str, Any] | None = None
         self.segment_draw: curriculum.SegmentDraw | None = None
         self._start_snaps: dict[str, snapshot.Snapshot] | None = None
+        try:                                                     # R21 difficulty steps
+            self.difficulty = curriculum.parse_difficulty(self.task.get("difficulty"), self.parts)
+        except curriculum.CurriculumError as exc:
+            raise TaskError(str(exc)) from None
+        self.difficulty_steps = len(self.difficulty[0].values) if self.difficulty else 1
+        self.difficulty_level: int | None = None
+        self._difficulty_k: int | None = None                    # the step `reset` asked for
 
         hz = float(self.task["env"]["hz"])
         ratio = 1.0 / (hz * self.body.control_dt)
@@ -284,6 +297,8 @@ class PuzzleEnv(gym.Env):
         self.signals.reset()
         for p in self.parts.values():
             p.reset_values(self.model, self.data)
+        curriculum.apply_difficulty(self, self._difficulty_k)    # R21: before parts reset and the plan
+        for p in self.parts.values():
             p.reset(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
         self.body_state: BodyState = self.read_body()
@@ -393,17 +408,23 @@ class PuzzleEnv(gym.Env):
         return bool(np.isfinite(self.data.qpos).all() and np.isfinite(self.data.qvel).all()
                     and self.data.warning[mujoco.mjtWarning.mjWARN_BADQACC].number == 0)
 
-    def set_segment_draw(self, probs: list[float] | None, to_goal: bool = False) -> None:
-        """Start later episodes at a segment drawn with `probs` (R21); None: M1 starts."""
-        self.segment_draw = None if probs is None else curriculum.SegmentDraw(probs, to_goal)
+    def set_segment_draw(self, probs: list[float] | None, to_goal: bool = False,
+                         levels: list[dict] | None = None) -> None:
+        """Start later episodes at a segment drawn with `probs` (R21); None: M1 starts.
+        With `levels`, `probs` are per level and a level may carry a difficulty step."""
+        self.segment_draw = None if probs is None else curriculum.SegmentDraw(probs, to_goal, levels)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
         opts = options or {}
         seg, to_goal = opts.get("segment"), bool(opts.get("to_goal", False))
+        diff = opts.get("difficulty")
         if seg is None and self.segment_draw is not None:
-            seg, to_goal = self.segment_draw.draw(self.np_random), self.segment_draw.to_goal
+            lv = self.segment_draw.draw_level(self.np_random)
+            seg, to_goal = lv["segment"], self.segment_draw.to_goal
+            diff = lv.get("difficulty", diff)
         self.segment = None
+        self._difficulty_k = curriculum.difficulty_step(self, diff)
         if seg is None:
             self._reset_sim(self.np_random, opts.get("layout"))
         else:
@@ -436,8 +457,7 @@ class PuzzleEnv(gym.Env):
                 and self.checkpoint_snap is not None):
             self.restore_snapshot(self.checkpoint_snap)
             respawned, fallen, failed = True, False, []
-        elif (sane and fallen and not failed and self.room.on_fall == "reset"
-              and self.floor_height(self.body_state.pos[:2])[0] is None):
+        elif sane and fallen and not failed and self._fall_resets(self.body_state.pos[:2]):
             # R37 / R16 `on_fall: reset`: a fall into a hole goes back, it does not end the episode
             self.restore_snapshot(self.checkpoint_snap or self.start_snap)
             respawned, fallen = True, False
@@ -464,6 +484,16 @@ class PuzzleEnv(gym.Env):
             obs = {k: clean(v) for k, v in obs.items()} if isinstance(obs, dict) else clean(obs)
         return obs, reward, terminated, truncated, info
 
+    def _fall_resets(self, xy) -> bool:
+        """Whether a fall at `xy` goes back instead of ending: over a hole, the pit's
+        `on_fall` (R16) or else the room's (R37) is `reset`."""
+        if self.floor_height(xy)[0] is not None:
+            return False
+        for p in self.parts.values():
+            if getattr(p, "on_fall", None) and p.floor_rect().contains(xy):
+                return p.on_fall == "reset"
+        return self.room.on_fall == "reset"
+
     def _contradiction(self, info: dict[str, Any], success: bool) -> bool:
         states = info["parts"].values()
         if not all(np.isfinite(v) and -1e-6 <= v <= 1.0 + 1e-6 for v in states):
@@ -486,6 +516,7 @@ class PuzzleEnv(gym.Env):
             "fallen": bool(self.body_state.fallen),
             "parts": {n: p.state() for n, p in self.parts.items()},
             "plan_ok": self.plan["ok"],
+            **({"difficulty": self.difficulty_level} if self.difficulty else {}),
         }
 
     # ---- rendering ----------------------------------------------------------

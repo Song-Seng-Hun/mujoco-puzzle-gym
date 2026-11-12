@@ -1,0 +1,7 @@
+# Pendulum (R16): a ball on a rod swinging under a frame while on.
+# Set: pos, yaw, power (amplitude, deg), period, in.
+type: pendulum
+height: 0.6
+length: 0.45
+power: 40.0
+period: 1.6

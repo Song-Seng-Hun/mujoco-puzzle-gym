@@ -7,8 +7,9 @@ run in parallel worker processes, each loading the checkpoint itself.
 `--full` and `--segments` (R22) work on rooms with checkpoint flags
 (curriculum.py segments):
 - full: episodes from the start (sampled layout, no snapshot) to the goal; the
-  same episodes plain `mpg eval` runs, reported as `full_success_rate`. (Step
-  12's difficulty steps will make `--full` pick the hardest one.)
+  same episodes plain `mpg eval` runs, reported as `full_success_rate`.
+- With task difficulty steps (R21) every episode runs at the last (hardest)
+  step unless `--difficulty k` picks one; the report names it (`difficulty`).
 - segments: for every eval seed, one episode per segment from its start (segment
   0 from the sampled layout, the others from their flag snapshot) to its end;
   `segment_success_rates` per segment. With both, `chain_gap_rate` is the
@@ -77,6 +78,8 @@ def run_episode(env, policy, seed: int, deterministic: bool = True, frames: list
               stage=info["stage"], target=info["target"], seconds=ep["length"] / env.hz)
     if "segment" in info:
         ep.update(segment=int(info["segment"]), segment_success=bool(info["segment_success"]))
+    if info.get("difficulty") is not None:
+        ep["difficulty"] = int(info["difficulty"])
     return ep
 
 
@@ -134,18 +137,22 @@ def run_episodes(run_dir: str | Path, seeds: list[int], policy: str = "trained",
 
 def evaluate(run_dir: str | Path, episodes: int = 100, policy: str = "trained",
              deterministic: bool = True, workers: int = DEFAULT_WORKERS,
-             full: bool = False, segments: bool = False) -> dict[str, Any]:
+             full: bool = False, segments: bool = False,
+             difficulty: int | None = None) -> dict[str, Any]:
     run = load_run(run_dir)
     seeds = list(range(EVAL_SEED_BASE, EVAL_SEED_BASE + episodes))
     segs = _segments(run) if segments else []
-    jobs: list[Job] = [(s, None) for s in seeds]
-    jobs += [(s, {"segment": i}) for i in range(len(segs)) for s in seeds]
+    opts = {} if difficulty is None else {"difficulty": int(difficulty)}
+    jobs: list[Job] = [(s, dict(opts) or None) for s in seeds]
+    jobs += [(s, {"segment": i, **opts}) for i in range(len(segs)) for s in seeds]
     done = run_jobs(run_dir, jobs, policy, deterministic, workers)
     eps = done[:episodes]
     hz = float(run["task"]["env"]["hz"])
     stats = window_stats(eps, hz)
     out = {"run_id": run["summary"]["run_id"], "policy": policy,
            **_report(eps, seeds, hz, deterministic)}
+    if eps and "difficulty" in eps[0]:
+        out["difficulty"] = eps[0]["difficulty"]
     if full:
         out["full_success_rate"] = stats["success_rate"]
     if segs:

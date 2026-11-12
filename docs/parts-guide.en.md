@@ -79,6 +79,28 @@ What expressions can use: channel names (a dotted name like `laps.count` is also
 - Value binding `bind`: a value every part takes. `bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}` maps a channel linearly onto a number value that can change while running, clipped to the value's range every body step. A value changed by both a `bind` and a setter is rejected.
 - Solution orders and the solver keep off platform and turntable cells and off pillars that will rise. Whether the body stays up riding them is outside what the walking policy learned, so it is only recorded. Record of 2026-11-12: no fall in 3 s on a platform at 0.1 and 0.3 m/s and on a belt at 0.1 and 0.2 m/s.
 
+## Traps
+
+Traps (the `trap` group) push the body, knock it over or let it fall. Each one acts only while its `in` signal is on (always, without `in`), and one value, `power`, sets its strength. `enabled: 0` turns it off (a pit without `in` is always open and cannot be switched; `enable` or `enabled` on it is rejected, so give it an `in` to switch it). `power` and `enabled` can change while running, so setters, `bind` and difficulty steps (below) tune them.
+
+| Trap | Preset | `power` |
+|---|---|---|
+| wind `wind` | `trap/crosswind` | force on the body and objects in its zone [N], direction `yaw` |
+| pusher `pusher` | `trap/pusher` | speed of the paddle running out of its housing and back [m/s] |
+| spinning bar `spinner` | `trap/spinning_bar` | turn rate of a bar at floor height [deg/s] |
+| pendulum `pendulum` | `trap/pendulum` | swing amplitude [deg]; `period` sets the period |
+| pit `pit` | `trap/pit` | none. Falling in means `on_fall: fail` (the episode fails) or `reset` (back to the start or a checkpoint). With `in`, a lid covers it while off |
+| cannon `cannon` | `trap/cannon`, `trap/cannon_turret` | shell launch speed [m/s] |
+| slippery and sticky floor | `trap/slippery_floor`, `trap/sticky_floor` | friction of a floor tile (`floor_tile`) |
+
+- The solve order and the solver treat a pit, the sweep of a spinning bar or pendulum, and the reach of a pusher as holes and walk around them.
+- A cannon fires `burst` shells every `period` seconds (with `fire: edge`, once per rising edge). `aim` is `fixed` (`yaw` + `aim_yaw`, `aim_pitch`), `at_body` (where the body is now), `lead` (where it is going) or `signal` (`aim_yaw` and `aim_pitch` bound to channels with `bind`). `spread` is the half angle of a cone around the aim. `<name>.fired` is on for one step when it fires; `<name>.hits` counts hits on the body.
+- Shells come from a pool of `pool` prebuilt ones (default 10). After `lifetime` seconds, or when all are out, the oldest is taken back and fired again. Snapshots include shells in flight.
+- Shells never press buttons, pressure plates or zones; only targets (`input/target`) count them. A target hit at `min_speed` or faster raises `<name>.hits` and turns on (`mode: latch` stays on, `pulse` for one step).
+- A turret (`trap/cannon_turret`) aims by a signal such as a lever and fires once when its signal turns on. `mpg check` traces the ballistic path over the whole aim range the `bind` can produce and passes if any aim hits the target board. With `spread`, the whole cone has to land on the board.
+- Knockdown record (2026-11-12, standing body, 0.4 m away, from the side and the front, 3 shots each): shell mass × speed of 0.5 N·s or less never knocked it over; falls started at 0.6 N·s (0.1 kg, 6 m/s, front); at 0.8 N·s (0.2 kg, 4 m/s) 4 of 6 fell and at 1.0 N·s (0.2 kg, 5 m/s) all 6. The default is therefore 0.2 kg at 5 m/s. A walking body is weaker: with 0.4 N·s shells every 2.5 s, the solver fell in 6 of 20 runs.
+- Shell mass (`shell_mass`) is fixed when the room is built. MuJoCo precomputes the mass matrix of a free body, so changing the mass while running gives wrong motion.
+
 ## Assembly examples
 
 All of these pass the solver stage of `mpg check` at least 18 times out of 20.
@@ -94,6 +116,7 @@ All of these pass the solver stage of `mpg check` at least 18 times out of 20.
 | `puzzles/ball/bowling` | Knocking down one of three pins with the ball (`<pin>.down`) opens the door | `ball`, `pin` |
 | `puzzles/ball/color_sort` | Sort balls into two goal nets by colour; a counter opens the door | `ball`, `goal_net`, `counter` |
 | [`examples/rooms/lift_spring.yaml`](../examples/rooms/lift_spring.yaml) | One button opens the door, sends the elevator up, and through a setter turns on the spring so a ball starts hopping | `device/elevator`, `device/spring_pad`, `device/setter`, `device/sliding_door` |
+| [`examples/rooms/trap_run.yaml`](../examples/rooms/trap_run.yaml) | Around a pit, past a bar spinning on the floor and through a weak crosswind to the goal | `trap/pit`, `trap/spinning_bar`, `trap/crosswind` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | Two rooms, and stairs and a ramp, drawn as text maps | `button`, `door` |
 
 The ball assembly presets are whole rooms, so you can pass one to `mpg check` as is, or lay it down with `preset: puzzles/ball/bowling` and change values.
@@ -134,6 +157,22 @@ mpg check examples/rooms/four_flags.yaml
 mpg train task.yaml --minutes 60 --curriculum forward
 mpg eval runs/<id> --full --segments
 ```
+
+### Difficulty steps
+
+`difficulty:` in `task.yaml` raises values such as trap strength in steps. Only values that may change while running ("yes") or at episode start can be stepped.
+
+```yaml
+difficulty:
+  - {param: cannon_a.power, from: 2.0, to: 5.0, steps: 4}   # 2, 3, 4, 5 at steps 0..3
+  - {param: wind_a.enabled, from: 0, to: 1, at_step: 2}      # on from step 2
+curriculum: {mode: forward, order: difficulty_first}
+```
+
+- `steps: n` splits `from`..`to` into n steps; `at_step: k` uses `to` from step k on. When rows have different step counts, the longest wins and shorter rows stay at their last value.
+- Staged training opens (segment, difficulty) pairs one at a time. `order: difficulty_first` (the default) raises every step of a segment before the next segment; `segment_first` opens every segment at one step before the next step. Level names are `<segment>@d<step>`, recorded in `curriculum.json` and the episode log.
+- Values driven by `bind`, values out of range and size values are rejected when the room loads.
+- Without a draw (evaluation, a plain `reset`) the last step is used. `mpg eval runs/<id> --difficulty 1` picks a step.
 
 ## No grabbing yet
 
@@ -208,6 +247,28 @@ Role `switch`, update stage `input`.
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what presses it: body, object, npc or any (not shells or rope knots) |
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
+
+### `cannon`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | yes | 0 turns the trap off (setters, difficulty steps) |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | heading the cannon faces |
+| `height` | float | m | `0.15` | [0.05, 1.5] |  | muzzle height above the floor |
+| `power` | float | m/s | `5.0` | [0.5, 15] | yes | launch speed |
+| `shell_mass` | float | kg | `0.2` | [0.005, 1] |  | shell mass |
+| `shell_radius` | float | m | `0.025` | [0.01, 0.1] |  |  |
+| `period` | float | s | `2.0` | [0.2, 60] | yes | fire: auto: time between bursts |
+| `burst` | int |  | `1` | [1, 10] | yes | shells per burst |
+| `spread` | float | deg | `0.0` | [0, 30] | yes | half angle of the random cone around the aim |
+| `aim` | enum |  | `fixed` | `fixed`, `at_body`, `lead`, `signal` |  | fixed: yaw + aim_yaw, aim_pitch; at_body / lead: at the body (now / ahead); signal: aim_yaw, aim_pitch from channels (bind) |
+| `aim_yaw` | float | deg | `0.0` | [-180, 180] | yes | aim left / right of `yaw` |
+| `aim_pitch` | float | deg | `10.0` | [-30, 80] | yes | aim elevation |
+| `lifetime` | float | s | `3.0` | [0.2, 30] |  | a shell is parked after this |
+| `pool` | int |  | `10` | [1, 50] |  | shells built in advance (reused) |
+| `fire` | enum |  | `auto` | `auto`, `edge` |  | auto: every `period` while active; edge: one burst per rising edge of `in` |
 
 ### `checkpoint`
 
@@ -363,6 +424,21 @@ Role `switch`, update stage `input`.
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
 
+### `pendulum`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | yes | 0 turns the trap off (setters, difficulty steps) |
+| `height` | float | m | `0.6` | [0.1, 2] |  | pivot above the floor |
+| `length` | float | m | `0.45` | [0.05, 1.9] |  | pivot to ball centre |
+| `radius` | float | m | `0.06` | [0.01, 0.3] |  | ball radius |
+| `mass` | float | kg | `0.5` | [0.01, 5] |  | ball mass |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | swing direction |
+| `period` | float | s | `1.6` | [0.3, 10] | yes | one full swing |
+| `power` | float | deg | `40.0` | [0, 80] | yes | swing amplitude while active |
+
 ### `pillar`
 
 Role `prop`, update stage `device`.
@@ -386,6 +462,16 @@ Role `switch`, update stage `input`.
 | `down_angle` | float | deg | `45.0` | [5, 90] |  | tilt from upright that counts as down |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
 
+### `pit`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | yes | 0 closes the lid; only a pit with `in` can be switched |
+| `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | tile size [x, y] |
+| `on_fall` | enum |  | `fail` | `fail`, `reset` |  | fail: the episode ends; reset: back to the last checkpoint or the start |
+
 ### `platform`
 
 Role `prop`, update stage `device`.
@@ -408,6 +494,18 @@ Role `sensor`, update stage `input`.
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  |  |
 | `min_mass` | float | kg | `0.1` | [0.001, 100] | yes | mass needed to turn on |
 | `trigger` | enum |  | `object` | `body`, `object`, `npc`, `any` |  |  |
+
+### `pusher`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | yes | 0 turns the trap off (setters, difficulty steps) |
+| `size` | vec | m | `[0.3, 0.1]` | [0.03, 1.5] |  | paddle [width, height] |
+| `stroke` | float | m | `0.3` | [0.05, 1.5] |  | how far the paddle runs out |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | direction it pushes (0: +x) |
+| `power` | float | m/s | `0.3` | [0.02, 2] | yes | paddle speed |
 
 ### `receiver`
 
@@ -452,6 +550,18 @@ Role `prop`, update stage `device`.
 | `value` | any |  | required |  |  | new value (checked against the target value's schema) |
 | `revert` | bool |  | `False` |  |  | put the old value back when the signal turns off |
 
+### `spinner`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | yes | 0 turns the trap off (setters, difficulty steps) |
+| `length` | float | m | `0.4` | [0.05, 1.5] |  | hub to each tip |
+| `height` | float | m | `0.03` | [0.01, 0.3] |  | bar centre above the floor |
+| `thickness` | float | m | `0.03` | [0.01, 0.1] |  |  |
+| `power` | float | deg/s | `90.0` | [-720, 720] | yes | turn rate while active (+: counter-clockwise) |
+
 ### `spring`
 
 Role `prop`, update stage `device`.
@@ -492,6 +602,19 @@ Role `switch`, update stage `input`.
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
 | `latch` | bool |  | `True` |  |  | M1: stay on after the body leaves (oneshot); false: momentary |
+
+### `target`
+
+Role `sensor`, update stage `input`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.2, 0.2]` | [0.03, 2] |  | board [width, height] |
+| `height` | float | m | `0.2` | [0.05, 2] |  | board centre above the floor |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | direction the face looks |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | yes | slowest hit that counts |
+| `mode` | enum |  | `latch` | `pulse`, `latch` |  | pulse: 1 for the body step of a hit; latch: stays 1 |
+| `trigger` | enum |  | `shell` | `shell` |  | only cannon shells count |
 
 ### `transmitter`
 
@@ -535,6 +658,19 @@ Role `warp`, update stage `device`.
 | `routes` | any |  | — |  |  | conditional destinations: [{when: expr, to: dest}, ..., {else: dest}] |
 | `cooldown` | float | s | `1.0` | [0, 60] |  | time a warped body or object ignores warp pads |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
+
+### `wind`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | yes | 0 turns the trap off (setters, difficulty steps) |
+| `size` | vec | m | `[0.6, 0.6]` | [0.05, 5] |  | zone size [x, y] |
+| `height` | float | m | `0.4` | [0.05, 2] |  | zone height above the floor |
+| `yaw` | float | deg | `0.0` | [-180, 180] | yes | direction the wind blows (0: +x, 90: +y) |
+| `power` | float | N | `1.0` | [0, 20] | yes | force on each body or object in the zone |
+| `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it pushes |
 
 ### `zone`
 
@@ -580,6 +716,7 @@ Role `switch`, update stage `input`.
 | `input/object_zone` | `zone` | `trigger: object`, `size: [0.4, 0.4]`, `height: 0.3` |
 | `input/pressure_plate` | `pressure` | `trigger: object`, `size: [0.25, 0.25]`, `min_mass: 0.1` |
 | `input/socket` | `receptacle` | `shape: plate`, `size: [0.2, 0.2]`, `tolerance: 0.05`, `angle_tolerance: 15.0` |
+| `input/target` | `target` | `size: [0.2, 0.2]`, `height: 0.2`, `mode: latch` |
 | `logic/and` | `gate` | `op: and` |
 | `logic/counter` | `counter` | `start: 0`, `target: 3` |
 | `logic/delay` | `gate` | `op: delay`, `seconds: 1.0` |
@@ -594,7 +731,14 @@ Role `switch`, update stage `input`.
 | `object/ball` | `ball` | `radius: 0.05`, `mass: 0.05`, `elasticity: 0.5` |
 | `object/bowling_pin` | `pin` | `radius: 0.02`, `height: 0.12`, `mass: 0.03` |
 | `object/heavy_ball` | `ball` | `radius: 0.08`, `mass: 0.5`, `elasticity: 0.2` |
+| `trap/cannon` | `cannon` | `aim: at_body` |
+| `trap/cannon_turret` | `cannon` | `fire: edge`, `aim: signal`, `spread: 0.0`, `burst: 1` |
+| `trap/crosswind` | `wind` | `size: [0.6, 1.0]`, `height: 0.4`, `yaw: 90.0`, `power: 1.0` |
+| `trap/pendulum` | `pendulum` | `height: 0.6`, `length: 0.45`, `power: 40.0`, `period: 1.6` |
+| `trap/pit` | `pit` | `size: [0.3, 0.3]`, `on_fall: fail` |
+| `trap/pusher` | `pusher` | `size: [0.3, 0.1]`, `stroke: 0.3`, `power: 0.3` |
 | `trap/slippery_floor` | `floor_tile` | `size: [0.4, 0.4]`, `friction: [0.2, 0.005, 0.0001]` |
+| `trap/spinning_bar` | `spinner` | `length: 0.4`, `height: 0.03`, `power: 90.0` |
 | `trap/sticky_floor` | `floor_tile` | `size: [0.4, 0.4]`, `friction: [2.0, 0.02, 0.01]` |
 
 ### Assembly presets

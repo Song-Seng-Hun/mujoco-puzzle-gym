@@ -1,0 +1,6 @@
+# Pusher (R16): a paddle that runs out of its housing and back while on.
+# Set: pos, yaw, stroke, power [m/s], in.
+type: pusher
+size: [0.3, 0.1]
+stroke: 0.3
+power: 0.3

@@ -23,7 +23,7 @@ SOLO = {
     "logic/pulse": {"in": ["a"]}, "logic/counter": {"up": "a"},
     "logic/transmitter": {"in": ["a"]},
     "input/laser_beam": {"to": [0.5, -0.3]},
-    "device/elevator": {"in": ["a"]},
+    "device/elevator": {"in": ["a"]}, "trap/cannon_turret": {"in": ["a"]},
     "device/setter": {"in": ["a"], "target": "sp.velocity", "value": [0.0, 0.0, 1.0]},
 }
 EXTRA = {   # a partner part some presets need

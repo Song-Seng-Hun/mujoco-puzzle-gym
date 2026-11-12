@@ -79,6 +79,28 @@ parts:
 - 값 연결 `bind`: 모든 부품이 받는 값입니다. `bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}`처럼 실행 중 변경할 수 있는 수 값을 채널에 직선으로 잇고, 매 몸 스텝 값의 범위로 잘라 적용합니다. 같은 값을 `bind`와 설정 변경기가 함께 바꾸면 거절합니다.
 - 풀이 순서와 해답은 플랫폼과 회전판 칸, 솟을 기둥 칸을 피해 갑니다. 몸이 그 위에 탄 채 버티는지는 걷기 정책이 배운 범위 밖이라 기록만 합니다. 2026-11-12 기록: 플랫폼 0.1·0.3 m/s와 띠 0.1·0.2 m/s에서 3초 동안 넘어지지 않았습니다.
 
+## 함정
+
+함정(`trap` 분류)은 몸을 밀거나 넘어뜨리거나 떨어뜨립니다. 모두 `in`의 신호가 켜진 동안만 움직이고(`in`이 없으면 늘), 세기는 `power` 하나로 정합니다. `enabled: 0`이면 꺼집니다(`in`이 없는 구덩이는 늘 열려 있어 끌 수 없고, `enable`·`enabled`를 쓰면 거절합니다. 켜고 끄려면 `in`을 주세요). `power`와 `enabled`는 실행 중 바꿀 수 있어서 설정 변경기, `bind`, 난이도 단계(아래)로 조절합니다.
+
+| 함정 | 프리셋 | `power` |
+|---|---|---|
+| 바람 `wind` | `trap/crosswind` | 구역 안의 몸과 물체를 미는 힘 [N], 방향은 `yaw` |
+| 밀대 `pusher` | `trap/pusher` | 판이 집에서 나왔다 들어가는 속도 [m/s] |
+| 회전 막대 `spinner` | `trap/spinning_bar` | 바닥 높이 막대의 회전 속도 [deg/s] |
+| 진자 `pendulum` | `trap/pendulum` | 흔들리는 폭 [deg], 주기는 `period` |
+| 구덩이 `pit` | `trap/pit` | 없음. 빠지면 `on_fall: fail`(에피소드 실패) 또는 `reset`(출발점이나 체크포인트로). `in`이 있으면 꺼진 동안 뚜껑이 덮여 있습니다 |
+| 대포 `cannon` | `trap/cannon`, `trap/cannon_turret` | 포탄을 쏘는 속도 [m/s] |
+| 미끄러운 바닥, 끈적한 바닥 | `trap/slippery_floor`, `trap/sticky_floor` | 바닥 칸(`floor_tile`)의 마찰 |
+
+- 풀이 순서와 해답은 구덩이, 회전 막대와 진자가 쓸고 가는 자리, 밀대가 나오는 자리를 구멍으로 보고 돌아갑니다.
+- 대포는 `period`초마다 `burst`발을 쏩니다(`fire: edge`면 신호가 켜지는 순간마다). 겨누기 `aim`은 `fixed`(`yaw` + `aim_yaw`, `aim_pitch`), `at_body`(지금 몸 위치), `lead`(몸이 갈 곳), `signal`(`aim_yaw`, `aim_pitch`를 `bind`로 채널에 이음)입니다. `spread`는 겨눈 방향 둘레 원뿔의 반각입니다. `<이름>.fired`는 쏜 순간 한 스텝 켜지고, `<이름>.hits`는 몸에 맞은 수입니다.
+- 포탄은 미리 만든 `pool`개(기본 10)를 돌려 씁니다. `lifetime`초가 지나거나 모두 나가 있으면 가장 오래된 것을 거둬 다시 쏩니다. 저장본에 날아가는 포탄도 담깁니다.
+- 포탄은 버튼, 압력판, 구역을 누르지 않습니다. 맞히는 것은 과녁(`input/target`)뿐입니다. 과녁은 `min_speed` 이상으로 맞으면 `<이름>.hits`를 올리고 켜집니다(`mode: latch`는 켜진 채, `pulse`는 한 스텝).
+- 포탑(`trap/cannon_turret`)은 레버 같은 신호로 겨누고 신호가 켜질 때 한 발 쏩니다. `mpg check`는 `bind`가 낼 수 있는 겨눔 범위 전체에서 포물선을 계산해, 한 방향이라도 과녁 판에 맞으면 통과시킵니다. `spread`가 있으면 원뿔 전체가 판에 들어와야 맞힌 것으로 칩니다.
+- 넘어뜨리는 세기 기록(2026-11-12, 서 있는 몸, 0.4 m 거리, 옆과 앞에서 각 3번): 포탄 질량 × 속도가 0.5 N·s 이하면 한 번도 넘어지지 않았고, 0.6 N·s(0.1 kg, 6 m/s, 앞)부터 넘어지기 시작해 0.8 N·s(0.2 kg, 4 m/s)에서 6번 중 4번, 1.0 N·s(0.2 kg, 5 m/s)에서 6번 모두 넘어졌습니다. 그래서 기본값은 0.2 kg, 5 m/s입니다. 걷는 중에는 더 약해서, 0.4 N·s 포탄을 2.5초마다 맞은 해답이 20번 중 6번 넘어졌습니다.
+- 포탄 질량(`shell_mass`)은 방을 지을 때만 정합니다. MuJoCo가 물체의 질량 행렬을 미리 계산해 두어서, 실행 중에 바꾸면 움직임이 틀어집니다.
+
 ## 조립 예
 
 모두 `mpg check`의 해답 단계를 20번 중 18번 이상 통과합니다.
@@ -94,6 +116,7 @@ parts:
 | `puzzles/ball/bowling` | 공으로 핀 셋 중 하나를 쓰러뜨리면(`<핀>.down`) 문이 열립니다 | `ball`, `pin` |
 | `puzzles/ball/color_sort` | 색별 골대 두 개에 공을 나눠 넣고 카운터로 문을 엽니다 | `ball`, `goal_net`, `counter` |
 | [`examples/rooms/lift_spring.yaml`](../examples/rooms/lift_spring.yaml) | 버튼 하나가 문을 열고, 엘리베이터를 올리고, 설정 변경기로 스프링을 켜서 공이 튀어 오릅니다 | `device/elevator`, `device/spring_pad`, `device/setter`, `device/sliding_door` |
+| [`examples/rooms/trap_run.yaml`](../examples/rooms/trap_run.yaml) | 구덩이를 돌아가고, 바닥에서 도는 막대 옆과 약한 옆바람 속을 지나 골로 | `trap/pit`, `trap/spinning_bar`, `trap/crosswind` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 글자 지도로 그린 두 방, 계단과 경사로 | `button`, `door` |
 
 공 조립 프리셋은 방 하나 전체라서 그대로 `mpg check`에 넣어도 되고, `preset: puzzles/ball/bowling`으로 깔고 값을 바꿔 써도 됩니다.
@@ -134,6 +157,22 @@ mpg check examples/rooms/four_flags.yaml
 mpg train task.yaml --minutes 60 --curriculum forward
 mpg eval runs/<id> --full --segments
 ```
+
+### 난이도 단계
+
+`task.yaml`의 `difficulty:`는 함정 세기 같은 값을 단계별로 올립니다. 실행 중 변경("예")이나 에피소드 시작에 바꿀 수 있는 값만 됩니다.
+
+```yaml
+difficulty:
+  - {param: cannon_a.power, from: 2.0, to: 5.0, steps: 4}   # 단계 0..3에서 2, 3, 4, 5
+  - {param: wind_a.enabled, from: 0, to: 1, at_step: 2}      # 단계 2부터 켜짐
+curriculum: {mode: forward, order: difficulty_first}
+```
+
+- `steps: n`은 `from`에서 `to`까지 n단계로 나누고, `at_step: k`는 k단계부터 `to`입니다. 줄마다 단계 수가 다르면 가장 긴 것에 맞추고 짧은 줄은 끝값에 머뭅니다.
+- 단계별 학습은 (구간, 난이도) 쌍을 하나씩 엽니다. `order: difficulty_first`(기본)는 한 구간의 난이도를 다 올린 뒤 다음 구간으로, `segment_first`는 한 난이도로 모든 구간을 연 뒤 다음 난이도로 갑니다. 수준 이름은 `<구간>@d<단계>`이고 `curriculum.json`과 에피소드 기록에 남습니다.
+- `bind`가 거는 값, 범위 밖 값, 크기 값은 방을 읽을 때 거절합니다.
+- 뽑기 없이 돌리면(평가, 직접 `reset`) 마지막 단계입니다. `mpg eval runs/<id> --difficulty 1`처럼 단계를 고를 수 있습니다.
 
 ## 잡기는 아직 없습니다
 
@@ -208,6 +247,28 @@ def majority(inputs, state, dt):
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what presses it: body, object, npc or any (not shells or rope knots) |
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
+
+### `cannon`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 예 | 0 turns the trap off (setters, difficulty steps) |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | heading the cannon faces |
+| `height` | float | m | `0.15` | [0.05, 1.5] |  | muzzle height above the floor |
+| `power` | float | m/s | `5.0` | [0.5, 15] | 예 | launch speed |
+| `shell_mass` | float | kg | `0.2` | [0.005, 1] |  | shell mass |
+| `shell_radius` | float | m | `0.025` | [0.01, 0.1] |  |  |
+| `period` | float | s | `2.0` | [0.2, 60] | 예 | fire: auto: time between bursts |
+| `burst` | int |  | `1` | [1, 10] | 예 | shells per burst |
+| `spread` | float | deg | `0.0` | [0, 30] | 예 | half angle of the random cone around the aim |
+| `aim` | enum |  | `fixed` | `fixed`, `at_body`, `lead`, `signal` |  | fixed: yaw + aim_yaw, aim_pitch; at_body / lead: at the body (now / ahead); signal: aim_yaw, aim_pitch from channels (bind) |
+| `aim_yaw` | float | deg | `0.0` | [-180, 180] | 예 | aim left / right of `yaw` |
+| `aim_pitch` | float | deg | `10.0` | [-30, 80] | 예 | aim elevation |
+| `lifetime` | float | s | `3.0` | [0.2, 30] |  | a shell is parked after this |
+| `pool` | int |  | `10` | [1, 50] |  | shells built in advance (reused) |
+| `fire` | enum |  | `auto` | `auto`, `edge` |  | auto: every `period` while active; edge: one burst per rising edge of `in` |
 
 ### `checkpoint`
 
@@ -363,6 +424,21 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
 
+### `pendulum`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 예 | 0 turns the trap off (setters, difficulty steps) |
+| `height` | float | m | `0.6` | [0.1, 2] |  | pivot above the floor |
+| `length` | float | m | `0.45` | [0.05, 1.9] |  | pivot to ball centre |
+| `radius` | float | m | `0.06` | [0.01, 0.3] |  | ball radius |
+| `mass` | float | kg | `0.5` | [0.01, 5] |  | ball mass |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | swing direction |
+| `period` | float | s | `1.6` | [0.3, 10] | 예 | one full swing |
+| `power` | float | deg | `40.0` | [0, 80] | 예 | swing amplitude while active |
+
 ### `pillar`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -386,6 +462,16 @@ def majority(inputs, state, dt):
 | `down_angle` | float | deg | `45.0` | [5, 90] |  | tilt from upright that counts as down |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
 
+### `pit`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 예 | 0 closes the lid; only a pit with `in` can be switched |
+| `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | tile size [x, y] |
+| `on_fall` | enum |  | `fail` | `fail`, `reset` |  | fail: the episode ends; reset: back to the last checkpoint or the start |
+
 ### `platform`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -408,6 +494,18 @@ def majority(inputs, state, dt):
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  |  |
 | `min_mass` | float | kg | `0.1` | [0.001, 100] | 예 | mass needed to turn on |
 | `trigger` | enum |  | `object` | `body`, `object`, `npc`, `any` |  |  |
+
+### `pusher`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 예 | 0 turns the trap off (setters, difficulty steps) |
+| `size` | vec | m | `[0.3, 0.1]` | [0.03, 1.5] |  | paddle [width, height] |
+| `stroke` | float | m | `0.3` | [0.05, 1.5] |  | how far the paddle runs out |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | direction it pushes (0: +x) |
+| `power` | float | m/s | `0.3` | [0.02, 2] | 예 | paddle speed |
 
 ### `receiver`
 
@@ -452,6 +550,18 @@ def majority(inputs, state, dt):
 | `value` | any |  | 필수 |  |  | new value (checked against the target value's schema) |
 | `revert` | bool |  | `False` |  |  | put the old value back when the signal turns off |
 
+### `spinner`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 예 | 0 turns the trap off (setters, difficulty steps) |
+| `length` | float | m | `0.4` | [0.05, 1.5] |  | hub to each tip |
+| `height` | float | m | `0.03` | [0.01, 0.3] |  | bar centre above the floor |
+| `thickness` | float | m | `0.03` | [0.01, 0.1] |  |  |
+| `power` | float | deg/s | `90.0` | [-720, 720] | 예 | turn rate while active (+: counter-clockwise) |
+
 ### `spring`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -492,6 +602,19 @@ def majority(inputs, state, dt):
 | `size` | vec | m | `[0.25, 0.25]` | [0.05, 2] |  | plate size [x, y] |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects press it when their centre is lower than this |
 | `latch` | bool |  | `True` |  |  | M1: stay on after the body leaves (oneshot); false: momentary |
+
+### `target`
+
+역할 `sensor`, 갱신 단계 `input`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.2, 0.2]` | [0.03, 2] |  | board [width, height] |
+| `height` | float | m | `0.2` | [0.05, 2] |  | board centre above the floor |
+| `yaw` | float | deg | `0.0` | [-180, 180] |  | direction the face looks |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | slowest hit that counts |
+| `mode` | enum |  | `latch` | `pulse`, `latch` |  | pulse: 1 for the body step of a hit; latch: stays 1 |
+| `trigger` | enum |  | `shell` | `shell` |  | only cannon shells count |
 
 ### `transmitter`
 
@@ -535,6 +658,19 @@ def majority(inputs, state, dt):
 | `routes` | any |  | — |  |  | conditional destinations: [{when: expr, to: dest}, ..., {else: dest}] |
 | `cooldown` | float | s | `1.0` | [0, 60] |  | time a warped body or object ignores warp pads |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
+
+### `wind`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 예 | 0 turns the trap off (setters, difficulty steps) |
+| `size` | vec | m | `[0.6, 0.6]` | [0.05, 5] |  | zone size [x, y] |
+| `height` | float | m | `0.4` | [0.05, 2] |  | zone height above the floor |
+| `yaw` | float | deg | `0.0` | [-180, 180] | 예 | direction the wind blows (0: +x, 90: +y) |
+| `power` | float | N | `1.0` | [0, 20] | 예 | force on each body or object in the zone |
+| `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it pushes |
 
 ### `zone`
 
@@ -580,6 +716,7 @@ def majority(inputs, state, dt):
 | `input/object_zone` | `zone` | `trigger: object`, `size: [0.4, 0.4]`, `height: 0.3` |
 | `input/pressure_plate` | `pressure` | `trigger: object`, `size: [0.25, 0.25]`, `min_mass: 0.1` |
 | `input/socket` | `receptacle` | `shape: plate`, `size: [0.2, 0.2]`, `tolerance: 0.05`, `angle_tolerance: 15.0` |
+| `input/target` | `target` | `size: [0.2, 0.2]`, `height: 0.2`, `mode: latch` |
 | `logic/and` | `gate` | `op: and` |
 | `logic/counter` | `counter` | `start: 0`, `target: 3` |
 | `logic/delay` | `gate` | `op: delay`, `seconds: 1.0` |
@@ -594,7 +731,14 @@ def majority(inputs, state, dt):
 | `object/ball` | `ball` | `radius: 0.05`, `mass: 0.05`, `elasticity: 0.5` |
 | `object/bowling_pin` | `pin` | `radius: 0.02`, `height: 0.12`, `mass: 0.03` |
 | `object/heavy_ball` | `ball` | `radius: 0.08`, `mass: 0.5`, `elasticity: 0.2` |
+| `trap/cannon` | `cannon` | `aim: at_body` |
+| `trap/cannon_turret` | `cannon` | `fire: edge`, `aim: signal`, `spread: 0.0`, `burst: 1` |
+| `trap/crosswind` | `wind` | `size: [0.6, 1.0]`, `height: 0.4`, `yaw: 90.0`, `power: 1.0` |
+| `trap/pendulum` | `pendulum` | `height: 0.6`, `length: 0.45`, `power: 40.0`, `period: 1.6` |
+| `trap/pit` | `pit` | `size: [0.3, 0.3]`, `on_fall: fail` |
+| `trap/pusher` | `pusher` | `size: [0.3, 0.1]`, `stroke: 0.3`, `power: 0.3` |
 | `trap/slippery_floor` | `floor_tile` | `size: [0.4, 0.4]`, `friction: [0.2, 0.005, 0.0001]` |
+| `trap/spinning_bar` | `spinner` | `length: 0.4`, `height: 0.03`, `power: 90.0` |
 | `trap/sticky_floor` | `floor_tile` | `size: [0.4, 0.4]`, `friction: [2.0, 0.02, 0.01]` |
 
 ### 조립 프리셋

@@ -10,9 +10,12 @@ task is saved as `task.resolved.yaml` next to a run.
                                   # parameters: {item: coins, k: 5} (R39, obs.py)
     critic_obs: [part_pos, part_state]   # optional: value function only (R39)
     randomize: {body: 1.0}        # optional: scales obs-item `noise` (R35 body layer)
-    curriculum: {mode: none, advance_at: 0.8, replay: 0.2, window: 50, snapshots: null}
+    curriculum: {mode: none, advance_at: 0.8, replay: 0.2, window: 50, snapshots: null,
+                 order: difficulty_first}
                                   # R21 segments over checkpoint flags (curriculum.py);
                                   # `snapshots` is relative to the task file
+    difficulty: []                # R21 difficulty steps, e.g.
+                                  # [{param: cannon_a.power, from: 1, to: 3, steps: 3}]
     reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
     termination: {success: true, fall: true}
     algo: ppo
@@ -51,6 +54,7 @@ DEFAULTS: dict[str, Any] = {
     "n_envs": 12,
     "seed": 0,
     "curriculum": dict(curriculum.DEFAULTS),
+    "difficulty": [],
 }
 
 
