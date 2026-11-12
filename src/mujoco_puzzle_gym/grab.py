@@ -1,27 +1,32 @@
-"""Beak grab (R18): a weld constraint between the beak and a cube handle.
+"""Beak grab (R18): a weld constraint between the beak and an object's handle.
 
 Not a physical grip: the body model has no jaw joint, so a grab switches on a
 weld (`eq_active`) between the head body carrying the beak-tip site
-(`BodyAdapter.grab_site()`) and the cube, keeping their relative pose at that
-moment; the head and the cubes do not collide. A room with cubes gets the hidden input part `_beak` (first in the
-room order, so sensors see this body step's `World.held`); it builds one
-inactive weld per cube once the body is in the scene (`attach_body`).
+(`BodyAdapter.grab_site()`) and the object, keeping their relative pose at that
+moment; the head and the objects do not collide. "Object" here is any
+grabbable part (a part with handles: the cube, R17, and the R28 objects,
+parts/object/grabbable.py). A room with them gets the hidden input part
+`_beak` (first in the room order, so sensors see this body step's
+`World.held`); it builds one inactive weld per object once the body is in the
+scene (`attach_body`).
 
 Every body step it reads the grab command `World.grab` (the env's `grab`
 action, R19):
-- above 0.5 and nothing held: the cube whose handle is nearest the beak tip,
-  within that cube's `grab_radius`, is grabbed, unless its mass is above the
+- above 0.5 and nothing held: the object whose handle is nearest the beak tip,
+  within that object's `grab_radius`, is grabbed, unless its mass is above the
   body's `max_lift_mass` (then `beak.too_heavy` is 1 while it tries);
-- 0.5 or below: the held cube is let go;
-- holding takes more than the cube's `max_hold_force` (weld force): it is let
-  go and `<cube>.dropped` pulses; the beak grabs again only after the command
-  went to 0.5 or below.
-The held cube's root body id is in `World.held`, so floor buttons, pressure
-plates, zones and receptacles do not count it (R5).
+- 0.5 or below: the held object is let go;
+- holding takes more than the object's `max_hold_force` (weld force): it is
+  let go and `<object>.dropped` pulses; the beak grabs again only after the
+  command went to 0.5 or below.
+The held object's root body id is in `World.held`, so floor buttons, pressure
+plates, zones and receptacles do not count it (R5). A held object with a
+`tip_point` (the stick, R28) puts that point in `World.tool_tip`, where wall
+buttons look for a press as for the beak tip.
 
-Channels: `beak.holding`, `beak.held_id` (marker id of the held cube, -1:
-none or no marker), `beak.too_heavy`, and per cube `<cube>.held`,
-`<cube>.dropped`. Snapshots keep the weld through `eq_active` (MuJoCo state)
+Channels: `beak.holding`, `beak.held_id` (marker id of the held object, -1:
+none or no marker), `beak.too_heavy`, and per object `<object>.held`,
+`<object>.dropped`. Snapshots keep the weld through `eq_active` (MuJoCo state)
 and its pose through `eq_data` (snapshot.MODEL_FIELDS).
 """
 
@@ -37,6 +42,17 @@ BEAK_PART = "_beak"
 GRAB_ON = 0.5
 WELD_SOLREF = [0.02, 1.0]
 WELD_SOLIMP = [0.95, 0.99, 0.001, 0.5, 2.0]
+
+
+def weld_now(model, data, eq: int, parent: int, child: int) -> None:
+    """Switch on weld `eq` (body1 `parent`, body2 `child`) at their present relative pose."""
+    rp = data.xmat[parent].reshape(3, 3)
+    q = np.zeros(4)
+    mujoco.mju_mulQuat(q, np.array([data.xquat[parent][0], *-data.xquat[parent][1:]]), data.xquat[child])
+    model.eq_data[eq, 3:6] = rp.T @ (data.xpos[child] - data.xpos[parent])
+    model.eq_data[eq, 6:10] = q
+    model.eq_data[eq, :3] = 0.0
+    data.eq_active[eq] = 1
 
 
 def add_beak(parts: dict[str, Part]) -> None:
@@ -72,8 +88,8 @@ class Beak(Part):
 
     # ---- scene ------------------------------------------------------------------
     def attach_body(self, spec: mujoco.MjSpec, body) -> None:
-        """One inactive weld per cube between the head (the beak site's body) and the
-        cube, and no contacts between the two (a held handle sits at the beak tip)."""
+        """One inactive weld per object between the head (the beak site's body) and the
+        object, and no contacts between the two (a held handle sits at the beak tip)."""
         self._site_name = body.grab_site()
         if self._site_name is None:
             return
@@ -94,6 +110,8 @@ class Beak(Part):
 
     def reset(self, model, data):
         self.held, self.armed, self.too_heavy = None, True, False
+        if self.world is not None:
+            self.world.tool_tip = None
         self._write([False] * len(self.objects))
 
     # ---- grabbing ---------------------------------------------------------------
@@ -110,24 +128,15 @@ class Beak(Part):
             self.write(float(dropped[i]), obj.name + ".dropped")
 
     def weld_force(self, data, i: int) -> float:
-        """Force [N] the weld of cube `i` carries now (its three translational rows)."""
+        """Force [N] the weld of object `i` carries now (its three translational rows)."""
         rows = np.nonzero((data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY)
                           & (data.efc_id == self._eq[i]))[0][:3]
         return float(np.linalg.norm(data.efc_force[rows])) if len(rows) else 0.0
 
     def _grab(self, model, data, i: int) -> None:
-        """Switch on cube i's weld at the present relative pose (head -> cube)."""
+        """Switch on object i's weld at the present relative pose (head -> object)."""
         obj = self.objects[i]
-        eq = self._eq[i]
-        rh = data.xmat[self._head].reshape(3, 3)
-        rel = rh.T @ (data.xpos[obj._bid] - data.xpos[self._head])
-        q = np.zeros(4)
-        mujoco.mju_mulQuat(q, np.array([data.xquat[self._head][0], *-data.xquat[self._head][1:]]),
-                           data.xquat[obj._bid])
-        model.eq_data[eq, 3:6] = rel
-        model.eq_data[eq, 6:10] = q
-        model.eq_data[eq, :3] = 0.0
-        data.eq_active[eq] = 1
+        weld_now(model, data, self._eq[i], self._head, obj._bid)
         self.held = i
         self.world.held = {int(model.body_rootid[obj._bid])}
 
@@ -137,7 +146,7 @@ class Beak(Part):
         self.world.held = set()
 
     def nearest(self, data) -> tuple[int, float] | None:
-        """(cube index, distance [m]) of the handle nearest the beak tip, or None."""
+        """(object index, distance [m]) of the handle nearest the beak tip, or None."""
         if not self._eq:
             return None
         tip = data.site_xpos[self._site]
@@ -173,4 +182,6 @@ class Beak(Part):
                     self.too_heavy = True
                 else:
                     self._grab(model, data, near[0])
+        held = self.objects[self.held] if self.held is not None else None
+        w.tool_tip = held.tip_point(data) if held is not None and hasattr(held, "tip_point") else None
         self._write(dropped)

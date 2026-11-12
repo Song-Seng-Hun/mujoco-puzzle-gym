@@ -22,7 +22,8 @@ normal; MuJoCo maps the PNG unmirrored onto that face.
 Room load (static check, stage `values`) rejects an id outside the dictionary,
 a marker bigger than its face, and two parts with the same id, except copies of
 one object (parts whose `marker_clone_of` names the same original, e.g. the
-copies a dispenser makes) which share the original's id.
+copies a dispenser makes) which share the original's id, and a receptacle
+showing a marker id its `accept` lists (a key's socket, R28).
 """
 
 from __future__ import annotations
@@ -153,7 +154,8 @@ def assign_ids(parts: dict[str, "Part"]) -> None:
         group = getattr(p, "marker_clone_of", None)
         if m.id in used:
             other, ogroup = used[m.id]
-            if group is None or group != ogroup:
+            shared = m.id in getattr(p, "marker_match", ()) or m.id in getattr(parts[other], "marker_match", ())
+            if (group is None or group != ogroup) and not shared:
                 raise SchemaError(f"parts {other!r} and {name!r} both have marker id {m.id}; "
                                   f"give one another id or leave it out for a free one")
         else:

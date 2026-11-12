@@ -1,0 +1,6 @@
+# Egg (R28): breaks (`<name>.broken`) when a contact starts as fast as a drop
+# from `break_height` (5 cm): any let-go from the beak onto the floor breaks
+# it, carrying bumps do not; a broken egg fails the episode. Set: pos, on_break.
+type: egg
+break_height: 0.05
+on_break: fail

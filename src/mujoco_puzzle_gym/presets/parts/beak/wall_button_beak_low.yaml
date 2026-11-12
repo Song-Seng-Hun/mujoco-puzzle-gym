@@ -1,0 +1,8 @@
+# Beak wall button, low (R28, R4): plate 12 x 6 cm centred 0.15 m up, wholly
+# below the level beak tip (0.21 m), so the body lowers its head (`head`
+# action). Set: pos (a point on the wall face), facing (away from the wall).
+type: button
+mount: wall
+kind: oneshot
+height: 0.15
+size: [0.12, 0.06]

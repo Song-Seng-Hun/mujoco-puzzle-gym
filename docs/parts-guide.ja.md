@@ -7,7 +7,7 @@
 ## 部品、プリセット、組み立てプリセット
 
 - **部品**は`room.yaml`の`parts:`の一行です。種類(`type`)と値でできています。種類ごとに受け付ける値と単位、既定値、許される範囲が決まっていて(値のスキーマ)、範囲外の値は`mpg build`と`mpg check`が理由と範囲を示して拒否します。
-- **部品プリセット**は、部品の種類一つと既定値のセットです。コードはありません。`src/mujoco_puzzle_gym/presets/parts/<分類>/<名前>.yaml`にあり、分類は`input`(ボタン・センサー)、`logic`(ゲート・カウンター・トランシーバー)、`device`(ドア・ワープ・ゴールネット・プラットフォーム・柱・回転台・コンベヤー・スプリング・設定変更器)、`floor`、`trap`、`object`、`beak`、`npc`(自分で動くロボット)です。`beak`はまだ空です。
+- **部品プリセット**は、部品の種類一つと既定値のセットです。コードはありません。`src/mujoco_puzzle_gym/presets/parts/<分類>/<名前>.yaml`にあり、分類は`input`(ボタン・センサー)、`logic`(ゲート・カウンター・トランシーバー)、`device`(ドア・ワープ・ゴールネット・プラットフォーム・柱・回転台・コンベヤー・スプリング・設定変更器)、`floor`、`trap`、`object`、`beak`、`npc`(自分で動くロボット)です。
 - **組み立てプリセット**は、複数の部品をまとめたもの、または部屋一つ全体です。`presets/puzzles/<テーマ>/<名前>.yaml`にあります。
 
 `mpg parts --json`は、登録された部品と値のスキーマ、プリセットの一覧を出します。自作の部品まで見るには`--plugin my_parts`を付けます。
@@ -161,7 +161,7 @@ parts:
 | `parts` | 部品ごとの点検(ゴールネットの入口より大きいボール、届かないボール・コイン)。体と同じくらい速いNPCロボットは警告(`warnings`)だけで、失敗にはなりません |
 | `overlap` | 既定の配置で、部品の硬い本体が壁やほかの部品に5 mmを超えてめり込んでいないか。床パッド・旗・ゴール領域は除き、ドアは自分の壁(ドアがふさぐすき間の壁、同じ線上の壁)とだけは重なってもかまいません |
 | `order` | 信号と壁から見て、ゴールまでの解く順序があるか。文字マップの部屋では、部品が床のマスの上にあるかと、行く手をふさぐ段差・坂も |
-| `actions` | 解くのに要る行動がtaskの`actions`にあるか。キューブを運ぶ必要があれば(`demo:`の`grab`、または解く順序にキューブだけが入れられる入力)`grab`、解答が押す壁のボタンの板の上端が頭を上げたくちばしの先(0.21 m)より低ければ`head`が要ります |
+| `actions` | 解くのに要る行動がtaskの`actions`にあるか。物を運ぶ必要があれば(`demo:`の`grab`、または解く順序につかめる物だけが入れられる入力)`grab`、解答が押す壁のボタンの板の上端が頭を上げたくちばしの先(0.21 m)より低ければ`head`が要ります |
 
 最初の三段階(`values`、`channels`、`demo`)は部屋を読み込む途中で失敗するので、そのときの結果には失敗した段階だけがあり、解答段階は飛ばします。静的段階だけを見るには`--static`を付けます。
 
@@ -206,11 +206,38 @@ curriculum: {mode: forward, order: difficulty_first}
 - くちばしでつかむ動作は、実物のアヒルには移せないシミュレーション上の単純化です。シミュレーションのモデルにはくちばしの関節がないので、くちばしの先(`mouth_tip`)が取っ手から`grab_radius`(既定4 cm)以内にあり、つかむ命令が0.5を超えると、頭とキューブの間の溶接拘束を入れます。頭とキューブはぶつかりません。0.5以下にすると放します。質量が体の`max_lift_mass`(既定0.05 kg)より大きいとつかめず、`beak.too_heavy`が1になります。保持に`max_hold_force`より大きな力が要ると落とし、`<キューブ>.dropped`がパルスで出ます。もう一度つかむには命令を一度下げてから上げます。
 - くちばしの先は床から0.135–0.21 mの高さなので、床のキューブには届きません。高さ0.17–0.19 mの台の手前の縁に、取っ手を体の方へ向けて置くと、歩いて近づいてつかめます。文字地図では高い床のマス(`legend`の`{type: floor, height: 0.18}`)が台になります。
 - チャンネル: `beak.holding`、`beak.held_id`(つかんだキューブのマーカー番号、なければ-1)、`beak.too_heavy`、キューブごとに`<キューブ>.held`、`<キューブ>.dropped`。つかまれたキューブは床のボタン、圧力板、区域、ソケットが数えません。保存データはつかんだ状態まで戻します。ワープは、くわえているキューブも頭に対する姿勢を保ったまま一緒に運びます。
-- 観測項目`beak`: つかんでいるか、つかんだ物の種類(キューブ1、なし0)、くちばしの先から一番近い取っ手までの相対位置(体の向き基準のx、y、z)。5個。
+- 観測項目`beak`: つかんでいるか、つかんだ物の種類(キューブ1、なし0、ほかの物は次の節)、くちばしの先から一番近い取っ手までの相対位置(体の向き基準のx、y、z)。5個。
 - 壁のボタン: `button`に`mount: wall`を付けると、壁の面(`pos`)の`height`の高さに`facing`の向きを向いた板(`size`: [幅, 高さ])になります。くちばしの先が板の上にあり、板の前6 cm以内なら押されます(壁に寄って頭を下げると胸が先に当たり、くちばしの先は板から4–5 cm離れるためです)。板の後ろは板の厚さ + 1 cmまでしか数えないので、薄い壁の向こう側のアヒルは押せません。`trigger`は使いません。
 - 上位の行動: `task.yaml`の`actions: [move]`(既定)に`head`(頭を下げる1個: -1でそのまま、1で一番低く)と`grab`(1個、0.5を超えるとつかむ)をこの順で足せます。行動の大きさは3に足した数を加えたものです。方策にできないことはスクリプト解答もしません。キューブを運ぶ部屋や低い壁のボタンを押す部屋は、taskに`grab`・`head`がないと`mpg check`の`actions`段階で失敗します。例: `mpg check examples/rooms/cube_plate.yaml --task examples/task_cube_plate.yaml`。
 - 解答の`demo:`: `grab <キューブ>`(取っ手の前まで歩き、頭の高さを合わせてつかむ)、`place <キューブ> <部品>`(部品の中心の上へ運んで止まってから放し、離れる)。壁のボタンは`press <ボタン>`か解く順序で、頭を下げて押します。
 - 例 [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml): 台の上のキューブをつかんで圧力板に載せ、ドアを開けます。
+
+## くちばしで扱う物と受ける部品
+
+`cube`のほかにも、取っ手のある物はすべて同じ方法でつかみます(つかむ半径、持てる質量、落とす力、`.held`・`.dropped`チャンネルが同じです)。プリセットは`beak`分類にあります。
+
+| プリセット | 種類 | 既定値 | 用途 |
+|---|---|---|---|
+| `beak/cube_weight` | `cube` | 4 cm、40 g | はかり・圧力板に載せる重り。体の`max_lift_mass`(0.05 kg)より少し軽い |
+| `beak/laundry` | `laundry` | 12 × 10 cm、厚さ6 mm、20 g、4辺の上に縁(`hem`) | 軽い洗濯物。板は硬く、しわは見た目だけです。上の縁をつかみます |
+| `beak/key` | `key` | 20 g、頭4 cm、軸5 cm、`-x`端に輪 | 頭にマーカーが付きます。`accept: [<マーカー番号>]`を持つ受ける部品だけが受け取ります |
+| `beak/handle_ball` | `handle_ball` | 半径3 cm、30 g、`-x`側に輪 | 放すと転がります。ボールの部品`ball`とは別です |
+| `beak/egg` | `egg` | 25 g、半径2.2 cm、高さ6 cm、横に取っ手4つ、`break_height` 0.05 m、`on_break: fail` | 割れると`<卵>.broken`が1になります |
+| `beak/stick` | `stick` | 長さ20 cm、太さ1.6 cm、20 g、`-x`端に取っ手 | くわえていると、遠い端が壁のボタンを押します |
+| `beak/hook` | `receptacle` `shape: hook` | 8 × 8 cmの柱、高さ0.19 mに長さ6 cmのかけ棒、`tolerance` 0.04 m | かけ棒の先から4 cm以内で放した物が掛かります |
+| `beak/basket` | `receptacle` `shape: box` | 30 × 30 cm、壁の高さ10 cm、`require: count`、`count: 1` | `<かご>.count`と`<かご>.mass`(kg)で中身を数えます |
+| `beak/scale` | `pressure` `trigger: object` | 20 × 20 cm、`min_mass` 5 g | 数値チャンネル`<はかり>.mass`(kg、1 g刻み)。5 gから`<はかり>`が1 |
+| `beak/wall_button_beak_low` | `button` `mount: wall` | 板12 × 6 cm、中心の高さ0.15 m、`oneshot` | 頭を下げないと(`head`行動)届きません |
+| `beak/wall_button_beak_mid` | `button` `mount: wall` | 板12 × 6 cm、中心の高さ0.2 m、`oneshot` | 立ったままくちばしの先(0.21 m)が届きます |
+
+- 卵: 接触が始まるときの法線方向の相対速度が、`break_height`から落ちたときの速さ(√(2·9.81·`break_height`)、既定0.99 m/s)以上なら割れます。既定の体で測った値(2026-11-12): くちばしから床へ放すと1.42 m/s(頭を一番低く)–1.86 m/s(頭を上げたまま)、台から取って床の板に置くと1.68–1.87 m/s、つかんで運ぶ間の衝突は0.24 m/s以下(台に押し付けると0.49 m/s)、着地後に触れるのは0.35 m/s以下です。そのため5 cmにすると放したときだけ割れます。部品の既定の`on_break`は`none`(チャンネルだけ)、プリセットは`fail`(割れるとエピソード失敗)です。割れた卵は色が変わり、保存データとリセットで戻ります。
+- 鍵とソケット: 受ける部品の`accept`には名前と種類のほかにマーカー番号(整数)も書けます。ソケットが同じ番号のマーカーを付けてもよく、このときだけマーカー番号の重複が許されます(ほかの重複は今まで通り拒否)。向きはソケットの`angle_tolerance`で見ます。
+- かけ棒: くわえていない物の取っ手がかけ棒の先から`tolerance`以内に来ると、物はかけ棒に固定され、入ったと数えます。もう一度くわえると外れます。かけ棒は見えるだけでぶつからない論理的なかけ棒です(ぶつかるのは柱だけで、柱と掛けられる物の間の接触は切ります)。`facing`がかけ棒の向きです。
+- かご: 壁が10 cmより低いと、体が引っかかって転ぶか壁を乗り越えます(5 cmの壁で4回中3回転倒)。10 cmの壁越しには、頭を上げたくちばしの先が壁面から5.8–6.8 cm先まで届きます。
+- 棒: くわえている棒の遠い端も、壁のボタンではくちばしの先と同じ窓(板の前6 cm、板の後ろは板の厚さ + 1 cm、板の幅・高さの内側)で数えます。測った値: スクリプトでゆっくり近づくと10回すべて、棒の端が板の面の前2.9–5.9 cm、高さの差2.7 cm以下で押し、押す前の溶接の力は0.89 N以下でした。壁にそのまま歩いて突っ込むと、6回中4回は力が`max_hold_force`(3 N)を超えて棒を落とします。頭を下げると棒の端は大きく下がります(頭1単位で約0.43 rad)。
+- 観測`beak`の物の種類: `cube` 1、`laundry` 2、`key` 3、`handle_ball` 4、`egg` 5、`stick` 6、なし0。
+- 解答の`demo:`に`drop <物> <部品>`が加わります。`place`と同じく運びますが、頭を上げたまま放します(卵を割る解答)。`place <物> <かけ棒>`は先頭の取っ手をかけ棒の先に合わせて掛けます。棒をくわえて`press <ボタン>`をすると、棒の端を板の高さに合わせて押します。
+- 既知の限界: 割れた卵も受ける部品が数えます。かご・はかりに置くスクリプト解答は、部屋とシードによって10回中8–10回成功します。
 
 ## Pythonプラグイン
 
@@ -387,13 +414,13 @@ def majority(inputs, state, dt):
 
 | 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
 |---|---|---|---|---|---|---|
-| `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
 | `mass` | float | kg | `0.03` | [0.001, 10] |  | above the body's max_lift_mass the beak cannot lift it |
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
-| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
-| `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
+| `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
 
 ### `door`
 
@@ -408,6 +435,23 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.25` | [0.05, 1] |  |  |
 | `open_dir` | enum |  | `1` | `1`, `-1` |  | slide toward +axis (1) or -axis (-1) |
 | `speed` | float | m/s | — | [0.02, 5] |  | opening speed (default: as fast as the motor moves it) |
+
+### `egg`
+
+役割`prop`、更新段階`input`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.025` | [0.005, 0.2] |  |  |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `radius` | float | m | `0.022` | [0.01, 0.06] |  | egg radius (x, y) |
+| `height` | float | m | `0.06` | [0.02, 0.15] |  | egg height (z) |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a knob: +x, -x, +y, -y |
+| `handle_size` | float | m | `0.012` | [0.005, 0.05] |  |  |
+| `break_height` | float | m | `0.05` | [0.005, 2] | 可 | a contact starting as fast as a drop from this height breaks it |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: a broken egg fails the episode |
 
 ### `floor_tile`
 
@@ -464,6 +508,35 @@ def majority(inputs, state, dt):
 | `accepts` | list |  | `[]` |  |  | ball colours that count (empty: any) |
 | `need` | int |  | `1` | [1, 100] |  | balls in for the main channel |
 
+### `handle_ball`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.03` | [0.001, 10] |  | above the body's max_lift_mass the beak cannot lift it |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `radius` | float | m | `0.03` | [0.015, 0.1] |  |  |
+| `roll_friction` | float | m | `0.002` | [0, 0.05] |  | rolling friction (low: it rolls on once let go) |
+| `handles` | list |  | `['-x']` |  |  | faces with a ring handle: +x, -x, +y, -y |
+| `ring` | float | m | `0.012` | [0.005, 0.04] |  | ring radius |
+
+### `key`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.02` | [0.001, 1] |  |  |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `head` | float | m | `0.04` | [0.02, 0.1] |  | side of the square head (the marker sits on it) |
+| `shaft` | float | m | `0.05` | [0.01, 0.2] |  | shaft length along +x |
+| `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the ring sticks out of the head's -x end |
+
 ### `laser`
 
 役割`switch`、更新段階`input`。
@@ -473,6 +546,21 @@ def majority(inputs, state, dt):
 | `to` | vec | m | 必須 |  |  | receiver position [x, y] |
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
+
+### `laundry`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.02` | [0.001, 1] |  | a light cloth |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `size` | vec | m | `[0.12, 0.1]` | [0.04, 0.4] |  | cloth [x, y] |
+| `thickness` | float | m | `0.006` | [0.002, 0.03] |  |  |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | top edges with a hem the beak grabs: +x, -x, +y, -y |
+| `hem` | float | m | `0.01` | [0.004, 0.05] |  | how far a hem sticks out of its edge |
 
 ### `npc`
 
@@ -595,21 +683,24 @@ def majority(inputs, state, dt):
 | 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
 |---|---|---|---|---|---|---|
 | `require` | enum |  | `all` | `all`, `count`, `mass`, `order` |  |  |
-| `shape` | enum |  | `box` | `box`, `plate` |  |  |
+| `shape` | enum |  | `box` | `box`, `plate`, `hook` |  |  |
 | `size` | vec | m | `[0.3, 0.3]` | [0.05, 2] |  |  |
 | `wall_height` | float | m | `0.06` | [0.01, 0.5] |  |  |
 | `wall_thickness` | float | m | `0.01` | [0.005, 0.1] |  |  |
-| `accept` | list |  | `[]` |  |  | object names or kinds that count (empty: any) |
+| `accept` | any |  | `[]` |  |  | object names, kinds or marker ids that count (empty: any) |
 | `count` | int |  | `1` | [1, 100] |  | require count: objects needed |
 | `mass` | float | kg | `0.1` | [0.001, 100] |  | require mass |
 | `order` | list |  | — |  |  | require order: names in the order they go in |
-| `tolerance` | float | m | `0.05` | [0.005, 1] |  | plate: position error |
+| `tolerance` | float | m | `0.05` | [0.005, 1] |  | plate: position error; hook: handle to peg tip |
 | `angle_tolerance` | float | deg | `15.0` | [0, 180] |  | plate: heading error |
 | `yaw` | float | deg | `0.0` | [-180, 180] |  | plate: wanted heading |
 | `angle_period` | float | deg | `90.0` | [1, 360] |  | plate: headings this far apart look the same |
 | `wrong` | enum |  | `ignore` | `ignore`, `eject`, `lock`, `fail` |  |  |
 | `eject_speed` | float | m/s | `1.0` | [0.1, 5] |  |  |
 | `close_on_ok` | bool |  | `False` |  |  |  |
+| `height` | float | m | `0.19` | [0.05, 1] |  | hook: peg height |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | hook: the way the peg points (0 = +x) |
+| `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
 
 ### `setter`
 
@@ -645,6 +736,20 @@ def majority(inputs, state, dt):
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it launches |
 | `cooldown` | float | s | `1.0` | [0.1, 60] |  | time a launched body or object ignores this spring |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
+
+### `stick`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.02` | [0.002, 0.5] |  |  |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `length` | float | m | `0.2` | [0.08, 0.5] |  | rod length along +x |
+| `width` | float | m | `0.016` | [0.006, 0.04] |  | square rod side |
+| `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the handle sticks out of the -x end |
 
 ### `swing_door`
 
@@ -764,6 +869,17 @@ def majority(inputs, state, dt):
 
 | プリセット | 部品の種類 | 値 |
 |---|---|---|
+| `beak/basket` | `receptacle` | `shape: box`, `size: [0.3, 0.3]`, `wall_height: 0.1`, `require: count`, `count: 1` |
+| `beak/cube_weight` | `cube` | `size: 0.04`, `mass: 0.04` |
+| `beak/egg` | `egg` | `break_height: 0.05`, `on_break: fail` |
+| `beak/handle_ball` | `handle_ball` | `radius: 0.03`, `mass: 0.03` |
+| `beak/hook` | `receptacle` | `shape: hook`, `size: [0.08, 0.08]`, `height: 0.19`, `peg: 0.06`, `tolerance: 0.04` |
+| `beak/key` | `key` | `mass: 0.02` |
+| `beak/laundry` | `laundry` | `size: [0.12, 0.1]`, `mass: 0.02` |
+| `beak/scale` | `pressure` | `trigger: object`, `size: [0.2, 0.2]`, `min_mass: 0.005` |
+| `beak/stick` | `stick` | `length: 0.2`, `mass: 0.02` |
+| `beak/wall_button_beak_low` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.15`, `size: [0.12, 0.06]` |
+| `beak/wall_button_beak_mid` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.2`, `size: [0.12, 0.06]` |
 | `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |

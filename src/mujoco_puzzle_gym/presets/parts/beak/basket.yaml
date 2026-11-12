@@ -1,0 +1,9 @@
+# Basket (R28, R5 receptacle box): 30 x 30 cm, walls 10 cm (lower walls trip
+# the body, it climbs them). `<name>.count` and `<name>.mass` give what is in.
+# Set: pos, accept, count (or require: {mass: kg}).
+type: receptacle
+shape: box
+size: [0.3, 0.3]
+wall_height: 0.1
+require: count
+count: 1

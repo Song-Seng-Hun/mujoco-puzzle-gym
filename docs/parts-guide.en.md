@@ -7,7 +7,7 @@ A puzzle room is assembled from parts. This document covers how parts connect th
 ## Parts, presets and assembly presets
 
 - A **part** is one line in `parts:` of `room.yaml`. It is made of a type (`type`) and its values. Each type fixes the values it accepts with their units, defaults and allowed ranges (the value schema); `mpg build` and `mpg check` reject out-of-range values and give the reason and the range.
-- A **part preset** is one part type with a set of default values. It has no code. Presets live in `src/mujoco_puzzle_gym/presets/parts/<category>/<name>.yaml`, and the categories are `input` (buttons, sensors), `logic` (gates, counters, transceivers), `device` (doors, warps, goal nets, platforms, pillars, turntables, conveyors, springs, setters), `floor`, `trap`, `object`, `beak` and `npc` (robots that move by themselves). `beak` is still empty.
+- A **part preset** is one part type with a set of default values. It has no code. Presets live in `src/mujoco_puzzle_gym/presets/parts/<category>/<name>.yaml`, and the categories are `input` (buttons, sensors), `logic` (gates, counters, transceivers), `device` (doors, warps, goal nets, platforms, pillars, turntables, conveyors, springs, setters), `floor`, `trap`, `object`, `beak` and `npc` (robots that move by themselves).
 - An **assembly preset** bundles several parts, or is a whole room. Assembly presets live in `presets/puzzles/<topic>/<name>.yaml`.
 
 `mpg parts --json` lists the registered parts, their value schemas and the presets. To include your own parts, add `--plugin my_parts`.
@@ -161,7 +161,7 @@ Static phase:
 | `parts` | Per-part checks (a ball larger than the goal-net mouth, balls or coins that cannot be reached). An NPC robot as fast as the body is only a warning (`warnings`), not a failure |
 | `overlap` | Whether a part's solid body sinks more than 5 mm into a wall or another part in the default layout. Floor pads, flags and goal zones are skipped, and a door may overlap only its own walls (the walls of the gap it closes, and walls on the same line) |
 | `order` | Whether the signals and walls allow a solution order that reaches the goal. For text-map rooms, also whether parts sit on floor cells, and blocking ledges and slopes |
-| `actions` | Whether the task `actions` have what the solution needs: `grab` when a cube must be carried (`grab` in `demo:`, or an input in the solution order only a cube can set off), `head` when a wall button the solution presses has its top edge below the level beak tip (0.21 m) |
+| `actions` | Whether the task `actions` have what the solution needs: `grab` when an object must be carried (`grab` in `demo:`, or an input in the solution order only a grabbable object can set off), `head` when a wall button the solution presses has its top edge below the level beak tip (0.21 m) |
 
 The first three stages (`values`, `channels`, `demo`) fail while the room is being loaded, so in that case the result has only the failed stage and the solver stage is skipped. To run only the static phase, add `--static`.
 
@@ -206,11 +206,38 @@ curriculum: {mode: forward, order: difficulty_first}
 - Beak grabbing is a simulation simplification that does not carry over to the real duck. The simulated model has no beak joint, so when the beak tip (`mouth_tip`) is within `grab_radius` (default 4 cm) of a handle and the grab command goes above 0.5, a weld constraint between the head and the cube switches on. The head and the cube do not collide. At 0.5 or below it lets go. A cube heavier than the body's `max_lift_mass` (default 0.05 kg) is not grabbed and `beak.too_heavy` is 1. If holding takes more than `max_hold_force`, the cube is dropped and `<cube>.dropped` pulses; grabbing again needs the command to go down and up once.
 - The beak tip is 0.135–0.21 m above the floor, so a cube on the floor is out of reach. A cube on the front edge of a 0.17–0.19 m stand, handle towards the body, can be grabbed by walking into it. In a letter map a raised floor cell (`legend` `{type: floor, height: 0.18}`) is such a stand.
 - Channels: `beak.holding`, `beak.held_id` (marker id of the held cube, -1: none), `beak.too_heavy`, and per cube `<cube>.held`, `<cube>.dropped`. Floor buttons, pressure plates, zones and sockets do not count a held cube. Snapshots restore the hold too. A warp takes a held cube along, keeping its pose to the head.
-- Obs item `beak`: holding, held object kind (cube 1, none 0), and the nearest handle relative to the beak tip (x, y, z in the heading frame). 5 values.
+- Obs item `beak`: holding, held object kind (cube 1, none 0, other objects in the next section), and the nearest handle relative to the beak tip (x, y, z in the heading frame). 5 values.
 - Wall buttons: `mount: wall` on a `button` makes a plate (`size`: [width, height]) on the wall face at `pos`, centred `height` up, facing `facing`. It is pressed while the beak tip is over the plate and within 6 cm in front of its face (with the head lowered against a wall the chest meets the wall first and the tip stays 4–5 cm off). Behind the face it counts only up to the plate thickness + 1 cm, so a duck on the far side of a thin wall cannot press it. `trigger` does not apply.
 - Upper-level actions: `task.yaml` `actions: [move]` (default) can add `head` (lower the head, 1 value: -1 level, 1 lowest) and `grab` (1 value, above 0.5 grabs), in that order. The action size is 3 plus those added. The scripted solver does only what a policy can: a room that needs a cube carried or a low wall button pressed fails the `mpg check` stage `actions` when the task has no `grab` / `head`. Example: `mpg check examples/rooms/cube_plate.yaml --task examples/task_cube_plate.yaml`.
 - Solution `demo:`: `grab <cube>` (walk up to a handle, match the head height, grab), `place <cube> <part>` (carry it over the part's centre, stop, let go, step away). Wall buttons are pressed with the head lowered, by `press <button>` or in the solution order.
 - Example [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml): pick the cube off its stand and put it on the pressure plate to open the door.
+
+## Beak objects and receivers
+
+Every object with handles is grabbed the same way as `cube` (same grab radius, liftable mass, drop force, and `.held` / `.dropped` channels). The presets are in the `beak` category.
+
+| Preset | Type | Defaults | Use |
+|---|---|---|---|
+| `beak/cube_weight` | `cube` | 4 cm, 40 g | A weight for scales and pressure plates, just under the body's `max_lift_mass` (0.05 kg) |
+| `beak/laundry` | `laundry` | 12 × 10 cm, 6 mm thick, 20 g, a hem (`hem`) on top of each edge | A light cloth. The plate is rigid; the wrinkles are only its look. Grabbed by a top hem |
+| `beak/key` | `key` | 20 g, head 4 cm, shaft 5 cm, a ring at the `-x` end | Carries a marker on its head. Only a receiver with `accept: [<marker id>]` takes it |
+| `beak/handle_ball` | `handle_ball` | radius 3 cm, 30 g, a ring on the `-x` side | Rolls once let go. Not the ball part `ball` |
+| `beak/egg` | `egg` | 25 g, radius 2.2 cm, height 6 cm, four side knobs, `break_height` 0.05 m, `on_break: fail` | `<egg>.broken` goes to 1 when it breaks |
+| `beak/stick` | `stick` | 20 cm long, 1.6 cm thick, 20 g, a handle at the `-x` end | Held, its far end presses wall buttons |
+| `beak/hook` | `receptacle` `shape: hook` | an 8 × 8 cm post with a 6 cm peg at 0.19 m, `tolerance` 0.04 m | An object let go within 4 cm of the peg tip hangs there |
+| `beak/basket` | `receptacle` `shape: box` | 30 × 30 cm, 10 cm walls, `require: count`, `count: 1` | `<basket>.count` and `<basket>.mass` (kg) tell what is in it |
+| `beak/scale` | `pressure` `trigger: object` | 20 × 20 cm, `min_mass` 5 g | Number channel `<scale>.mass` (kg, 1 g steps); `<scale>` is 1 from 5 g |
+| `beak/wall_button_beak_low` | `button` `mount: wall` | plate 12 × 6 cm centred 0.15 m up, `oneshot` | Reached only with the head lowered (`head` action) |
+| `beak/wall_button_beak_mid` | `button` `mount: wall` | plate 12 × 6 cm centred 0.2 m up, `oneshot` | The level beak tip (0.21 m) reaches it standing |
+
+- Egg: it breaks when a contact starts with a relative normal speed at or above that of a drop from `break_height` (√(2·9.81·`break_height`), 0.99 m/s by default). Measured with the default body (2026-11-12): let go from the beak onto the floor, 1.42 m/s (head lowest) to 1.86 m/s (head level); picked off the stand and put on a floor plate, 1.68–1.87 m/s; bumps while grabbing and carrying, 0.24 m/s or less (0.49 m/s pushed into the stand); knocks after landing, 0.35 m/s or less. So at 5 cm only a let-go breaks it. The part default `on_break` is `none` (channel only); the preset uses `fail` (a broken egg fails the episode). A broken egg changes colour; snapshots and reset restore it.
+- Key and socket: a receiver's `accept` takes marker ids (integers) besides names and kinds. The socket may carry a marker with the same id; only then may marker ids repeat (other repeats are still rejected). The socket's `angle_tolerance` checks the heading.
+- Hook: when a handle of an object that is not held comes within `tolerance` of the peg tip, the object is fixed to the hook and counts as in. Grabbing it again takes it off. The peg is a logical catch you can see but not hit (only the post collides; contacts between the post and grabbable objects are off). `facing` is where the peg points.
+- Basket: walls lower than 10 cm trip the body or let it climb over (3 falls in 4 at 5 cm). Over a 10 cm wall the level beak tip reaches 5.8–6.8 cm past the wall face.
+- Stick: the far end of a held stick counts at a wall button in the same window as the beak tip (6 cm in front of the plate, plate thickness + 1 cm behind it, within the plate width and height). Measured: a slow scripted approach pressed 10 times in 10 with the end 2.9–5.9 cm in front of the plate face and within 2.7 cm of its height, with a weld force of 0.89 N or less before the press. Walking straight into the wall drops the stick in 4 runs of 6 (the force goes over `max_hold_force`, 3 N). Lowering the head swings the stick end down a lot (about 0.43 rad per head unit).
+- Object kind in the `beak` obs: `cube` 1, `laundry` 2, `key` 3, `handle_ball` 4, `egg` 5, `stick` 6, none 0.
+- Solution `demo:` adds `drop <object> <part>`: carried as `place`, but let go with the head level (the egg-breaking solution). `place <object> <hook>` brings the leading handle to the peg tip. `press <button>` while holding a stick brings the stick end to the plate height.
+- Known limits: receivers count a broken egg too. Scripted solutions that put an object in a basket or on a scale succeed 8–10 times in 10, depending on the room and seed.
 
 ## Python plugins
 
@@ -387,13 +414,13 @@ Role `prop`, update stage `device`.
 
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
-| `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
 | `mass` | float | kg | `0.03` | [0.001, 10] |  | above the body's max_lift_mass the beak cannot lift it |
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
-| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
-| `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
+| `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
 
 ### `door`
 
@@ -408,6 +435,23 @@ Role `gate`, update stage `device`.
 | `height` | float | m | `0.25` | [0.05, 1] |  |  |
 | `open_dir` | enum |  | `1` | `1`, `-1` |  | slide toward +axis (1) or -axis (-1) |
 | `speed` | float | m/s | — | [0.02, 5] |  | opening speed (default: as fast as the motor moves it) |
+
+### `egg`
+
+Role `prop`, update stage `input`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.025` | [0.005, 0.2] |  |  |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `radius` | float | m | `0.022` | [0.01, 0.06] |  | egg radius (x, y) |
+| `height` | float | m | `0.06` | [0.02, 0.15] |  | egg height (z) |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a knob: +x, -x, +y, -y |
+| `handle_size` | float | m | `0.012` | [0.005, 0.05] |  |  |
+| `break_height` | float | m | `0.05` | [0.005, 2] | yes | a contact starting as fast as a drop from this height breaks it |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: a broken egg fails the episode |
 
 ### `floor_tile`
 
@@ -464,6 +508,35 @@ Role `switch`, update stage `input`.
 | `accepts` | list |  | `[]` |  |  | ball colours that count (empty: any) |
 | `need` | int |  | `1` | [1, 100] |  | balls in for the main channel |
 
+### `handle_ball`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.03` | [0.001, 10] |  | above the body's max_lift_mass the beak cannot lift it |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `radius` | float | m | `0.03` | [0.015, 0.1] |  |  |
+| `roll_friction` | float | m | `0.002` | [0, 0.05] |  | rolling friction (low: it rolls on once let go) |
+| `handles` | list |  | `['-x']` |  |  | faces with a ring handle: +x, -x, +y, -y |
+| `ring` | float | m | `0.012` | [0.005, 0.04] |  | ring radius |
+
+### `key`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.02` | [0.001, 1] |  |  |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `head` | float | m | `0.04` | [0.02, 0.1] |  | side of the square head (the marker sits on it) |
+| `shaft` | float | m | `0.05` | [0.01, 0.2] |  | shaft length along +x |
+| `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the ring sticks out of the head's -x end |
+
 ### `laser`
 
 Role `switch`, update stage `input`.
@@ -473,6 +546,21 @@ Role `switch`, update stage `input`.
 | `to` | vec | m | required |  |  | receiver position [x, y] |
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
+
+### `laundry`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.02` | [0.001, 1] |  | a light cloth |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `size` | vec | m | `[0.12, 0.1]` | [0.04, 0.4] |  | cloth [x, y] |
+| `thickness` | float | m | `0.006` | [0.002, 0.03] |  |  |
+| `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | top edges with a hem the beak grabs: +x, -x, +y, -y |
+| `hem` | float | m | `0.01` | [0.004, 0.05] |  | how far a hem sticks out of its edge |
 
 ### `npc`
 
@@ -595,21 +683,24 @@ Role `sensor`, update stage `input`.
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
 | `require` | enum |  | `all` | `all`, `count`, `mass`, `order` |  |  |
-| `shape` | enum |  | `box` | `box`, `plate` |  |  |
+| `shape` | enum |  | `box` | `box`, `plate`, `hook` |  |  |
 | `size` | vec | m | `[0.3, 0.3]` | [0.05, 2] |  |  |
 | `wall_height` | float | m | `0.06` | [0.01, 0.5] |  |  |
 | `wall_thickness` | float | m | `0.01` | [0.005, 0.1] |  |  |
-| `accept` | list |  | `[]` |  |  | object names or kinds that count (empty: any) |
+| `accept` | any |  | `[]` |  |  | object names, kinds or marker ids that count (empty: any) |
 | `count` | int |  | `1` | [1, 100] |  | require count: objects needed |
 | `mass` | float | kg | `0.1` | [0.001, 100] |  | require mass |
 | `order` | list |  | — |  |  | require order: names in the order they go in |
-| `tolerance` | float | m | `0.05` | [0.005, 1] |  | plate: position error |
+| `tolerance` | float | m | `0.05` | [0.005, 1] |  | plate: position error; hook: handle to peg tip |
 | `angle_tolerance` | float | deg | `15.0` | [0, 180] |  | plate: heading error |
 | `yaw` | float | deg | `0.0` | [-180, 180] |  | plate: wanted heading |
 | `angle_period` | float | deg | `90.0` | [1, 360] |  | plate: headings this far apart look the same |
 | `wrong` | enum |  | `ignore` | `ignore`, `eject`, `lock`, `fail` |  |  |
 | `eject_speed` | float | m/s | `1.0` | [0.1, 5] |  |  |
 | `close_on_ok` | bool |  | `False` |  |  |  |
+| `height` | float | m | `0.19` | [0.05, 1] |  | hook: peg height |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | hook: the way the peg points (0 = +x) |
+| `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
 
 ### `setter`
 
@@ -645,6 +736,20 @@ Role `prop`, update stage `device`.
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it launches |
 | `cooldown` | float | s | `1.0` | [0.1, 60] |  | time a launched body or object ignores this spring |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
+
+### `stick`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `mass` | float | kg | `0.02` | [0.002, 0.5] |  |  |
+| `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
+| `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
+| `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `length` | float | m | `0.2` | [0.08, 0.5] |  | rod length along +x |
+| `width` | float | m | `0.016` | [0.006, 0.04] |  | square rod side |
+| `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the handle sticks out of the -x end |
 
 ### `swing_door`
 
@@ -764,6 +869,17 @@ Role `switch`, update stage `input`.
 
 | Preset | Part type | Values |
 |---|---|---|
+| `beak/basket` | `receptacle` | `shape: box`, `size: [0.3, 0.3]`, `wall_height: 0.1`, `require: count`, `count: 1` |
+| `beak/cube_weight` | `cube` | `size: 0.04`, `mass: 0.04` |
+| `beak/egg` | `egg` | `break_height: 0.05`, `on_break: fail` |
+| `beak/handle_ball` | `handle_ball` | `radius: 0.03`, `mass: 0.03` |
+| `beak/hook` | `receptacle` | `shape: hook`, `size: [0.08, 0.08]`, `height: 0.19`, `peg: 0.06`, `tolerance: 0.04` |
+| `beak/key` | `key` | `mass: 0.02` |
+| `beak/laundry` | `laundry` | `size: [0.12, 0.1]`, `mass: 0.02` |
+| `beak/scale` | `pressure` | `trigger: object`, `size: [0.2, 0.2]`, `min_mass: 0.005` |
+| `beak/stick` | `stick` | `length: 0.2`, `mass: 0.02` |
+| `beak/wall_button_beak_low` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.15`, `size: [0.12, 0.06]` |
+| `beak/wall_button_beak_mid` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.2`, `size: [0.12, 0.06]` |
 | `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |

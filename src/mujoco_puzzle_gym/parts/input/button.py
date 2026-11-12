@@ -18,7 +18,9 @@ degrees (0 = +x, the side the body stands on). It is pressed while the beak
 tip (`BodyAdapter.grab_site`) is over the plate and at most PRESS_DEPTH in
 front of it, or behind its face by no more than the plate thickness + BEHIND
 (the tip may sink into it, but a tip behind a thin wall does not press);
-`trigger` does not apply. The plate does not collide. Planning: the body
+`trigger` does not apply. The plate does not collide. The far end of a stick
+the beak holds (R28) presses it in the same window; in a room with a stick
+the planner may also stand the stick's reach farther off. Planning: the body
 stands STAND in front of it; the scripted solver walks up to it facing the
 wall and lowers the head to the plate height (solver.py). Measured (OQ2,
 default body): walking into a wall, the tip comes within 0.1-1.3 cm of it
@@ -91,6 +93,7 @@ class Button(Part):
         if self.mount == "floor":
             self.needs_body("walk" if "body" in TRIGGERS[self.trigger] else "beak_grab")
         self.stateful = self.kind_ != "momentary"
+        self.reach = 0.0                    # wall: extra reach of a stick in the room (planning)
         self.on = False
         self.prev = False
 
@@ -132,11 +135,16 @@ class Button(Part):
         return False
 
     def beak_on(self, data) -> bool:
-        """Wall plate: whether the beak tip presses it now."""
+        """Wall plate: whether the beak tip, or the far end of a held stick
+        (`World.tool_tip`, R28), presses it now."""
         w = self.world
         if w is None or w.beak_site < 0:
             return False
-        tip = data.site_xpos[w.beak_site]
+        return self.presses(data, data.site_xpos[w.beak_site]) or \
+            (w.tool_tip is not None and self.presses(data, w.tool_tip))
+
+    def presses(self, data, tip) -> bool:
+        """Wall plate: whether a tip at world point `tip` is in the press window."""
         d = tip[:2] - self.xy
         out = float(d @ self.normal)
         side = float(d @ np.array([-self.normal[1], self.normal[0]]))
@@ -166,5 +174,8 @@ class Button(Part):
 
     def target_mask(self, grid):
         if self.mount == "wall":
-            return grid.disk(self.stand_xy(), 0.06)
+            mask = grid.disk(self.stand_xy(), 0.06)
+            if self.reach > 0:                  # or as far off as a held stick reaches (R28)
+                mask = mask | grid.disk(self.stand_xy() + self.normal * self.reach, 0.06)
+            return mask
         return grid.rect(self.xy, tuple(self.half))

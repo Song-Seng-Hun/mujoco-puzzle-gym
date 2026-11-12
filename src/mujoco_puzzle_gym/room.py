@@ -47,8 +47,9 @@ the stages together (an earlier stage may have none).
 
 Demo (R20): `demo:` lists the scripted solver's sub-goals for `mpg check`, in
 order (strings): `goto <part>`, `press <part>`, `wait <seconds>`, `push <ball>
-to <net or pin>`, `herd <npc> <part or x y>` (R29), `grab <cube>`, `place
-<cube> <part>` (R18). After the last one the solver goes on with the grid
+to <net or pin>`, `herd <npc> <part or x y>` (R29), `grab <object>`, `place
+<object> <part>` (R18; a hook: hang it), `drop <object> <part>` (let go from
+the level head, R28). Objects are grabbable parts (cube, laundry, key, ...). After the last one the solver goes on with the grid
 answer (the solution order), so a demo may stop before the goal. Without
 `demo:` the solver uses the grid answer only.
 
@@ -100,14 +101,14 @@ class RoomError(ValueError):
         self.stage = stage
 
 
-DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place")
+DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop")
 MAX_WAIT = 60.0                        # [s] longest `wait`
 
 
 def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
     """`demo:` entries as tuples: ("goto"|"press", part), ("wait", seconds),
-    ("push", ball, target), ("herd", npc, part or (x, y)), ("grab", cube),
-    ("place", cube, part). Raises RoomError (stage `demo`) naming the bad entry."""
+    ("push", ball, target), ("herd", npc, part or (x, y)), ("grab", object),
+    ("place" | "drop", object, part). Raises RoomError (stage `demo`) naming the bad entry."""
     if raw is None:
         return []
     if not isinstance(raw, list):
@@ -145,15 +146,15 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
             out.append(("wait", sec))
         elif cmd == "herd":
             out.append(_parse_herd(i, entry, args, parts, part))
-        elif cmd in ("grab", "place"):
+        elif cmd in ("grab", "place", "drop"):
             n = 1 if cmd == "grab" else 2
             if len(args) != n:
-                raise RoomError(f"demo[{i}]: write `" + ("grab <cube>" if n == 1 else "place <cube> <part>")
+                raise RoomError(f"demo[{i}]: write `" + ("grab <object>" if n == 1 else f"{cmd} <object> <part>")
                                 + f"`, got {entry!r}", "demo")
-            cube = part(i, args[0])
-            if not hasattr(parts[cube], "handle_points"):
-                raise RoomError(f"demo[{i}]: {cube!r} is not a cube (nothing to grab)", "demo")
-            out.append((cmd, cube, *([part(i, args[1])] if n == 2 else [])))
+            obj = part(i, args[0])
+            if not hasattr(parts[obj], "handle_points"):
+                raise RoomError(f"demo[{i}]: {obj!r} is not a grabbable object (nothing to grab)", "demo")
+            out.append((cmd, obj, *([part(i, args[1])] if n == 2 else [])))
         else:
             if len(args) != 3 or args[1] != "to":
                 raise RoomError(f"demo[{i}]: write `push <ball> to <net or pin>`, got {entry!r}", "demo")

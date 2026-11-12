@@ -14,9 +14,9 @@ parts:     no part reports a static problem (`Part.check_static`: a ball too big
 overlap:   at the nominal layout no solid part geometry sits in a wall or in
            another part (`OVERLAP_DEPTH`; floor pads and doors in their wall gap
            do not count);
-actions:   the task actions cover what the plan needs (R19): `grab` when a cube
-           must be carried (a `grab` sub-goal in `demo:`, or an input in the
-           solution order that only a cube sets off), `head` when a wall button
+actions:   the task actions cover what the plan needs (R19): `grab` when an
+           object must be carried (a `grab` sub-goal in `demo:`, or an input in
+           the solution order that only a grabbable object sets off), `head` when a wall button
            the plan presses sits wholly below the level beak tip (the body's
            `beak_height`); without them a policy can never do it. Checked after
            `order`, on its solution order;
@@ -49,7 +49,7 @@ from .env import PuzzleEnv
 from .logic import free_mask, solution_order
 from .parts.base import BODY_PREFIX
 from .parts.floor.coin import unreachable_coins
-from .parts.object.cube import Cube, takes
+from .parts.object.grabbable import Grabbable, takes
 from .parts.base import TRIGGERS
 from . import community as community_mod
 from .room import RoomError
@@ -199,6 +199,8 @@ def map_placement(env: PuzzleEnv) -> list[str]:
         if not p.has_body or getattr(p, "floor_part", False):
             continue
         half = tuple(getattr(p, "half", (0.0, 0.0))) if np.ndim(getattr(p, "half", 0.0)) == 1 else (0.0, 0.0)
+        if getattr(p, "mount", None) == "wall":      # a wall plate's size is [width, height] on the wall
+            half = (0.0, 0.0)
         probe(f"part {n!r}", p.base_xy, p.random, half)
     return out
 
@@ -257,14 +259,14 @@ def check_solver(env: PuzzleEnv, seeds: int = 20, need: int = 18,
 
 def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
     """Static: task actions the plan needs (R19). `grab`: a `grab` sub-goal, or a part
-    in `order` that a cube sets off and the body cannot; `head`: a wall button in
+    in `order` that a grabbable object sets off and the body cannot; `head`: a wall button in
     `order` (or a `press` sub-goal) whose top edge is below the level beak tip."""
     demo = list(getattr(env.room, "demo", []) or [])
-    cubes = [p for p in env.parts.values() if isinstance(p, Cube)]
+    objs = [p for p in env.parts.values() if isinstance(p, Grabbable)]
     why = []
     if "grab" not in env.actions:
         need = [e[1] for e in demo if e[0] == "grab"]
-        need += [n for n in order if any(takes(env.parts[n], c) for c in cubes)
+        need += [n for n in order if any(takes(env.parts[n], o) for o in objs)
                  and "body" not in TRIGGERS.get(getattr(env.parts[n], "trigger", None), ())]
         if need:
             why.append(f"{sorted(set(need))} need the beak grab but the task actions {env.actions} "
