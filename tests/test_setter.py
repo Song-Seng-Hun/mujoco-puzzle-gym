@@ -127,3 +127,25 @@ def test_bind_on_on_tilt_builds_its_joint(tmp_path):
             "bind": {"on_tilt": {"from": "s", "map": [0.0, 1.0, 0.0, 8.0]}}}
     env = open_room(tmp_path, [SIG, tile], name="ontilt")
     assert "tilt" in env.parts["t"]._j
+
+
+def test_wind_power_by_setter_and_bind(tmp_path):
+    """R13 on a trap: a setter changes the wind's power on an edge; a bind makes it follow a channel."""
+    g = {"name": "g", "type": "t_signal", "pos": [1.0, 1.0]}
+    wind = {"name": "w", "preset": "trap/crosswind", "pos": [-0.8, -0.8], "in": ["s"], "power": 1.0}
+    env = open_room(tmp_path, [SIG, g, wind, {"name": "set", "type": "setter", "in": ["g"],
+                                              "target": "w.power", "value": 6.0}],
+                    spawn=(-1.0, -1.0), name="wset")
+    w = env.parts["w"]
+    tick(env)
+    assert w.live["power"] == 1.0
+    env.parts["g"].value = 1.0
+    tick(env)
+    assert w.live["power"] == 6.0
+    env = open_room(tmp_path, [SIG, g, {**wind, "bind": {"power": {"from": "g", "map": [0.0, 1.0, 0.0, 8.0]}}}],
+                    spawn=(-1.0, -1.0), name="wbind")
+    w = env.parts["w"]
+    for value, power in ((0.0, 0.0), (0.25, 2.0), (1.0, 8.0), (5.0, 20.0)):
+        env.parts["g"].value = value
+        tick(env)
+        assert w.live["power"] == pytest.approx(power), value

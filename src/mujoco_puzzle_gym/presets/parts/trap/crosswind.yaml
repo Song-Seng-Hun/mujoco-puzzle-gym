@@ -1,0 +1,7 @@
+# Crosswind (R16): pushes the body and objects in a zone sideways while on.
+# Set: pos, size, yaw, power [N], in.
+type: wind
+size: [0.6, 1.0]
+height: 0.4
+yaw: 90.0
+power: 1.0

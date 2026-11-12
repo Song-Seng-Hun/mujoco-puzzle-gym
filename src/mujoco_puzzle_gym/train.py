@@ -12,8 +12,9 @@ switches, NaN/contradiction flags, per-term reward sums), then to the chosen
     curves.png           return, success / fall / switch rates, per-term rewards
     summary.json         budget, steps, speed, first/last-window statistics,
                          `obs_kind` (`sensors_only` or `privileged`, R39)
-    curriculum.json      with `--curriculum forward|reverse` (R21): time, open
-                         segments and success rate per segment over training
+    curriculum.json      with `--curriculum forward|reverse` or task difficulty
+                         steps (R21): time, open levels (segment, and
+                         `@d<k>` for difficulty step k) and success rate per level
 
 Training seeds: env i of a run with task `seed: s` starts from seed s + i and
 then continues its own RNG stream; `mpg eval` uses seeds from EVAL_SEED_BASE
@@ -115,6 +116,8 @@ class EpisodeLog(VecEnvWrapper):
               "terms": {k: round(v, 4) for k, v in a["terms"].items()}}
         if info.get("segment") is not None:
             ep.update(segment=int(info["segment"]), segment_success=bool(info["segment_success"]))
+        if info.get("difficulty") is not None:
+            ep["difficulty"] = int(info["difficulty"])
         self.episodes.append(ep)
         self._file.write(json.dumps(ep) + "\n")
         self._file.flush()
@@ -140,7 +143,11 @@ class CurriculumVec(VecEnvWrapper):
         self._write("start")
 
     def _send(self) -> None:
-        self.venv.env_method("set_segment_draw", self.cur.probs(), self.cur.to_goal)
+        if self.cur.difficulties > 1:
+            self.venv.env_method("set_segment_draw", self.cur.level_probs(), self.cur.to_goal,
+                                 self.cur.levels)
+        else:
+            self.venv.env_method("set_segment_draw", self.cur.probs(), self.cur.to_goal)
 
     def _write(self, event: str) -> None:
         self.log.append({"t": round(time.monotonic() - self.t0, 2), "step": self.steps,
@@ -161,7 +168,8 @@ class CurriculumVec(VecEnvWrapper):
         for done, info in zip(dones, infos):
             if done and info.get("segment") is not None:
                 self._episodes += 1
-                opened |= self.cur.record(int(info["segment"]), bool(info["segment_success"]))
+                opened |= self.cur.record(int(info["segment"]), bool(info["segment_success"]),
+                                          info.get("difficulty"))
                 if self._episodes % self.cur.window == 0 and not opened:
                     self._write("progress")
         if opened:
@@ -281,7 +289,7 @@ def train(task_path: str | Path, minutes: float, algo: str | None = None,
     if task.get("critic_obs") is not None and task["algo"] == "sac":
         raise TaskError("`critic_obs` needs an actor-critic algorithm (ppo, a2c), not 'sac'")
 
-    cur = _curriculum(task) if cur_cfg["mode"] != "none" else None
+    cur = _curriculum(task) if cur_cfg["mode"] != "none" or task.get("difficulty") else None
 
     run_id = run_id or _run_id(task_path, task["algo"])
     run_dir = Path(runs_dir) / run_id
@@ -338,26 +346,30 @@ def train(task_path: str | Path, minutes: float, algo: str | None = None,
 
 
 def _curriculum(task: dict[str, Any]) -> cur_mod.Curriculum:
-    """The controller for the task's room; checks the flag snapshots load first
-    and pins their directory in the task (workers and later evals use it)."""
+    """The controller for the task's room and difficulty steps; with segments it
+    checks the flag snapshots load first and pins their directory in the task
+    (workers and later evals use it)."""
     env = make_env(task)
+    mode = task["curriculum"]["mode"]
     try:
         segs = env.segments
-        if len(segs) < 2:
-            raise TaskError(f"--curriculum {task['curriculum']['mode']} needs checkpoint flags "
-                            f"in the room ({task['room']} has none)")
-        from .trust import UntrustedPathError
+        steps = env.difficulty_steps
+        if mode != "none":
+            if len(segs) < 2:
+                raise TaskError(f"--curriculum {mode} needs checkpoint flags "
+                                f"in the room ({task['room']} has none)")
+            from .trust import UntrustedPathError
 
-        try:
-            cur_mod.load_snapshots(env)
-        except (cur_mod.CurriculumError, UntrustedPathError) as exc:
-            raise TaskError(str(exc)) from None
-        task["curriculum"]["snapshots"] = str(cur_mod.snapshot_dir(env).resolve())
+            try:
+                cur_mod.load_snapshots(env)
+            except (cur_mod.CurriculumError, UntrustedPathError) as exc:
+                raise TaskError(str(exc)) from None
+            task["curriculum"]["snapshots"] = str(cur_mod.snapshot_dir(env).resolve())
     finally:
         env.close()
     c = task["curriculum"]
     return cur_mod.Curriculum(c["mode"], len(segs), c["advance_at"], c["replay"], c["window"],
-                              names=[s["name"] for s in segs])
+                              names=[s["name"] for s in segs], difficulties=steps, order=c["order"])
 
 
 def load_run(run_dir: str | Path) -> dict[str, Any]:

@@ -7,10 +7,11 @@ from .device import (Conveyor, Door, GoalNet, Pillar, Platform, Setter, Spring, 
 from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
-from .input import Button, Checkpoint, Laser, PressurePlate, Receptacle, Zone
+from .input import Button, Checkpoint, Laser, PressurePlate, Receptacle, Target, Zone
 from .logic import Counter, Gate, Receiver, Transmitter
 from .object import Ball, Pin
 from .switch import Switch
+from .trap import Cannon, Pendulum, Pit, Pusher, Spinner, Wind
 
 register_part("switch", Switch, replace=True)
 register_part("door", Door, replace=True)
@@ -41,9 +42,16 @@ register_part("turntable", Turntable, replace=True)
 register_part("conveyor", Conveyor, replace=True)
 register_part("spring", Spring, replace=True)
 register_part("setter", Setter, replace=True)
+register_part("target", Target, replace=True)
+register_part("wind", Wind, replace=True)
+register_part("pusher", Pusher, replace=True)
+register_part("spinner", Spinner, replace=True)
+register_part("pendulum", Pendulum, replace=True)
+register_part("pit", Pit, replace=True)
+register_part("cannon", Cannon, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
            "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
            "SwingDoor", "Trapdoor", "Warp", "FloorTile", "Coin", "CoinGroup", "CoinLock",
            "Ball", "Pin", "GoalNet", "Platform", "Pillar", "Turntable", "Conveyor", "Spring",
-           "Setter"]
+           "Setter", "Target", "Wind", "Pusher", "Spinner", "Pendulum", "Pit", "Cannon"]

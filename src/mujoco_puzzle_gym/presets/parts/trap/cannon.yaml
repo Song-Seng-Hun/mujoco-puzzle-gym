@@ -1,0 +1,4 @@
+# Cannon (R16): fires at the body every `period` seconds while on.
+# Set: pos, yaw, power [m/s], shell_mass, period, burst, spread, aim, in.
+type: cannon
+aim: at_body

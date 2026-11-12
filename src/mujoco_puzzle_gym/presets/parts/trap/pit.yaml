@@ -1,0 +1,5 @@
+# Pit (R16): a hole in the floor; falling in ends the episode.
+# Set: pos, size, on_fall (fail | reset), in (a lid covers it until on).
+type: pit
+size: [0.3, 0.3]
+on_fall: fail

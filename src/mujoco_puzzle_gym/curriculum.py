@@ -23,10 +23,28 @@ task.yaml (CLI `--curriculum`, `--advance-at`, `--replay` override it):
 - `none`: M1 episodes (start to goal).
 
 Levels: the controller (`Curriculum`) opens an ordered list of levels, each a
-dict; today a level is `{"segment": i}`. Difficulty steps (R21 `difficulty`,
-plan step 12) extend a level with `"difficulty": k` and order the list by
-`order: segment_first | difficulty_first`; the open / replay / advance rules
-stay the same.
+dict `{"segment": i}`, or `{"segment": i, "difficulty": k}` when task.yaml has
+difficulty steps. `curriculum.order` sets the list: `difficulty_first`
+(default; every step of a segment before the next segment: A->B plain, A->B
+with a weak cannon, a strong one, then B->C) or `segment_first` (every
+segment at step 0, then every segment at step 1, ...). The open / replay /
+advance rules are the same for both. With steps and `mode: none` the levels
+are the steps of the whole run (start to goal).
+
+Difficulty steps (R21 `difficulty`, task.yaml):
+
+    difficulty:
+      - {param: cannon_a.power, from: 0.5, to: 2.0, steps: 4}   # 0.5, 1.0, 1.5, 2.0
+      - {param: cannon_a.enabled, from: 0, to: 1, at_step: 1}    # off at step 0
+
+`steps: n` spreads n values evenly from `from` to `to` (step n-1 and later:
+`to`); `at_step: k` is `from` before step k and `to` from it on. The number of
+steps is the largest n or k + 1. Only values the schema marks run-time or
+episode-start may be stepped, and not one a `bind` drives (it would overwrite
+the step value). The env applies step k at every episode start (`apply_difficulty`,
+also over a segment's start snapshot); without a step given (`reset(options=
+{"difficulty": k})` or the draw) it uses the last, hardest one, so `mpg eval`
+and `--full` run there unless `--difficulty k` says otherwise.
 
 Training (`train.CurriculumVec`): the env workers draw their own episode start from
 the probabilities the main process sends them (`PuzzleEnv.set_segment_draw`);
@@ -37,16 +55,19 @@ segment).
 
 from __future__ import annotations
 
+import copy
 import pickle
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 MODES = ("forward", "reverse", "none")
+ORDERS = ("difficulty_first", "segment_first")
 DEFAULTS: dict[str, Any] = {"mode": "none", "advance_at": 0.8, "replay": 0.2, "window": 50,
-                            "snapshots": None}
+                            "snapshots": None, "order": "difficulty_first"}
 LOG_NAME = "curriculum.json"
 SNAP_DIR = Path("runs/check")       # same default as `mpg check`
 
@@ -63,6 +84,8 @@ def validate(cfg: dict[str, Any]) -> None:
         raise CurriculumError(f"unknown curriculum keys {sorted(unknown)}; known: {sorted(DEFAULTS)}")
     if cfg["mode"] not in MODES:
         raise CurriculumError(f"curriculum.mode must be one of {MODES}, got {cfg['mode']!r}")
+    if cfg["order"] not in ORDERS:
+        raise CurriculumError(f"curriculum.order must be one of {ORDERS}, got {cfg['order']!r}")
     a, r, w = cfg["advance_at"], cfg["replay"], cfg["window"]
     if isinstance(a, bool) or not isinstance(a, (int, float)) or not 0 < a <= 1:
         raise CurriculumError(f"curriculum.advance_at must be in (0, 1], got {a!r}")
@@ -141,20 +164,120 @@ def load_snapshots(env) -> dict[str, Any]:
     return out
 
 
+# ---- difficulty steps (R21) -----------------------------------------------------------
+@dataclass
+class Step:
+    """One stepped value: `values[k]` at difficulty step k."""
+
+    part: str
+    key: str
+    values: list
+
+
+def parse_difficulty(raw: Any, parts: dict[str, Any]) -> list[Step]:
+    """task.yaml `difficulty:` checked against the room's parts (CurriculumError)."""
+    if not raw:
+        return []
+    if not isinstance(raw, list):
+        raise CurriculumError("`difficulty` must be a list of {param: <part>.<value>, from, to, "
+                              "steps: n} or {param, from, to, at_step: k}")
+    rows, n_steps = [], 1
+    for i, e in enumerate(raw):
+        where = f"difficulty[{i}]"
+        if (not isinstance(e, dict) or not isinstance(e.get("param"), str) or "from" not in e
+                or "to" not in e or ("steps" in e) == ("at_step" in e)
+                or set(e) - {"param", "from", "to", "steps", "at_step"}):
+            raise CurriculumError(f"{where}: write {{param: <part>.<value>, from, to, steps: n}} "
+                                  f"or {{param, from, to, at_step: k}}, got {e!r}")
+        name, _, key = e["param"].rpartition(".")
+        p = parts.get(name)
+        if p is None:
+            raise CurriculumError(f"{where}: no part {name!r} (parts: {sorted(parts)})")
+        f = p.full_schema().get(key)
+        if f is None or not (f.runtime or f.episode):
+            ok = sorted(k for k, g in p.full_schema().items() if g.runtime or g.episode)
+            raise CurriculumError(f"{where}: {e['param']} cannot be stepped; only values marked run-time "
+                                  f"or episode-start can ({name}: {ok})")
+        if key in p.binds:
+            raise CurriculumError(f"{where}: {e['param']} is driven by a `bind`, which would overwrite "
+                                  f"the step value every body step")
+        k = e.get("steps", e.get("at_step"))
+        lo = 1 if "steps" in e else 0
+        if isinstance(k, bool) or not isinstance(k, int) or k < lo:
+            what = "steps" if "steps" in e else "at_step"
+            raise CurriculumError(f"{where}: {what} must be a whole number >= {lo}, got {k!r}")
+        n_steps = max(n_steps, k if "steps" in e else k + 1)
+        rows.append((p, key, f, e, where))
+    out = []
+    for p, key, f, e, where in rows:
+        try:
+            a, b = np.asarray(e["from"], float), np.asarray(e["to"], float)
+        except (TypeError, ValueError):
+            raise CurriculumError(f"{where}: from and to must be numbers or lists of numbers") from None
+        vals = []
+        for k in range(n_steps):
+            if "steps" in e:
+                n = e["steps"]
+                v = b if n == 1 else a + (b - a) * min(k, n - 1) / (n - 1)
+            else:
+                v = b if k >= e["at_step"] else a
+            v = v.tolist()
+            if f.kind == "int":
+                v = int(round(v))
+            try:
+                vals.append(f.check(f"{where}: {e['param']} at step {k}", v))
+            except ValueError as exc:
+                raise CurriculumError(str(exc)) from None
+        out.append(Step(p.name, key, vals))
+    return out
+
+
+def apply_difficulty(env, k: int | None) -> None:
+    """Set difficulty step `k` (None: the last) on `env`'s parts at episode start;
+    the episode's start and checkpoint snapshots get the same values."""
+    if not env.difficulty:
+        env.difficulty_level = None
+        return
+    n = env.difficulty_steps
+    k = n - 1 if k is None else int(k)
+    if not 0 <= k < n:
+        raise CurriculumError(f"difficulty step {k} out of range: the task has {n} (0..{n - 1})")
+    env.difficulty_level = k
+    for st in env.difficulty:
+        env.parts[st.part].set_value(env.model, env.data, st.key, copy.deepcopy(st.values[k]), episode=True)
+    touched = {st.part for st in env.difficulty}
+    for attr in ("start_snap", "checkpoint_snap"):
+        snap = getattr(env, attr)
+        if snap is not None:
+            snap = copy.copy(snap)
+            snap.values = {**snap.values, **{n_: copy.deepcopy(env.parts[n_].live) for n_ in touched}}
+            setattr(env, attr, snap)
+
+
 # ---- the controller -------------------------------------------------------------------
 class Curriculum:
     """Opens levels in order from per-level success rates (pure; no env)."""
 
     def __init__(self, mode: str, n_segments: int, advance_at: float = 0.8, replay: float = 0.2,
-                 window: int = 50, names: list[str] | None = None):
+                 window: int = 50, names: list[str] | None = None, difficulties: int = 1,
+                 order: str = "difficulty_first"):
         if mode not in MODES:
             raise CurriculumError(f"curriculum mode must be one of {MODES}, got {mode!r}")
+        if order not in ORDERS:
+            raise CurriculumError(f"curriculum order must be one of {ORDERS}, got {order!r}")
         self.mode = mode
         self.advance_at, self.replay, self.window = float(advance_at), float(replay), int(window)
         self.n_segments = n_segments
         self.names = names or [str(i) for i in range(n_segments)]
-        order = range(n_segments) if mode == "forward" else reversed(range(n_segments))
-        self.levels = [{"segment": i} for i in order] if mode != "none" else [{"segment": 0}]
+        self.difficulties = int(difficulties)
+        segs = (list(range(n_segments)) if mode == "forward" else list(reversed(range(n_segments)))
+                if mode == "reverse" else [0])
+        if self.difficulties == 1:
+            self.levels = [{"segment": i} for i in segs]
+        elif order == "difficulty_first":
+            self.levels = [{"segment": i, "difficulty": k} for i in segs for k in range(self.difficulties)]
+        else:
+            self.levels = [{"segment": i, "difficulty": k} for k in range(self.difficulties) for i in segs]
         self.open = 1
         self.results = [deque(maxlen=self.window) for _ in self.levels]
         self.counts = [0 for _ in self.levels]
@@ -164,29 +287,39 @@ class Curriculum:
         """Episodes run on to the goal (reverse, none) or stop at the segment end (forward)."""
         return self.mode != "forward"
 
-    def level_of(self, segment: int) -> int | None:
+    def level_name(self, lv: dict[str, int]) -> str:
+        name = self.names[lv["segment"]]
+        return name if "difficulty" not in lv else f"{name}@d{lv['difficulty']}"
+
+    def level_of(self, segment: int, difficulty: int | None = None) -> int | None:
         for i, lv in enumerate(self.levels):
-            if lv["segment"] == segment:
+            if lv["segment"] == segment and lv.get("difficulty", difficulty) == difficulty:
                 return i
         return None
 
-    def probs(self) -> list[float]:
-        """Start probability per segment: the newest open level 1 - replay, the
+    def level_probs(self) -> list[float]:
+        """Start probability per level: the newest open level 1 - replay, the
         earlier open ones share `replay` (all of it to the newest when alone)."""
+        p = [0.0] * len(self.levels)
+        old = self.open - 1
+        p[old] = 1.0 - (self.replay if old else 0.0)
+        for i in range(old):
+            p[i] = self.replay / old
+        return p
+
+    def probs(self) -> list[float]:
+        """Start probability per segment (the levels' summed)."""
         p = [0.0] * self.n_segments
-        new = self.levels[self.open - 1]["segment"]
-        old = [lv["segment"] for lv in self.levels[:self.open - 1]]
-        p[new] = 1.0 - (self.replay if old else 0.0)
-        for s in old:
-            p[s] += self.replay / len(old)
+        for lv, q in zip(self.levels, self.level_probs()):
+            p[lv["segment"]] += q
         return p
 
     def draw(self, rng: np.random.Generator) -> int:
         return int(rng.choice(self.n_segments, p=self.probs()))
 
-    def record(self, segment: int, success: bool) -> bool:
+    def record(self, segment: int, success: bool, difficulty: int | None = None) -> bool:
         """Count one finished episode; True when it opened the next level."""
-        lv = self.level_of(segment)
+        lv = self.level_of(segment, difficulty)
         if lv is None or lv >= self.open:
             return False
         self.results[lv].append(bool(success))
@@ -199,28 +332,32 @@ class Curriculum:
         return False
 
     def rates(self) -> dict[str, float | None]:
-        out = {}
-        for lv, res in zip(self.levels, self.results):
-            out[self.names[lv["segment"]]] = round(float(np.mean(res)), 3) if res else None
-        return out
+        return {self.level_name(lv): round(float(np.mean(res)), 3) if res else None
+                for lv, res in zip(self.levels, self.results)}
 
     def state(self) -> dict[str, Any]:
         return {"mode": self.mode,
-                "open": [self.names[lv["segment"]] for lv in self.levels[:self.open]],
+                "open": [self.level_name(lv) for lv in self.levels[:self.open]],
                 "rates": self.rates(),
-                "episodes": {self.names[lv["segment"]]: n for lv, n in zip(self.levels, self.counts)}}
+                "episodes": {self.level_name(lv): n for lv, n in zip(self.levels, self.counts)}}
 
 
 # ---- in the env ---------------------------------------------------------------------
 class SegmentDraw:
-    """What an env worker needs to start its episodes: start probabilities per segment."""
+    """What an env worker needs to start its episodes: start probabilities per
+    segment, or per level when `levels` (dicts with "segment", "difficulty") is given."""
 
-    def __init__(self, probs: list[float], to_goal: bool):
+    def __init__(self, probs: list[float], to_goal: bool, levels: list[dict] | None = None):
         self.probs = list(probs)
         self.to_goal = bool(to_goal)
+        self.levels = (list(levels) if levels is not None
+                       else [{"segment": i} for i in range(len(self.probs))])
+
+    def draw_level(self, rng: np.random.Generator) -> dict[str, int]:
+        return self.levels[int(rng.choice(len(self.probs), p=self.probs))]
 
     def draw(self, rng: np.random.Generator) -> int:
-        return int(rng.choice(len(self.probs), p=self.probs))
+        return self.draw_level(rng)["segment"]
 
 
 def begin_segment(env, segment: int, to_goal: bool, layout: dict | None = None) -> None:

@@ -32,8 +32,9 @@ if TYPE_CHECKING:
 
 SIG = mujoco.mjtState.mjSTATE_INTEGRATION
 #: Model arrays that parts, setters (R13) and difficulty steps (R21) may change while running.
+#: `body_gravcomp` holds parked pool bodies still (parts/pool.py).
 MODEL_FIELDS = ("body_pos", "body_quat", "geom_rgba", "geom_friction", "geom_contype",
-                "geom_conaffinity", "eq_data")
+                "geom_conaffinity", "eq_data", "body_gravcomp")
 
 
 @dataclass

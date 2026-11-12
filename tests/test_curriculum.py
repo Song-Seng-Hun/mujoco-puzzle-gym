@@ -293,3 +293,64 @@ def test_flag_room_targets(flagged):
     env, _ = flagged
     env.reset(seed=0)
     assert [t.name for t in env.targets] == ["f1", "f2", "goal"]
+
+
+# ---- difficulty steps (R21) ------------------------------------------------------------------
+def test_difficulty_levels_open_in_order():
+    """Fake success rates: difficulty_first runs every step of a segment before the next segment;
+    segment_first runs every segment at a step before the next step."""
+    cur = Curriculum("forward", 2, advance_at=0.8, replay=0.2, window=4, difficulties=3)
+    seen = [cur.state()["open"][-1]]
+    for seg, d in [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1)]:
+        assert not cur.record(seg, True, d + 1)                     # a step not yet open: not counted
+        assert [cur.record(seg, ok, d) for ok in (True,) * 4][-1]
+        seen.append(cur.state()["open"][-1])
+    assert seen == ["0@d0", "0@d1", "0@d2", "1@d0", "1@d1", "1@d2"]
+    assert cur.level_probs() == pytest.approx([0.04] * 5 + [0.8])
+    assert cur.probs() == pytest.approx([0.12, 0.88])
+    cur = Curriculum("forward", 2, advance_at=0.8, replay=0.2, window=4, difficulties=2, order="segment_first")
+    for seg, d in [(0, 0), (1, 0), (0, 1)]:
+        assert [cur.record(seg, True, d) for _ in range(4)][-1]
+    assert cur.state()["open"] == ["0@d0", "1@d0", "0@d1", "1@d1"]
+
+
+WIND = {"name": "w", "preset": "trap/crosswind", "pos": [0.5, 0.5], "power": 1.0}
+TABLE = [{"param": "w.power", "from": 1.0, "to": 4.0, "steps": 4},
+         {"param": "w.enabled", "from": 0, "to": 1, "at_step": 2}]
+
+
+def test_env_applies_the_table_at_each_step(tmp_path):
+    from rooms import open_room
+    pit = {"name": "pit", "preset": "trap/pit", "pos": [-0.5, 0.8], "on_fall": "reset"}   # keeps a start snapshot
+    env = open_room(tmp_path, [WIND, pit], task={"difficulty": TABLE}, name="diff")
+    assert env.difficulty_steps == 4
+    w = env.parts["w"]
+    for k, (power, on) in enumerate([(1.0, 0), (2.0, 0), (3.0, 1), (4.0, 1)]):
+        _, info = env.reset(seed=0, options={"difficulty": k})
+        assert (w.live["power"], w.live["enabled"], info["difficulty"]) == (pytest.approx(power), on, k)
+        assert env.start_snap.values["w"]["power"] == pytest.approx(power)
+    _, info = env.reset(seed=0)                                    # no draw: the top step
+    assert info["difficulty"] == 3 and w.live["power"] == pytest.approx(4.0)
+    with pytest.raises(CurriculumError, match="out of range"):
+        env.reset(seed=0, options={"difficulty": 4})
+    env.close()
+
+
+@pytest.mark.parametrize("row, msg", [
+    ({"param": "w.size", "from": [0.5, 0.5], "to": [1.0, 1.0], "steps": 2}, "cannot be stepped"),
+    ({"param": "w.power", "from": 1.0, "to": 30.0, "steps": 2}, "power"),
+    ({"param": "w.power", "from": 1.0, "to": 2.0}, "steps: n"),
+])
+def test_bad_difficulty_rows_rejected(tmp_path, row, msg):
+    from rooms import open_room
+    with pytest.raises(TaskError, match=msg):
+        open_room(tmp_path, [WIND], task={"difficulty": [row]}, name="baddiff")
+
+
+def test_bound_value_cannot_be_stepped(tmp_path):
+    from rooms import open_room
+    from test_doors import Source  # noqa: F401  (registers t_signal)
+    sig = {"name": "g", "type": "t_signal", "pos": [1.0, -1.0]}
+    wind = {**WIND, "bind": {"power": {"from": "g", "map": [0.0, 1.0, 0.0, 4.0]}}}
+    with pytest.raises(TaskError, match="bind"):
+        open_room(tmp_path, [sig, wind], task={"difficulty": TABLE[:1]}, name="binddiff")

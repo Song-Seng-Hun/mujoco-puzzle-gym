@@ -171,7 +171,8 @@ class Part:
         self.pending_snapshot = False          # checkpoint asks the env for a snapshot
         self._bid = -1
         self._schema = schema = self.full_schema()
-        self.live: dict[str, Any] = {k: copy.deepcopy(cfg[k]) for k, f in schema.items() if f.runtime}
+        self.live: dict[str, Any] = {k: copy.deepcopy(cfg[k]) for k, f in schema.items()
+                                     if f.runtime or f.episode}
         self._live0 = copy.deepcopy(self.live)
         self.binds = self._parse_binds(schema, cfg["bind"])
         #: Extra channels this part reads besides `in` and `enable` (bind sources).
@@ -278,11 +279,14 @@ class Part:
         record contact starts or peak forces here and judge them in `update`."""
 
     # ---- run-time values (R13) ---------------------------------------------------
-    def set_value(self, model: mujoco.MjModel, data: mujoco.MjData, key: str, value: Any) -> None:
-        """Change run-time value `key` (schema-checked; SchemaError when out of range)."""
+    def set_value(self, model: mujoco.MjModel, data: mujoco.MjData, key: str, value: Any,
+                  episode: bool = False) -> None:
+        """Change run-time value `key` (schema-checked; SchemaError when out of range).
+        `episode=True` (episode start, R21 difficulty) also takes values marked `episode`."""
         f = self._schema.get(key)
-        if f is None or not f.runtime:
-            raise SchemaError(f"part {self.name!r}: {key!r} cannot change while running")
+        if f is None or not (f.runtime or (episode and f.episode)):
+            when = "at episode start" if episode else "while running"
+            raise SchemaError(f"part {self.name!r}: {key!r} cannot change {when}")
         self.live[key] = f.check(f"part {self.name!r}", value)
 
     def claim_value(self, key: str) -> None:

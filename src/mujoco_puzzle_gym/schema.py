@@ -33,6 +33,8 @@ class Field:
     numbers, each in [min, max]) | list (of str) | any (structured value the part
     checks itself, e.g. a warp's `to` / `routes`).
     runtime: may be changed while running (R13 setters); size and shape may not.
+    episode: may be changed at episode start only (R21 difficulty steps): a value
+    a part reads only when an episode starts; run-time values may be changed then too.
     """
 
     name: str
@@ -44,6 +46,7 @@ class Field:
     choices: tuple[Any, ...] = ()
     length: int | None = None
     runtime: bool = False
+    episode: bool = False
     doc: str = ""
 
     def __post_init__(self):

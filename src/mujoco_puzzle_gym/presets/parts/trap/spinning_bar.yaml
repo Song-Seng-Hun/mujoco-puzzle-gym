@@ -1,0 +1,6 @@
+# Spinning bar (R16): a bar at floor height turning about its hub while on.
+# Set: pos, length, power [deg/s], in.
+type: spinner
+length: 0.4
+height: 0.03
+power: 90.0

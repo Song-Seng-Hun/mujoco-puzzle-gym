@@ -1,0 +1,6 @@
+# Target (R5): turns on when a cannon shell hits it at min_speed or faster.
+# Set: pos, yaw (the way its face looks), height, mode (latch | pulse).
+type: target
+size: [0.2, 0.2]
+height: 0.2
+mode: latch
