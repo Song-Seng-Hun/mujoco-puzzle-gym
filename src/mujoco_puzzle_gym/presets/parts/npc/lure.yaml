@@ -1,0 +1,7 @@
+# Lured robot (R29): while the body holds `bait` (a grabbable object, E3) and is
+# within `sense`, it comes towards the bait and stops `keep` short.
+# Set: pos, bait, sense, keep.
+type: npc
+behavior: lure
+sense: 0.8
+keep: 0.25

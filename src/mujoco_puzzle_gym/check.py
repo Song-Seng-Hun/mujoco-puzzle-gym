@@ -9,7 +9,8 @@ demo:      the `demo:` sub-goals name known commands and fitting parts;
            the failing one, and the solver is skipped)
 body:      every part's `requires_body` capabilities are on the body (R2b);
 parts:     no part reports a static problem (`Part.check_static`: a ball too big
-           for its goal net, a ball in a wall or out of reach, R38);
+           for its goal net, a ball in a wall or out of reach, R38); warnings
+           (`Part.check_warnings`: an NPC as fast as the body, R29) do not fail it;
 overlap:   at the nominal layout no solid part geometry sits in a wall or in
            another part (`OVERLAP_DEPTH`; floor pads and doors in their wall gap
            do not count);
@@ -68,9 +69,12 @@ def check_body(env: PuzzleEnv) -> dict[str, Any]:
 
 
 def check_parts(env: PuzzleEnv) -> dict[str, Any]:
-    """Static: reasons parts give through `check_static` (R38)."""
+    """Static: reasons parts give through `check_static` (R38); `warnings` from
+    `check_warnings` (R29 NPC speed) do not fail the stage."""
     why = [r for p in env.parts.values() for r in p.check_static(env)]
-    return {"ok": not why, **({"reason": "; ".join(why)} if why else {})}
+    warn = [w for p in env.parts.values() for w in p.check_warnings(env)]
+    return {"ok": not why, **({"reason": "; ".join(why)} if why else {}),
+            **({"warnings": warn} if warn else {})}
 
 
 def check_overlap(env: PuzzleEnv) -> dict[str, Any]:

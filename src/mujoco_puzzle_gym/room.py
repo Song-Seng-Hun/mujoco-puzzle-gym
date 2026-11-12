@@ -47,9 +47,9 @@ the stages together (an earlier stage may have none).
 
 Demo (R20): `demo:` lists the scripted solver's sub-goals for `mpg check`, in
 order (strings): `goto <part>`, `press <part>`, `wait <seconds>`, `push <ball>
-to <net or pin>`. After the last one the solver goes on with the grid answer
-(the solution order), so a demo may stop before the goal. Without `demo:` the
-solver uses the grid answer only. `grab` and `place` come with cubes (PR E3).
+to <net or pin>`, `herd <npc> <part or x y>` (R29). After the last one the
+solver goes on with the grid answer (the solution order), so a demo may stop
+before the goal. Without `demo:` the solver uses the grid answer only. `grab` and `place` come with cubes (PR E3).
 
 Markers and gaze (R26, R27): marked parts get ArUco markers (markers/);
 `gaze: {fov, max_dist, max_tilt, dwell}` sets the gaze sensor (gaze.py), and a
@@ -99,14 +99,15 @@ class RoomError(ValueError):
         self.stage = stage
 
 
-DEMO_COMMANDS = ("goto", "press", "wait", "push")
+DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd")
 DEMO_LATER = ("grab", "place")        # E3 (cubes)
 MAX_WAIT = 60.0                        # [s] longest `wait`
 
 
 def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
     """`demo:` entries as tuples: ("goto"|"press", part), ("wait", seconds),
-    ("push", ball, target). Raises RoomError (stage `demo`) naming the bad entry."""
+    ("push", ball, target), ("herd", npc, part or (x, y)). Raises RoomError (stage
+    `demo`) naming the bad entry."""
     if raw is None:
         return []
     if not isinstance(raw, list):
@@ -145,6 +146,8 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
                 raise RoomError(f"demo[{i}]: `wait <seconds>` needs one number in (0, {MAX_WAIT:g}], "
                                 f"got {entry!r}", "demo")
             out.append(("wait", sec))
+        elif cmd == "herd":
+            out.append(_parse_herd(i, entry, args, parts, part))
         else:
             if len(args) != 3 or args[1] != "to":
                 raise RoomError(f"demo[{i}]: write `push <ball> to <net or pin>`, got {entry!r}", "demo")
@@ -158,6 +161,26 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
                 raise RoomError(f"demo[{i}]: {target!r} does not accept {ball!r}", "demo")
             out.append(("push", ball, target))
     return out
+
+
+def _parse_herd(i: int, entry: str, args: list[str], parts: dict[str, Any], part) -> tuple:
+    """("herd", npc, part name or (x, y)) for `herd <npc> <part>` / `herd <npc> <x> <y>` (R29)."""
+    from .parts.npc.behaviors import HERDABLE
+
+    if len(args) not in (2, 3):
+        raise RoomError(f"demo[{i}]: write `herd <npc> <part>` or `herd <npc> <x> <y>`, "
+                        f"got {entry!r}", "demo")
+    npc = part(i, args[0])
+    if getattr(parts[npc], "behavior", None) not in HERDABLE:
+        raise RoomError(f"demo[{i}]: cannot herd {npc!r}; herd an npc robot with behavior "
+                        f"{' / '.join(HERDABLE)}", "demo")
+    if len(args) == 2:
+        return ("herd", npc, part(i, args[1]))
+    try:
+        return ("herd", npc, (float(args[1]), float(args[2])))
+    except ValueError:
+        raise RoomError(f"demo[{i}]: `herd <npc> <x> <y>` needs two numbers, got {entry!r}",
+                        "demo") from None
 
 
 class Parts(dict):

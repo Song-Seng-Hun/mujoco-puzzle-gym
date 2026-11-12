@@ -1,0 +1,12 @@
+# Example room (R14, R24 "warps"): the goal is behind a wall without a door.
+# A warp pad sends the body over the wall into the right room; the planner
+# takes the pad because no switch opens the way.
+name: warp_hop
+size: [2.6, 1.8]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.4, -0.9], to: [0.4, 0.9]}        # divider, no opening
+spawn: {pos: [-1.0, -0.4], yaw: 0.0, random: [0.08, 0.1, 3.14]}
+parts:
+  - {name: hop, type: warp, pos: [-0.1, 0.5], random: [0.08, 0.08], to: {pos: [0.8, 0.5], yaw: -1.57}}
+  - {name: goal, type: goal, pos: [1.0, -0.3], radius: 0.15, random: [0.08, 0.3]}

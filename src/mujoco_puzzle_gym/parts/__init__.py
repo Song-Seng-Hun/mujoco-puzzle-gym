@@ -9,6 +9,7 @@ from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
 from .input import Button, Checkpoint, Laser, PressurePlate, Receptacle, Target, Zone
 from .logic import Counter, Gate, Receiver, Transmitter
+from .npc import Npc
 from .object import Ball, Pin
 from .switch import Switch
 from .trap import Cannon, Pendulum, Pit, Pusher, Spinner, Wind
@@ -49,9 +50,10 @@ register_part("spinner", Spinner, replace=True)
 register_part("pendulum", Pendulum, replace=True)
 register_part("pit", Pit, replace=True)
 register_part("cannon", Cannon, replace=True)
+register_part("npc", Npc, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
            "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
            "SwingDoor", "Trapdoor", "Warp", "FloorTile", "Coin", "CoinGroup", "CoinLock",
            "Ball", "Pin", "GoalNet", "Platform", "Pillar", "Turntable", "Conveyor", "Spring",
-           "Setter", "Target", "Wind", "Pusher", "Spinner", "Pendulum", "Pit", "Cannon"]
+           "Setter", "Target", "Wind", "Pusher", "Spinner", "Pendulum", "Pit", "Cannon", "Npc"]

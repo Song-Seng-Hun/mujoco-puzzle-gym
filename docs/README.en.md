@@ -94,7 +94,7 @@ All commands, training settings, adding parts and rewards, and swapping the body
 - [x] **Milestone 1**: the full loop of building, checking, training, diagnosing and evaluating a switch → door → goal puzzle. The built-in parts are switch, door and goal; other devices can be added as plugins.
 - [ ] **Milestone 2**: a part catalog (in progress)
   - [x] Buttons, sensors, logic gates, counters, coins, warps, balls and goal nets, several kinds of door, checkpoints and curriculum training, ArUco markers and a gaze sensor, camera and distance-sensor observations. The 35 part presets and the example rooms are in the [parts and presets guide](parts-guide.en.md).
-  - [ ] Moving devices (platforms, conveyors, springs), traps, robots that move on their own
+  - [x] Moving devices (platforms, conveyors, springs), traps, robots that move on their own
   - [ ] Cubes and beak grabbing, tow ropes, more episode randomization
 - [ ] **Milestone 3**: puzzle parts for other bodies, such as arms and wheeled robots
 

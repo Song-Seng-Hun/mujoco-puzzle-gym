@@ -1,0 +1,7 @@
+# Guard robot (R29): keeps its post (pos) and steps up to `reach` towards the
+# body when it comes within `sense + reach` of the post. Switch it off with `enable`.
+# Set: pos, reach, sense, enable.
+type: npc
+behavior: guard
+sense: 0.4
+reach: 0.25

@@ -1,0 +1,6 @@
+# Shy robot (R29): creeps towards the body while not looked at and freezes while
+# the body looks at its marker (gaze sensor R27, room `gaze:` dwell). `invert: true` swaps.
+# Set: pos, keep, invert.
+type: npc
+behavior: shy_gaze
+keep: 0.3

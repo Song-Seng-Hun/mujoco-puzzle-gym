@@ -7,7 +7,7 @@ A puzzle room is assembled from parts. This document covers how parts connect th
 ## Parts, presets and assembly presets
 
 - A **part** is one line in `parts:` of `room.yaml`. It is made of a type (`type`) and its values. Each type fixes the values it accepts with their units, defaults and allowed ranges (the value schema); `mpg build` and `mpg check` reject out-of-range values and give the reason and the range.
-- A **part preset** is one part type with a set of default values. It has no code. Presets live in `src/mujoco_puzzle_gym/presets/parts/<category>/<name>.yaml`, and the categories are `input` (buttons, sensors), `logic` (gates, counters, transceivers), `device` (doors, warps, goal nets, platforms, pillars, turntables, conveyors, springs, setters), `floor`, `trap`, `object`, `beak` and `npc`. `beak` and `npc` are still empty.
+- A **part preset** is one part type with a set of default values. It has no code. Presets live in `src/mujoco_puzzle_gym/presets/parts/<category>/<name>.yaml`, and the categories are `input` (buttons, sensors), `logic` (gates, counters, transceivers), `device` (doors, warps, goal nets, platforms, pillars, turntables, conveyors, springs, setters), `floor`, `trap`, `object`, `beak` and `npc` (robots that move by themselves). `beak` is still empty.
 - An **assembly preset** bundles several parts, or is a whole room. Assembly presets live in `presets/puzzles/<topic>/<name>.yaml`.
 
 `mpg parts --json` lists the registered parts, their value schemas and the presets. To include your own parts, add `--plugin my_parts`.
@@ -101,6 +101,28 @@ Traps (the `trap` group) push the body, knock it over or let it fall. Each one a
 - Knockdown record (2026-11-12, standing body, 0.4 m away, from the side and the front, 3 shots each): shell mass × speed of 0.5 N·s or less never knocked it over; falls started at 0.6 N·s (0.1 kg, 6 m/s, front); at 0.8 N·s (0.2 kg, 4 m/s) 4 of 6 fell and at 1.0 N·s (0.2 kg, 5 m/s) all 6. The default is therefore 0.2 kg at 5 m/s. A walking body is weaker: with 0.4 N·s shells every 2.5 s, the solver fell in 6 of 20 runs.
 - Shell mass (`shell_mass`) is fixed when the room is built. MuJoCo precomputes the mass matrix of a free body, so changing the mass while running gives wrong motion.
 
+## NPC robots
+
+The `npc` category is a small robot that slides over the floor by itself (`type: npc`). It moves on three planar joints (x and y slides, a z hinge) with velocity actuators, and it has mass, so it collides with the body, objects and walls. Floor buttons and zones see the robot's centre like an object's (`trigger: npc` or `any`). It has no vertical joint and so puts no weight on the floor; a pressure plate counts the robot's `mass` while its centre is over the plate. It carries a marker on top.
+
+| `behavior` | Preset | What it does |
+|---|---|---|
+| `flee` | `npc/flee` | Runs the other way when the body comes within `sense`. When blocked it slides along the wall |
+| `follow` | `npc/follow` | Comes towards the body within `sense` and stops `keep` away |
+| `lure` | `npc/lure` | Comes towards the `bait` object while the body holds it. Until grabbing (E3) arrives it stays still and cannot be herded |
+| `patrol` | `npc/patrol` | Drives round `path` (points measured from `pos`, a loop). Stops and waits while the body blocks the way |
+| `guard` | `npc/guard` | Keeps its post (`pos`); when the body comes within `sense + reach` it steps out up to `reach` to block it |
+| `shy_gaze` | `npc/shy_gaze` | Freezes while the body looks at its marker (gaze sensor, room `gaze:`) and creeps towards the body otherwise. `invert: true` swaps this |
+| `seek_button` | `npc/seek_button` | When `in` turns on it drives onto the `button` part and stays there |
+| `sleepy` | `npc/sleepy` | Drives round `path` for `awake` seconds, then stands still for `asleep` seconds, again and again |
+
+- Common values: `speed` (top speed, default 0.08 m/s), `accel`, `sense` (detection radius), `size`, `mass`, `leash: [x0, y0, x1, y1]` (a box in room coordinates the robot's centre never leaves). With `enable` off it stops where it is. `speed`, `accel`, `sense`, `keep`, `reach`, `awake` and `asleep` can change at run time.
+- Avoiding walls: it casts five rays, along the way it wants to go and at ±35° and ±70° from it, and takes the first clear one. With all five blocked it stops. The rules use no random numbers, so one seed gives one trajectory.
+- Channels: `<name>.moving` (1 while it moves), `<name>.on` (marker id of the button it stands on, -1 for none). The observation item `npcs` gives each robot's relative position, velocity, whether it moves and whether it is reacting (6 numbers).
+- A `speed` at or above the body's walking speed (about 0.16 m/s) is a warning in the `parts` stage of `mpg check` (not a failure): the body could not catch it.
+- A `seek_button` robot's `button` (a button, zone, laser or pressure plate the robot can set off) counts as on in the solution order once the robot's `in` are on (with no `in`, from the start). The body is not sent onto it; the robot drives there and presses it. So a room "switch A -> robot (`in: [A]`) -> plate -> door" is solved by pressing A.
+- Any other input only robots set off (`trigger: npc`, no `objects` list) counts as a switch in the solution order when it lies inside the `leash` of a robot that can be herded (`flee`, `follow`; with no `leash`, anywhere). Write `herd <robot> <part>` (or `herd <robot> <x> <y>`) in the solution's `demo:`: a `flee` robot is driven from its far side, a `follow` robot is led. `lure` robots can be herded once grabbing (E3) arrives.
+
 ## Assembly examples
 
 All of these pass the solver stage of `mpg check` at least 18 times out of 20.
@@ -117,6 +139,8 @@ All of these pass the solver stage of `mpg check` at least 18 times out of 20.
 | `puzzles/ball/color_sort` | Sort balls into two goal nets by colour; a counter opens the door | `ball`, `goal_net`, `counter` |
 | [`examples/rooms/lift_spring.yaml`](../examples/rooms/lift_spring.yaml) | One button opens the door, sends the elevator up, and through a setter turns on the spring so a ball starts hopping | `device/elevator`, `device/spring_pad`, `device/setter`, `device/sliding_door` |
 | [`examples/rooms/trap_run.yaml`](../examples/rooms/trap_run.yaml) | Around a pit, past a bar spinning on the floor and through a weak crosswind to the goal | `trap/pit`, `trap/spinning_bar`, `trap/crosswind` |
+| [`examples/rooms/herd.yaml`](../examples/rooms/herd.yaml) | Herd a fleeing robot onto the corner button; the door is open while it stays there | `npc/flee`, `input/floor_momentary` (`trigger: npc`), `device/sliding_door` |
+| [`examples/rooms/warp_hop.yaml`](../examples/rooms/warp_hop.yaml) | A warp pad takes the body over a wall without a door to the goal | `warp` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | Two rooms, and stairs and a ramp, drawn as text maps | `button`, `door` |
 
 The ball assembly presets are whole rooms, so you can pass one to `mpg check` as is, or lay it down with `preset: puzzles/ball/bowling` and change values.
@@ -133,7 +157,7 @@ Static phase:
 | `channels` | Reading a channel nobody writes, two parts writing one channel, stateless loops, links to missing parts |
 | `demo` | Commands and targets of the `demo:` subgoals |
 | `body` | Whether the body has the `requires_body` capabilities of the parts |
-| `parts` | Per-part checks (a ball larger than the goal-net mouth, balls or coins that cannot be reached) |
+| `parts` | Per-part checks (a ball larger than the goal-net mouth, balls or coins that cannot be reached). An NPC robot as fast as the body is only a warning (`warnings`), not a failure |
 | `overlap` | Whether a part's solid body sinks more than 5 mm into a wall or another part in the default layout. Floor pads, flags and goal zones are skipped, and a door may overlap only its own walls (the walls of the gap it closes, and walls on the same line) |
 | `order` | Whether the signals and walls allow a solution order that reaches the goal. For text-map rooms, also whether parts sit on floor cells, and blocking ledges and slopes |
 
@@ -144,7 +168,7 @@ Dynamic phase:
 | Stage | What it checks |
 |---|---|
 | `stability` | That the body does not fall or blow up numerically for 10 s at zero command |
-| `solver` | That a scripted solver that knows the answer solves at least 18 of 20 random layouts. If the room has `demo:` (`goto`, `press`, `wait`, `push <ball> to <goal_net>`), the solver follows that order first, and a grid solver takes over for the rest |
+| `solver` | That a scripted solver that knows the answer solves at least 18 of 20 random layouts. If the room has `demo:` (`goto`, `press`, `wait`, `push <ball> to <goal_net>`, `herd <robot> <part>`), the solver follows that order first, and a grid solver takes over for the rest |
 
 The solver stage saves a snapshot for each flag it passes in `runs/check/<room>/checkpoints/<flag>.pkl`.
 
@@ -423,6 +447,28 @@ Role `switch`, update stage `input`.
 | `to` | vec | m | required |  |  | receiver position [x, y] |
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
+
+### `npc`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `behavior` | enum |  | `flee` | `flee`, `follow`, `lure`, `patrol`, `guard`, `shy_gaze`, `seek_button`, `sleepy` |  | flee, follow, lure, patrol, guard, shy_gaze, seek_button or sleepy |
+| `size` | vec | m | `[0.12, 0.12, 0.07]` | [0.04, 0.5] |  | chassis [x, y, z] |
+| `mass` | float | kg | `0.3` | [0.02, 5] |  |  |
+| `speed` | float | m/s | `0.08` | [0, 1] | yes | top speed; at or above the body's 0.16 m/s `mpg check` warns |
+| `accel` | float | m/s^2 | `0.5` | [0.05, 10] | yes |  |
+| `sense` | float | m | `0.4` | [0.05, 5] | yes | reacts to the body this close (flee, follow, lure, patrol, guard) |
+| `leash` | vec | m | — | [-50, 50] |  | [x0, y0, x1, y1] box (world) its centre never leaves; default: none |
+| `keep` | float | m | `0.3` | [0, 3] | yes | follow, lure, shy_gaze: stops this far from the body / bait |
+| `reach` | float | m | `0.25` | [0, 3] | yes | guard: how far it steps out from its post |
+| `path` | any |  | — |  |  | patrol, sleepy: [[dx, dy], ...] from `pos`, 2 or more points, a loop |
+| `button` | str |  | — |  |  | seek_button: the part it goes onto |
+| `bait` | str |  | — |  |  | lure: the object the body must hold |
+| `awake` | float | s | `2.0` | [0.1, 60] | yes | sleepy: seconds moving |
+| `asleep` | float | s | `2.0` | [0.1, 60] | yes | sleepy: seconds still |
+| `invert` | bool |  | `False` |  |  | shy_gaze: move while looked at, stop otherwise |
 
 ### `pendulum`
 
@@ -728,6 +774,14 @@ Role `switch`, update stage `input`.
 | `logic/receiver` | `receiver` | `band: radio`, `delay: 0.0` |
 | `logic/transmitter` | `transmitter` | `band: radio`, `delay: 0.0` |
 | `logic/xor` | `gate` | `op: xor` |
+| `npc/flee` | `npc` | `behavior: flee`, `speed: 0.08`, `sense: 0.4` |
+| `npc/follow` | `npc` | `behavior: follow`, `sense: 0.8`, `keep: 0.3` |
+| `npc/guard` | `npc` | `behavior: guard`, `sense: 0.4`, `reach: 0.25` |
+| `npc/lure` | `npc` | `behavior: lure`, `sense: 0.8`, `keep: 0.25` |
+| `npc/patrol` | `npc` | `behavior: patrol`, `path: [[0.0, 0.0], [0.4, 0.0]]`, `sense: 0.35` |
+| `npc/seek_button` | `npc` | `behavior: seek_button` |
+| `npc/shy_gaze` | `npc` | `behavior: shy_gaze`, `keep: 0.3` |
+| `npc/sleepy` | `npc` | `behavior: sleepy`, `path: [[0.0, 0.0], [0.4, 0.0]]`, `awake: 2.0`, `asleep: 2.0` |
 | `object/ball` | `ball` | `radius: 0.05`, `mass: 0.05`, `elasticity: 0.5` |
 | `object/bowling_pin` | `pin` | `radius: 0.02`, `height: 0.12`, `mass: 0.03` |
 | `object/heavy_ball` | `ball` | `radius: 0.08`, `mass: 0.5`, `elasticity: 0.2` |

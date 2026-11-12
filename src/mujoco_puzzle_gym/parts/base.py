@@ -124,6 +124,7 @@ class Part:
     marker_anchor: ClassVar[str] = ""    # geom (suffix of body_name) the marker sits on
     marker_faces: ClassVar[tuple[str, ...]] = ()   # allowed faces; first is the default
     marker = None                        # markers.Marker, set when the room loads
+    plan_driver = None                   # planning: a part that turns this input on itself (R29)
     #: Values this class adds to its base classes' schema (R3).
     fields: ClassVar[tuple[Field, ...]] = (
         Field("pos", "vec", length=2, unit="m", doc="position [x, y] on the floor"),
@@ -346,10 +347,12 @@ class Part:
 
     def plan_values(self, on: set[str], get) -> dict[str, float]:
         """Planning: channels this part writes when the input parts named in `on` are
-        on and other channels read `get(channel)`. Inputs: on iff named in `on`;
-        logic parts compute through (logic.py); devices write nothing."""
+        on and other channels read `get(channel)`. Inputs: on iff named in `on` or
+        their `plan_driver` (a seek_button robot, R29) drives onto them; logic parts
+        compute through (logic.py); devices write nothing."""
         if self.stage == "input":
-            return {ch: float(self.name in on) for ch in self.outputs}
+            v = self.name in on or (self.plan_driver is not None and self.plan_driver.plan_drives(get))
+            return {ch: float(v) for ch in self.outputs}
         return {}
 
     def plan_inputs_on(self, get) -> bool:
@@ -370,6 +373,11 @@ class Part:
     def check_static(self, env) -> list[str]:
         """Reasons this part makes the room unsolvable, found without simulating
         (`mpg check` stage `parts`); empty when fine."""
+        return []
+
+    def check_warnings(self, env) -> list[str]:
+        """Things `mpg check` stage `parts` reports without failing (an NPC as fast
+        as the body, R29); empty when none."""
         return []
 
     def blockers(self, is_open: bool) -> list[Segment]:

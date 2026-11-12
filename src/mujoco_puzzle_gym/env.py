@@ -232,6 +232,10 @@ class PuzzleEnv(gym.Env):
         if key == "body":
             (self.body.shift if how == "move" else self.body.kick)(self.data, vec)
             return
+        owner = self.world.objects.get(int(key))
+        if getattr(owner, "planar", False):          # NPC robot: its slide joints (R29)
+            (owner.shift if how == "move" else owner.kick)(self.data, vec)
+            return
         m, d = self.model, self.data
         jnt = int(m.body_jntadr[int(key)])
         if how == "move":
@@ -246,6 +250,11 @@ class PuzzleEnv(gym.Env):
         """Move the walking body (key "body") or a free body (root body id) to `pose`."""
         if key == "body":
             self._place_body(pose)
+            return
+        owner = self.world.objects.get(int(key))
+        if getattr(owner, "planar", False):          # NPC robot: its slide joints (R29)
+            owner.teleport(self.data, pose)
+            mujoco.mj_forward(self.model, self.data)
             return
         m, d = self.model, self.data
         rid = int(key)

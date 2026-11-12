@@ -74,7 +74,7 @@ links:
 ```
 
 - 발판 `switch`는 M1 이름 그대로 쓰는 바닥 버튼입니다. 버튼 프리셋 `input/floor_oneshot`(몸으로 한 번 밟으면 계속 켜짐)과 같고, `latch: false`면 밟고 있는 동안만 켜지는 `momentary`입니다.
-- 새 방은 프리셋으로 짜는 편이 쉽습니다. `{name: b, preset: input/floor_oneshot, pos: [x, y]}`처럼 쓰고 바꿀 값만 덧붙입니다. 예제 방 목록과 프리셋 사용법은 [부품과 프리셋 안내](parts-guide.md)에 있습니다. 예제는 [`examples/rooms/`](../examples/rooms/)(버튼과 논리 게이트, 문 세 가지, 깃발 4개, 코인, 공, 글자 지도, 엘리베이터와 스프링)와 공 조립 프리셋(`mini_soccer`, `ball_ramp`, `bowling`, `color_sort`)입니다.
+- 새 방은 프리셋으로 짜는 편이 쉽습니다. `{name: b, preset: input/floor_oneshot, pos: [x, y]}`처럼 쓰고 바꿀 값만 덧붙입니다. 예제 방 목록과 프리셋 사용법은 [부품과 프리셋 안내](parts-guide.md)에 있습니다. 예제는 [`examples/rooms/`](../examples/rooms/)(버튼과 논리 게이트, 문 세 가지, 깃발 4개, 코인, 공, 글자 지도, 엘리베이터와 스프링, 함정, 워프, 도망치는 로봇)와 공 조립 프리셋(`mini_soccer`, `ball_ramp`, `bowling`, `color_sort`)입니다.
 - `random`은 에피소드마다 배치를 무작위로 바꾸는 범위입니다. 평가는 학습에 쓰지 않은 시드의 배치에서 합니다.
 - 문은 `require: all | any`로 여러 발판을 함께 요구할 수 있습니다.
 - 눈으로 구별할 부품(버튼과 발판, 센서판, 체크포인트, 문, 소켓, 워프, 바닥 타일)에는 ArUco 마커(`DICT_4X4_50`)가 빈 번호로 붙습니다. `marker: {id, size, face}`로 정하고 `marker: none`으로 뺍니다. 번호 중복, 0–49 밖 번호, 면보다 큰 마커는 방을 읽을 때 거절합니다.

@@ -16,7 +16,9 @@ is passable, an opening trapdoor as a hole):
 - `press <part>`: walk onto it until it is on (`satisfied()`);
 - `wait <s>`: stand for s seconds;
 - `push <ball> to <target>`: push that ball (push.py) until the target counts
-  it (a goal net) or is on (a pin).
+  it (a goal net) or is on (a pin);
+- `herd <npc> <part or x y>`: drive a flee robot from behind, or lead a follow
+  robot, until its centre is on the target (herd.py, R29).
 After the last sub-goal, and in rooms without `demo:`, it follows the grid
 answer: the env's solution-order targets, pushing a ball for a target with
 `push_target` (goal nets, pins).
@@ -38,6 +40,7 @@ STAND = np.array([-1.0, 0.0, 0.0], dtype=np.float32)
 
 class ScriptedSolver:
     def __init__(self, env):
+        from .herd import Herder
         from .push import Pusher
 
         self.env = env
@@ -45,12 +48,14 @@ class ScriptedSolver:
         self._fields: dict[tuple, np.ndarray] = {}
         self._live: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
         self.pusher = Pusher(env)          # `push` sub-goals and push targets (R38)
+        self.herder = Herder(env)          # `herd` sub-goals (R29)
         self.reset()
 
     def reset(self) -> None:
         self._fields = {}
         self._live = {}
         self.pusher.reset()
+        self.herder.reset()
         self.step_i = 0                    # current `demo:` entry
         self._wait = 0                     # env steps left in a `wait`
 
@@ -74,6 +79,7 @@ class ScriptedSolver:
                 return act
             self.step_i += 1
             self.pusher.reset()
+            self.herder.reset()
         env = self.env
         if env.current_target() is None:
             return STAND.copy()
@@ -141,6 +147,8 @@ class ScriptedSolver:
             ball, target = env.parts[entry[1]], env.parts[entry[2]]
             done = (ball.name in target.inside) if hasattr(target, "inside") else target.satisfied()
             return None if done else self.pusher.act(target, ball=ball)
+        if cmd == "herd":
+            return self.herder.act(env.parts[entry[1]], entry[2])
         part = env.parts[entry[1]]
         if part.satisfied():
             return None
