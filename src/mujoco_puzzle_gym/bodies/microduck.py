@@ -347,6 +347,14 @@ class MicroduckAdapter(BodyAdapter):
             data.qpos[self._root_qpos + 2] += z
             mujoco.mj_forward(data.model, data)
 
+    def kick(self, data: mujoco.MjData, velocity: Sequence[float]) -> None:
+        v = self._root_qvel
+        data.qvel[v:v + 3] = np.asarray(velocity, dtype=np.float64)
+
+    def shift(self, data: mujoco.MjData, delta: Sequence[float]) -> None:
+        q = self._root_qpos
+        data.qpos[q:q + 3] += np.asarray(delta, dtype=np.float64)
+
     def root_body_id(self, model: mujoco.MjModel) -> int:
         return model.body(PREFIX + TRUNK_BODY).id
 

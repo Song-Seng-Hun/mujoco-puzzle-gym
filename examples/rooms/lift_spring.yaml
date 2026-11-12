@@ -1,0 +1,21 @@
+# Example room (R11, R13, R15, R24 "platforms"): one button starts three devices.
+# - The button opens the sliding door in the divider: the way to the goal.
+# - The same signal sends the elevator up 0.3 m (one trip per rising edge).
+# - A setter arms the spring pad: its launch velocity goes from 0 to 1.5 m/s
+#   up, so the ball on it starts hopping.
+# The planner keeps the body off the elevator's cells. Built from part presets (R3).
+name: lift_spring
+size: [2.6, 1.8]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.4, -0.9], to: [0.4, -0.28]}      # divider, opening at y = 0
+  - {from: [0.4, 0.28], to: [0.4, 0.9]}
+spawn: {pos: [-1.0, -0.4], yaw: 0.0, random: [0.08, 0.1, 3.14]}
+parts:
+  - {name: button_a, preset: input/floor_oneshot, pos: [-0.55, 0.5], random: [0.08, 0.08]}
+  - {name: door_a, preset: device/sliding_door, pos: [0.4, 0.0], in: [button_a]}
+  - {name: lift, preset: device/elevator, pos: [-0.1, -0.55], in: [button_a]}
+  - {name: launcher, preset: device/spring_pad, pos: [-1.05, 0.62], velocity: [0.0, 0.0, 0.0]}
+  - {name: hopper, preset: object/ball, pos: [-1.05, 0.62], color: red}
+  - {name: arm, preset: device/setter, in: [button_a], target: launcher.velocity, value: [0.0, 0.0, 1.5]}
+  - {name: goal, type: goal, pos: [1.0, 0.0], radius: 0.15, random: [0.08, 0.4]}

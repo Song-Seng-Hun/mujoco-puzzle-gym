@@ -7,7 +7,7 @@
 ## 부품, 프리셋, 조립 프리셋
 
 - **부품**은 `room.yaml`의 `parts:` 한 줄입니다. 종류(`type`)와 값들로 이루어집니다. 종류마다 받는 값과 단위, 기본값, 허용 범위가 정해져 있고(값 스키마), 범위 밖 값은 `mpg build`와 `mpg check`가 이유와 범위를 들어 거절합니다.
-- **부품 프리셋**은 부품 종류 하나와 기본값 묶음입니다. 코드는 없습니다. `src/mujoco_puzzle_gym/presets/parts/<분류>/<이름>.yaml`에 있고, 분류는 `input`(버튼·센서), `logic`(게이트·카운터·트랜시버), `device`(문·워프·골대), `floor`, `trap`, `object`, `beak`, `npc`입니다. `beak`과 `npc`는 아직 비어 있습니다.
+- **부품 프리셋**은 부품 종류 하나와 기본값 묶음입니다. 코드는 없습니다. `src/mujoco_puzzle_gym/presets/parts/<분류>/<이름>.yaml`에 있고, 분류는 `input`(버튼·센서), `logic`(게이트·카운터·트랜시버), `device`(문·워프·골대·플랫폼·기둥·회전판·컨베이어·스프링·설정 변경기), `floor`, `trap`, `object`, `beak`, `npc`입니다. `beak`과 `npc`는 아직 비어 있습니다.
 - **조립 프리셋**은 여러 부품을 묶은 것, 또는 방 하나 전체입니다. `presets/puzzles/<주제>/<이름>.yaml`에 있습니다.
 
 `mpg parts --json`은 등록된 부품과 값 스키마, 프리셋 목록을 냅니다. 직접 만든 부품까지 보려면 `--plugin my_parts`를 붙입니다.
@@ -70,6 +70,15 @@ parts:
 
 식에 쓸 수 있는 것: 채널 이름(점이 든 `laps.count`도 채널 하나), 숫자, `and or not xor`, 비교(`< <= > >= == !=`), 괄호, 함수 `delay(x, s)`, `hold(x, s)`, `pulse(x)`, `latch(set, reset)`, `count(x)`, `timer(x)`. 산술, 속성 접근, 다른 함수 호출, 문자열은 방을 읽을 때 거절합니다. 식은 `ast`로 읽어 허용 목록을 확인하고 이 패키지가 직접 계산하므로, 남이 만든 방 파일을 열어도 코드가 실행되지 않습니다.
 
+## 움직이는 장치와 설정 변경기
+
+- 플랫폼(`platform`, 프리셋 `device/moving_platform`, `device/elevator`): `pos`에서 잰 `path: [[dx, dy, z], …]`(z는 윗면 높이)를 `speed`로 따라갑니다. `mode`는 `loop`, `pingpong`, `once`이고, `run`은 `always`, `while_signal`(신호가 켜진 동안), `on_signal`(켜지는 순간마다 한 번 운행)입니다. 미끄럼 관절과 위치 구동기로 움직여서 위에 놓인 물체를 함께 나릅니다.
+- 승강 기둥(`pillar`), 회전판(`turntable`), 컨베이어(`conveyor`): 신호가 켜진 동안 솟고, 돌고, 띠 위의 몸과 물체를 띠 속도로 옮깁니다. 컨베이어 띠는 바닥에 그린 띠라서 마찰은 바닥과 같습니다.
+- 스프링(`spring`, 프리셋 `device/spring_pad`): 패드 위의 대상에 속도 `velocity` [vx, vy, vz]를 줍니다. 프리셋은 물체만 쏩니다(`trigger: object`).
+- 설정 변경기(`setter`): 신호가 켜지는 순간 `target: <부품>.<값>`을 `value`로 바꾸고, `revert: true`면 꺼질 때 되돌립니다. 아래 값 표에서 "실행 중 변경"이 "예"인 값만 바꿀 수 있습니다. 문 폭 같은 크기 값은 방을 읽을 때 거절합니다.
+- 값 연결 `bind`: 모든 부품이 받는 값입니다. `bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}`처럼 실행 중 변경할 수 있는 수 값을 채널에 직선으로 잇고, 매 몸 스텝 값의 범위로 잘라 적용합니다. 같은 값을 `bind`와 설정 변경기가 함께 바꾸면 거절합니다.
+- 풀이 순서와 해답은 플랫폼과 회전판 칸, 솟을 기둥 칸을 피해 갑니다. 몸이 그 위에 탄 채 버티는지는 걷기 정책이 배운 범위 밖이라 기록만 합니다. 2026-11-12 기록: 플랫폼 0.1·0.3 m/s와 띠 0.1·0.2 m/s에서 3초 동안 넘어지지 않았습니다.
+
 ## 조립 예
 
 모두 `mpg check`의 해답 단계를 20번 중 18번 이상 통과합니다.
@@ -84,6 +93,7 @@ parts:
 | `puzzles/ball/ball_ramp` | 높은 단 위의 공을 경사로(3.4°)로 밀어 내려 골대에 넣습니다. 글자 지도의 경사로라 걷는 몸의 경사 한도 5° 안입니다 | 글자 지도 |
 | `puzzles/ball/bowling` | 공으로 핀 셋 중 하나를 쓰러뜨리면(`<핀>.down`) 문이 열립니다 | `ball`, `pin` |
 | `puzzles/ball/color_sort` | 색별 골대 두 개에 공을 나눠 넣고 카운터로 문을 엽니다 | `ball`, `goal_net`, `counter` |
+| [`examples/rooms/lift_spring.yaml`](../examples/rooms/lift_spring.yaml) | 버튼 하나가 문을 열고, 엘리베이터를 올리고, 설정 변경기로 스프링을 켜서 공이 튀어 오릅니다 | `device/elevator`, `device/spring_pad`, `device/setter`, `device/sliding_door` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 글자 지도로 그린 두 방, 계단과 경사로 | `button`, `door` |
 
 공 조립 프리셋은 방 하나 전체라서 그대로 `mpg check`에 넣어도 되고, `preset: puzzles/ball/bowling`으로 깔고 값을 바꿔 써도 됩니다.
@@ -171,6 +181,7 @@ def majority(inputs, state, dt):
 | `out` | list |  | — |  |  | channels this part writes (default: its name if it emits) |
 | `enable` | str |  | — |  |  | power channel; off (<= 0.5) freezes the part's output |
 | `marker` | any |  | — |  |  | ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one |
+| `bind` | any |  | — |  |  | R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, applied every body step, clipped to the value's range |
 
 ### `ball`
 
@@ -243,6 +254,18 @@ def majority(inputs, state, dt):
 | `persist` | bool |  | `False` |  |  | keep the count when a snapshot is restored |
 | `group` | str |  | `coins` |  |  | coin group whose picks it counts |
 | `need` | int |  | — | [1, 10000] |  | coins needed to reach; `all` (default) = every coin of the group |
+
+### `conveyor`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.8, 0.3]` | [0.1, 5] |  | belt size [x, y] |
+| `axis` | enum |  | `x` | `x`, `y` |  | direction the belt runs along |
+| `speed` | float | m/s | `0.1` | [-0.5, 0.5] | 예 | belt speed (+: toward +axis) |
+| `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it carries |
+| `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
 
 ### `counter`
 
@@ -340,6 +363,17 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
 
+### `pillar`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `mode` | enum |  | `follow` | `follow`, `oneshot` |  | follow: open while the signal is on; oneshot: stay open once opened |
+| `size` | vec | m | `[0.1, 0.4]` | [0.03, 2] |  | footprint [x, y] |
+| `height` | float | m | `0.25` | [0.05, 1] |  | top height when up |
+| `speed` | float | m/s | `0.2` | [0.01, 2] | 예 | rising speed |
+
 ### `pin`
 
 역할 `switch`, 갱신 단계 `input`.
@@ -351,6 +385,19 @@ def majority(inputs, state, dt):
 | `mass` | float | kg | `0.03` | [0.005, 2] |  |  |
 | `down_angle` | float | deg | `45.0` | [5, 90] |  | tilt from upright that counts as down |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
+
+### `platform`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `path` | any |  | 필수 |  |  | [[dx, dy, z], ...] from `pos`: points the top centre follows (2 or more) |
+| `size` | vec | m | `[0.3, 0.3]` | [0.05, 2] |  | slab size [x, y] |
+| `thickness` | float | m | `0.03` | [0.01, 0.2] |  |  |
+| `speed` | float | m/s | `0.1` | [0.01, 1] | 예 | speed along the path |
+| `mode` | enum |  | `pingpong` | `loop`, `pingpong`, `once` |  | loop: closed loop; pingpong: back and forth; once: to the end and stop |
+| `run` | enum |  | `always` | `always`, `while_signal`, `on_signal` |  | always; while_signal: while `in` is on; on_signal: one trip per rising edge |
 
 ### `pressure`
 
@@ -393,6 +440,29 @@ def majority(inputs, state, dt):
 | `wrong` | enum |  | `ignore` | `ignore`, `eject`, `lock`, `fail` |  |  |
 | `eject_speed` | float | m/s | `1.0` | [0.1, 5] |  |  |
 | `close_on_ok` | bool |  | `False` |  |  |  |
+
+### `setter`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | unused (a setter has no body) |
+| `target` | str |  | 필수 |  |  | <part>.<value>: the run-time value to change |
+| `value` | any |  | 필수 |  |  | new value (checked against the target value's schema) |
+| `revert` | bool |  | `False` |  |  | put the old value back when the signal turns off |
+
+### `spring`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.2, 0.2]` | [0.05, 2] |  | pad size [x, y] |
+| `velocity` | vec | m/s | `[0.0, 0.0, 1.5]` | [-5, 5] | 예 | launch velocity [vx, vy, vz] (world frame) |
+| `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it launches |
+| `cooldown` | float | s | `1.0` | [0.1, 60] |  | time a launched body or object ignores this spring |
+| `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
 
 ### `swing_door`
 
@@ -443,6 +513,16 @@ def majority(inputs, state, dt):
 | `hinge_side` | enum |  | `-x` | `-x`, `+x`, `-y`, `+y` |  | edge the tile hangs from |
 | `speed` | float | deg/s | `180.0` | [10, 2000] |  | opening speed |
 
+### `turntable`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `radius` | float | m | `0.25` | [0.05, 1.5] |  |  |
+| `height` | float | m | `0.008` | [0.004, 0.1] |  | top face above the floor |
+| `speed` | float | deg/s | `45.0` | [-360, 360] | 예 | spin rate while on (+: counter-clockwise) |
+
 ### `warp`
 
 역할 `warp`, 갱신 단계 `device`.
@@ -474,12 +554,19 @@ def majority(inputs, state, dt):
 
 | 프리셋 | 부품 종류 | 값 |
 |---|---|---|
+| `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
+| `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
+| `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
+| `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
+| `device/setter` | `setter` | `revert: False` |
 | `device/sliding_door` | `door` | `mode: follow`, `width: 0.5`, `axis: y` |
+| `device/spring_pad` | `spring` | `size: [0.2, 0.2]`, `velocity: [0.0, 0.0, 1.5]`, `trigger: object` |
 | `device/swing_door` | `swing_door` | `mode: follow`, `width: 0.5`, `axis: y`, `angle: 90.0` |
 | `device/trapdoor` | `trapdoor` | `size: [0.3, 0.3]`, `hinge_side: -x` |
+| `device/turntable` | `turntable` | `radius: 0.25`, `speed: 45.0` |
 | `floor/coin` | `coin` | `radius: 0.08`, `group: coins` |
 | `floor/rising_step` | `floor_tile` | `size: [0.3, 0.3]`, `height: 0.0`, `on_height: 0.01` |
 | `floor/tilt_bridge` | `floor_tile` | `size: [0.4, 0.3]`, `tilt: 0.0`, `on_tilt: 5.0` |

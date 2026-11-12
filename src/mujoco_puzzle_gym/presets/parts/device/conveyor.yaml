@@ -1,0 +1,7 @@
+# Conveyor (R12): a belt that carries the body and objects standing on it at
+# `speed` m/s along `axis` while its inputs are on (always without `in`).
+# Set: pos, size, axis, speed, in.
+type: conveyor
+size: [0.8, 0.3]
+axis: x
+speed: 0.1

@@ -35,6 +35,9 @@
   them out after the body step (teleport, `reset` to the last checkpoint or the
   episode start, `next_stage`). `info["warped"]` names the pads used this env
   step and `info["stage_changed"]` is True after a `next_stage` warp.
+  Conveyors (R12) and springs (R15) ask the same way: `("move", part, key,
+  delta)` shifts and `("kick", part, key, velocity)` launches the body or a
+  free object (`push`).
 - Segments (R21, curriculum.py): `reset(options={"segment": i})` starts segment
   i (checkpoint flag i's snapshot; `"to_goal": True` runs on to the goal), or a
   worker draws i from `set_segment_draw`. A segment episode ends with success at
@@ -182,7 +185,12 @@ class PuzzleEnv(gym.Env):
     # ---- warps (R14) ----------------------------------------------------------
     def _run_requests(self) -> None:
         reqs, self.world.requests = list(self.world.requests), []
+        moved = False
         for req in reqs:
+            if req[0] in ("move", "kick"):
+                self.push(req[0], req[2], req[3])
+                moved = True
+                continue
             if req[0] != "warp":
                 continue
             _, part, key, dest = req
@@ -200,7 +208,26 @@ class PuzzleEnv(gym.Env):
                 pose = (*dest["pos"], dest["yaw"])
             self.warp(key, pose)
             self.world.warp_until[key] = self.data.time + part.cooldown
+        if moved:
+            mujoco.mj_forward(self.model, self.data)
         self.body_state = self.read_body()
+
+    def push(self, how: str, key, vec) -> None:
+        """`move`: shift the walking body (key "body") or a free body (root body id) by
+        `vec` [m] (conveyors, R12); `kick`: set its linear velocity to `vec` [m/s]
+        (springs, R15; a free body's spin is cleared). Call `mj_forward` afterwards."""
+        if key == "body":
+            (self.body.shift if how == "move" else self.body.kick)(self.data, vec)
+            return
+        m, d = self.model, self.data
+        jnt = int(m.body_jntadr[int(key)])
+        if how == "move":
+            qa = int(m.jnt_qposadr[jnt])
+            d.qpos[qa:qa + 3] += np.asarray(vec, dtype=float)
+        else:
+            va = int(m.jnt_dofadr[jnt])
+            d.qvel[va:va + 3] = np.asarray(vec, dtype=float)
+            d.qvel[va + 3:va + 6] = 0.0
 
     def warp(self, key, pose) -> None:
         """Move the walking body (key "body") or a free body (root body id) to `pose`."""
@@ -256,6 +283,7 @@ class PuzzleEnv(gym.Env):
             self._place_body(layout["spawn"])
         self.signals.reset()
         for p in self.parts.values():
+            p.reset_values(self.model, self.data)
             p.reset(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
         self.body_state: BodyState = self.read_body()

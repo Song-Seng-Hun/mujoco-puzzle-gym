@@ -1,0 +1,8 @@
+# Moving platform (R11): a slab running back and forth along a path of
+# [dx, dy, z] points from `pos` (z = top height). Set: pos, path, speed,
+# mode (loop, pingpong, once), run (always, while_signal, on_signal) and in.
+type: platform
+size: [0.3, 0.3]
+path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]
+speed: 0.1
+mode: pingpong

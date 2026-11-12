@@ -97,6 +97,21 @@ class BodyAdapter(ABC):
         """Put the body standing at `pose` (floor height `z`), with zero velocity and
         the walking controller's history cleared (warps, R14)."""
 
+    def kick(self, data: mujoco.MjData, velocity: Sequence[float]) -> None:
+        """Set the body's linear velocity (world frame, m/s) as it is; joints, posture and
+        the walking controller's history stay (springs, R15). Default: the root free
+        joint's linear velocity."""
+        m = data.model
+        va = int(m.jnt_dofadr[m.body_jntadr[self.root_body_id(m)]])
+        data.qvel[va:va + 3] = np.asarray(velocity, dtype=float)
+
+    def shift(self, data: mujoco.MjData, delta: Sequence[float]) -> None:
+        """Move the whole body by `delta` (world, m) keeping its velocity, posture and
+        controller history (conveyors, R12). Default: the root free joint's position."""
+        m = data.model
+        qa = int(m.jnt_qposadr[m.body_jntadr[self.root_body_id(m)]])
+        data.qpos[qa:qa + 3] += np.asarray(delta, dtype=float)
+
     @abstractmethod
     def root_body_id(self, model: mujoco.MjModel) -> int:
         """Id of the body's root (free-floating) MuJoCo body; sensors use it to tell

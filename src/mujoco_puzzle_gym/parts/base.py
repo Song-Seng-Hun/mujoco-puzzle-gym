@@ -36,6 +36,16 @@ Settings (R3): each class lists its values as `fields` (`schema.Field`); the
 class schema is the union over its base classes (`full_schema`). The checked
 values, defaults filled in, are `self.cfg`; an out-of-range value raises
 `SchemaError` (a ValueError) naming the part, the value and the allowed range.
+
+Run-time values (R13): fields marked `runtime` live in `self.live` (start: the
+room value). Parts read them from there every step (none caches one), and
+`set_value` changes one, checked against its schema. The env puts them back to the room values on reset
+(`reset_values`) and snapshots keep them (snapshot.py). `bind: {<value>:
+{from: <channel>, map: [in0, in1, out0, out1]}}` maps a channel onto a
+number value linearly every body step, clipped to the schema range (the bus
+calls `apply_binds` before `update`). Setters (device/setter.py) change values
+on signal edges; difficulty steps (R21) and randomisation (R35) are meant to
+use `set_value` too and join setter.py's bind-conflict check (`claimed_values`).
 """
 
 from __future__ import annotations
@@ -49,7 +59,7 @@ import numpy as np
 
 from ..bodies import BodyState
 from ..layout import Grid, Segment
-from ..schema import Field, Schema, resolve
+from ..schema import Field, Schema, SchemaError, resolve
 from ..signals import is_on
 
 if TYPE_CHECKING:
@@ -83,7 +93,8 @@ class World:
     checkpoints: list["Part"] = field(default_factory=list)
     #: The env's MjData (floor parts read joint positions for the fall rule, R10).
     data: Any = None
-    #: Requests parts make of the env this body step, e.g. ("warp", part, key, dest) (R14).
+    #: Requests parts make of the env this body step: ("warp", part, key, dest) (R14),
+    #: ("move", part, key, delta) (conveyor, R12), ("kick", part, key, velocity) (spring, R15).
     requests: list[tuple] = field(default_factory=list)
     #: Sim time until which a warped body / object ignores warp pads (R14 `cooldown`).
     warp_until: dict[Any, float] = field(default_factory=dict)
@@ -127,6 +138,9 @@ class Part:
         Field("enable", "str", None, doc="power channel; off (<= 0.5) freezes the part's output"),
         Field("marker", "any", None,
               doc="ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one"),
+        Field("bind", "any", None,
+              doc="R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, "
+                  "applied every body step, clipped to the value's range"),
     )
 
     @classmethod
@@ -156,6 +170,40 @@ class Part:
         self.world: World | None = None        # set by the env
         self.pending_snapshot = False          # checkpoint asks the env for a snapshot
         self._bid = -1
+        self._schema = schema = self.full_schema()
+        self.live: dict[str, Any] = {k: copy.deepcopy(cfg[k]) for k, f in schema.items() if f.runtime}
+        self._live0 = copy.deepcopy(self.live)
+        self.binds = self._parse_binds(schema, cfg["bind"])
+        #: Extra channels this part reads besides `in` and `enable` (bind sources).
+        self.watch: list[str] = list(dict.fromkeys(b[0] for b in self.binds.values()))
+
+    def _parse_binds(self, schema, raw) -> dict[str, tuple[str, list[float]]]:
+        owner = f"part {self.name!r}"
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict):
+            raise SchemaError(f"{owner}: bind must be {{<value>: {{from: <channel>, map: "
+                              f"[in0, in1, out0, out1]}}}}, got {raw!r}")
+        out = {}
+        for key, b in raw.items():
+            f = schema.get(key)
+            if f is None or not f.runtime:
+                ok = sorted(k for k, g in schema.items() if g.runtime)
+                raise SchemaError(f"{owner}: bind {key!r}: not a run-time value of this part "
+                                  f"(run-time values: {ok})")
+            if f.kind not in ("float", "int"):
+                raise SchemaError(f"{owner}: bind {key!r}: only number values can be bound "
+                                  f"({key} is a {f.kind})")
+            m = b.get("map") if isinstance(b, dict) else None
+            if (not isinstance(b, dict) or not isinstance(b.get("from"), str) or set(b) != {"from", "map"}
+                    or not isinstance(m, (list, tuple)) or len(m) != 4
+                    or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in m)):
+                raise SchemaError(f"{owner}: bind {key!r} must be {{from: <channel>, "
+                                  f"map: [in0, in1, out0, out1]}}, got {b!r}")
+            if m[0] == m[1]:
+                raise SchemaError(f"{owner}: bind {key!r}: map needs in0 != in1, got {list(m)}")
+            out[key] = (b["from"], [float(v) for v in m])
+        return out
 
     @classmethod
     def add_room_parts(cls, parts: dict[str, "Part"]) -> None:
@@ -228,6 +276,38 @@ class Part:
     def substep(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
         """Called after every physics step when a part overrides it (R5 `substep` hook):
         record contact starts or peak forces here and judge them in `update`."""
+
+    # ---- run-time values (R13) ---------------------------------------------------
+    def set_value(self, model: mujoco.MjModel, data: mujoco.MjData, key: str, value: Any) -> None:
+        """Change run-time value `key` (schema-checked; SchemaError when out of range)."""
+        f = self._schema.get(key)
+        if f is None or not f.runtime:
+            raise SchemaError(f"part {self.name!r}: {key!r} cannot change while running")
+        self.live[key] = f.check(f"part {self.name!r}", value)
+
+    def claim_value(self, key: str) -> None:
+        """A setter targets `key` (called while the room loads, before `build`): parts
+        that build moving joints only for changing values build them for it."""
+
+    def reset_values(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
+        """Run-time values back to the room values (env reset, before `reset`)."""
+        self.load_values(model, data, self._live0)
+
+    def load_values(self, model: mujoco.MjModel, data: mujoco.MjData, values: dict[str, Any]) -> None:
+        self.live = copy.deepcopy(values)
+
+    def apply_binds(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
+        """Set every bound value from its channel (linear map, clipped to the schema range)."""
+        schema = self._schema
+        for key, (ch, (i0, i1, o0, o1)) in self.binds.items():
+            f = schema[key]
+            v = o0 + (self.read(ch) - i0) * (o1 - o0) / (i1 - i0)
+            lo = -np.inf if f.min is None else f.min
+            hi = np.inf if f.max is None else f.max
+            v = float(np.clip(v, lo, hi))
+            if f.kind == "int":
+                v = int(round(v))
+            self.live[key] = v
 
     # ---- snapshots (R6) -------------------------------------------------------------
     def save_state(self) -> dict[str, Any]:

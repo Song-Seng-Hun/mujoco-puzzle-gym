@@ -8,11 +8,12 @@ A snapshot holds
 - model values that `mj_getState` does not hold but parts or setters change
   while running (`MODEL_FIELDS`: part placement, colours, friction, collision
   flags, constraint data);
-- every part's `save_state()` and position, the signal values, and the body
-  adapter's controller history (`history_state`).
+- every part's run-time values (`Part.live`, R13 setters and binds), its
+  `save_state()` and position, the signal values, and the body adapter's
+  controller history (`history_state`).
 
-`restore` writes them back in that order (state, model values, signals, parts,
-body history) and runs `mj_forward`. Parts restore after the signals, so a part
+`restore` writes them back in that order (state, model values, signals,
+part values, parts, body history) and runs `mj_forward`. Parts restore after the signals, so a part
 that keeps its value across restores (counter `persist`) can write it again.
 """
 
@@ -44,6 +45,7 @@ class Snapshot:
     signals: dict[str, float]
     body: dict[str, Any]
     meta: dict[str, Any] = field(default_factory=dict)
+    values: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def model_values(model: mujoco.MjModel) -> dict[str, np.ndarray]:
@@ -67,6 +69,7 @@ def save(model: mujoco.MjModel, data: mujoco.MjData, parts: dict[str, Any], bus:
         signals=bus.snapshot(),
         body=copy.deepcopy(body.history_state()),
         meta=copy.deepcopy(meta),
+        values={n: copy.deepcopy(p.live) for n, p in parts.items()},
     )
 
 
@@ -75,8 +78,13 @@ def restore(snap: Snapshot, model: mujoco.MjModel, data: mujoco.MjData, parts: d
     mujoco.mj_setState(model, data, snap.state, SIG)
     load_model_values(model, snap.model)
     bus.load(snap.signals)
+    values = getattr(snap, "values", {})       # snapshots pickled before R13 have none
     for n, p in parts.items():
         p.xy = snap.part_xy[n].copy()
+        if n in values:
+            p.load_values(model, data, values[n])
+        else:
+            p.reset_values(model, data)
         p.load_state(model, data, copy.deepcopy(snap.parts[n]))
     body.load_history(data, copy.deepcopy(snap.body))
     mujoco.mj_forward(model, data)

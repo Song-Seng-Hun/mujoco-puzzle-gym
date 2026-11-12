@@ -1,0 +1,9 @@
+# Elevator (R11): a platform preset with a vertical path. Each rising edge of
+# its inputs runs one trip (up, then down on the next edge). Set: pos, in,
+# path heights, speed.
+type: platform
+size: [0.4, 0.4]
+path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]
+speed: 0.1
+mode: pingpong
+run: on_signal

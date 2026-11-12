@@ -1,0 +1,5 @@
+# Turntable (R12): a floor disk that spins at `speed` deg/s while its inputs
+# are on. Set: pos, radius, speed, in.
+type: turntable
+radius: 0.25
+speed: 45.0

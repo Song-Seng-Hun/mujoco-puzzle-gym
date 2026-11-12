@@ -7,7 +7,7 @@
 ## 部品、プリセット、組み立てプリセット
 
 - **部品**は`room.yaml`の`parts:`の一行です。種類(`type`)と値でできています。種類ごとに受け付ける値と単位、既定値、許される範囲が決まっていて(値のスキーマ)、範囲外の値は`mpg build`と`mpg check`が理由と範囲を示して拒否します。
-- **部品プリセット**は、部品の種類一つと既定値のセットです。コードはありません。`src/mujoco_puzzle_gym/presets/parts/<分類>/<名前>.yaml`にあり、分類は`input`(ボタン・センサー)、`logic`(ゲート・カウンター・トランシーバー)、`device`(ドア・ワープ・ゴールネット)、`floor`、`trap`、`object`、`beak`、`npc`です。`beak`と`npc`はまだ空です。
+- **部品プリセット**は、部品の種類一つと既定値のセットです。コードはありません。`src/mujoco_puzzle_gym/presets/parts/<分類>/<名前>.yaml`にあり、分類は`input`(ボタン・センサー)、`logic`(ゲート・カウンター・トランシーバー)、`device`(ドア・ワープ・ゴールネット・プラットフォーム・柱・回転台・コンベヤー・スプリング・設定変更器)、`floor`、`trap`、`object`、`beak`、`npc`です。`beak`と`npc`はまだ空です。
 - **組み立てプリセット**は、複数の部品をまとめたもの、または部屋一つ全体です。`presets/puzzles/<テーマ>/<名前>.yaml`にあります。
 
 `mpg parts --json`は、登録された部品と値のスキーマ、プリセットの一覧を出します。自作の部品まで見るには`--plugin my_parts`を付けます。
@@ -70,6 +70,15 @@ parts:
 
 式で使えるもの: チャンネル名(点の入った`laps.count`もチャンネル一つ)、数値、`and or not xor`、比較(`< <= > >= == !=`)、かっこ、関数`delay(x, s)`、`hold(x, s)`、`pulse(x)`、`latch(set, reset)`、`count(x)`、`timer(x)`。算術、属性アクセス、ほかの関数の呼び出し、文字列は、部屋を読み込むときに拒否します。式は`ast`で読んで許可リストと照らし合わせ、このパッケージが自分で計算するので、他人が作った部屋のファイルを開いてもコードは実行されません。
 
+## 動く装置と設定変更器
+
+- プラットフォーム(`platform`、プリセット`device/moving_platform`、`device/elevator`): `pos`から測った`path: [[dx, dy, z], …]`(zは上面の高さ)を`speed`でたどります。`mode`は`loop`、`pingpong`、`once`、`run`は`always`、`while_signal`(信号がオンの間)、`on_signal`(オンになるたびに一回運行)です。スライド関節と位置アクチュエーターで動くので、上に置いた物体も一緒に運びます。
+- 昇降柱(`pillar`)、回転台(`turntable`)、コンベヤー(`conveyor`): 信号がオンの間、せり上がり、回り、ベルトの上の体と物体をベルトの速さで運びます。コンベヤーのベルトは床に描いたものなので、摩擦は床と同じです。
+- スプリング(`spring`、プリセット`device/spring_pad`): パッドの上の対象に速度`velocity` [vx, vy, vz]を与えます。プリセットは物体だけを飛ばします(`trigger: object`)。
+- 設定変更器(`setter`): 信号がオンになった瞬間に`target: <部品>.<値>`を`value`に変え、`revert: true`ならオフになったときに元に戻します。下の値の表で「実行中の変更」が「可」の値だけが対象になります。ドアの幅のような大きさの値は、部屋を読み込むときに拒否します。
+- 値の連結`bind`: すべての部品が受け取る値です。`bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}`のように、実行中に変えられる数値をチャンネルに直線でつなぎ、体のステップごとに値の範囲で切って適用します。同じ値を`bind`と設定変更器の両方が変える場合は拒否します。
+- 解の順序と解答は、プラットフォームと回転台のマス、せり上がる柱のマスを避けて進みます。体が乗ったまま耐えられるかは歩行ポリシーが学んだ範囲の外なので、記録だけを取ります。2026-11-12の記録: プラットフォーム0.1・0.3 m/s、ベルト0.1・0.2 m/sで3秒間転びませんでした。
+
 ## 組み立ての例
 
 どれも`mpg check`の解答段階を20回中18回以上通ります。
@@ -84,6 +93,7 @@ parts:
 | `puzzles/ball/ball_ramp` | 高い台の上のボールを坂(3.4°)で押し下ろし、ゴールネットに入れます。文字マップの坂なので、歩く体の坂の上限5°に収まります | 文字マップ |
 | `puzzles/ball/bowling` | ボールでピン三本のどれか一本を倒すと(`<ピン>.down`)ドアが開きます | `ball`, `pin` |
 | `puzzles/ball/color_sort` | 色別のゴールネット二つにボールを分けて入れ、カウンターでドアを開けます | `ball`, `goal_net`, `counter` |
+| [`examples/rooms/lift_spring.yaml`](../examples/rooms/lift_spring.yaml) | ボタン一つでドアが開き、エレベーターが上がり、設定変更器でスプリングがオンになってボールが跳ね始めます | `device/elevator`, `device/spring_pad`, `device/setter`, `device/sliding_door` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 文字マップで描いた二つの部屋、階段と坂 | `button`, `door` |
 
 ボールの組み立てプリセットは部屋一つ全体なので、そのまま`mpg check`に渡してもよく、`preset: puzzles/ball/bowling`で敷いて値を変えて使ってもかまいません。
@@ -171,6 +181,7 @@ def majority(inputs, state, dt):
 | `out` | list |  | — |  |  | channels this part writes (default: its name if it emits) |
 | `enable` | str |  | — |  |  | power channel; off (<= 0.5) freezes the part's output |
 | `marker` | any |  | — |  |  | ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one |
+| `bind` | any |  | — |  |  | R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, applied every body step, clipped to the value's range |
 
 ### `ball`
 
@@ -243,6 +254,18 @@ def majority(inputs, state, dt):
 | `persist` | bool |  | `False` |  |  | keep the count when a snapshot is restored |
 | `group` | str |  | `coins` |  |  | coin group whose picks it counts |
 | `need` | int |  | — | [1, 10000] |  | coins needed to reach; `all` (default) = every coin of the group |
+
+### `conveyor`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.8, 0.3]` | [0.1, 5] |  | belt size [x, y] |
+| `axis` | enum |  | `x` | `x`, `y` |  | direction the belt runs along |
+| `speed` | float | m/s | `0.1` | [-0.5, 0.5] | 可 | belt speed (+: toward +axis) |
+| `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it carries |
+| `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
 
 ### `counter`
 
@@ -340,6 +363,17 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
 
+### `pillar`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `mode` | enum |  | `follow` | `follow`, `oneshot` |  | follow: open while the signal is on; oneshot: stay open once opened |
+| `size` | vec | m | `[0.1, 0.4]` | [0.03, 2] |  | footprint [x, y] |
+| `height` | float | m | `0.25` | [0.05, 1] |  | top height when up |
+| `speed` | float | m/s | `0.2` | [0.01, 2] | 可 | rising speed |
+
 ### `pin`
 
 役割`switch`、更新段階`input`。
@@ -351,6 +385,19 @@ def majority(inputs, state, dt):
 | `mass` | float | kg | `0.03` | [0.005, 2] |  |  |
 | `down_angle` | float | deg | `45.0` | [5, 90] |  | tilt from upright that counts as down |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
+
+### `platform`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `path` | any |  | 必須 |  |  | [[dx, dy, z], ...] from `pos`: points the top centre follows (2 or more) |
+| `size` | vec | m | `[0.3, 0.3]` | [0.05, 2] |  | slab size [x, y] |
+| `thickness` | float | m | `0.03` | [0.01, 0.2] |  |  |
+| `speed` | float | m/s | `0.1` | [0.01, 1] | 可 | speed along the path |
+| `mode` | enum |  | `pingpong` | `loop`, `pingpong`, `once` |  | loop: closed loop; pingpong: back and forth; once: to the end and stop |
+| `run` | enum |  | `always` | `always`, `while_signal`, `on_signal` |  | always; while_signal: while `in` is on; on_signal: one trip per rising edge |
 
 ### `pressure`
 
@@ -393,6 +440,29 @@ def majority(inputs, state, dt):
 | `wrong` | enum |  | `ignore` | `ignore`, `eject`, `lock`, `fail` |  |  |
 | `eject_speed` | float | m/s | `1.0` | [0.1, 5] |  |  |
 | `close_on_ok` | bool |  | `False` |  |  |  |
+
+### `setter`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | unused (a setter has no body) |
+| `target` | str |  | 必須 |  |  | <part>.<value>: the run-time value to change |
+| `value` | any |  | 必須 |  |  | new value (checked against the target value's schema) |
+| `revert` | bool |  | `False` |  |  | put the old value back when the signal turns off |
+
+### `spring`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.2, 0.2]` | [0.05, 2] |  | pad size [x, y] |
+| `velocity` | vec | m/s | `[0.0, 0.0, 1.5]` | [-5, 5] | 可 | launch velocity [vx, vy, vz] (world frame) |
+| `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it launches |
+| `cooldown` | float | s | `1.0` | [0.1, 60] |  | time a launched body or object ignores this spring |
+| `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
 
 ### `swing_door`
 
@@ -443,6 +513,16 @@ def majority(inputs, state, dt):
 | `hinge_side` | enum |  | `-x` | `-x`, `+x`, `-y`, `+y` |  | edge the tile hangs from |
 | `speed` | float | deg/s | `180.0` | [10, 2000] |  | opening speed |
 
+### `turntable`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `radius` | float | m | `0.25` | [0.05, 1.5] |  |  |
+| `height` | float | m | `0.008` | [0.004, 0.1] |  | top face above the floor |
+| `speed` | float | deg/s | `45.0` | [-360, 360] | 可 | spin rate while on (+: counter-clockwise) |
+
 ### `warp`
 
 役割`warp`、更新段階`device`。
@@ -474,12 +554,19 @@ def majority(inputs, state, dt):
 
 | プリセット | 部品の種類 | 値 |
 |---|---|---|
+| `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
+| `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
+| `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
+| `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
+| `device/setter` | `setter` | `revert: False` |
 | `device/sliding_door` | `door` | `mode: follow`, `width: 0.5`, `axis: y` |
+| `device/spring_pad` | `spring` | `size: [0.2, 0.2]`, `velocity: [0.0, 0.0, 1.5]`, `trigger: object` |
 | `device/swing_door` | `swing_door` | `mode: follow`, `width: 0.5`, `axis: y`, `angle: 90.0` |
 | `device/trapdoor` | `trapdoor` | `size: [0.3, 0.3]`, `hinge_side: -x` |
+| `device/turntable` | `turntable` | `radius: 0.25`, `speed: 45.0` |
 | `floor/coin` | `coin` | `radius: 0.08`, `group: coins` |
 | `floor/rising_step` | `floor_tile` | `size: [0.3, 0.3]`, `height: 0.0`, `on_height: 0.01` |
 | `floor/tilt_bridge` | `floor_tile` | `size: [0.4, 0.3]`, `tilt: 0.0`, `on_tilt: 5.0` |
