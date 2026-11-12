@@ -36,7 +36,13 @@ object out of turn counts as wrong too):
 `close_on_ok: true` closes the lid when the condition is first met. The lid is
 a mocap body, so its state is part of `mjSTATE_INTEGRATION` snapshots.
 
-Channels: `<name>.ok`, `<name>.count` (accepted objects in), `<name>.wrong`
+`consume: true` (R28): an accepted object that comes in vanishes (a
+dispenser's copy goes back to that dispenser's storage, in stock again with
+its `recycle`; any other object is parked PARK_Z below where it was) and
+stays counted: `count`, `mass`, `all` and `order` add up everything consumed
+so far (a copy taken twice counts twice). Wrong objects are not consumed.
+
+Channels: `<name>.ok`, `<name>.count` (accepted objects in, and consumed), `<name>.wrong`
 (1 while a wrong object is in, and from a `lock` on), `<name>.mass` (mass of
 the accepted objects in [kg]; the `basket` preset, R28).
 """
@@ -70,7 +76,8 @@ class Receptacle(Part):
     marker_faces = markers.FACES_FLAT
     stage = "input"
     suffixes = (".ok", ".count", ".wrong", ".mass")
-    state_keys = ("ok", "inside", "progress", "wrong_in", "locked", "closed", "fail", "hung")
+    state_keys = ("ok", "inside", "progress", "wrong_in", "locked", "closed", "fail", "hung",
+                  "consumed", "consumed_mass")
     fields = (
         Field("shape", "enum", "box", choices=("box", "plate", "hook")),
         Field("size", "vec", [0.3, 0.3], length=2, unit="m", min=0.05, max=2.0),
@@ -95,6 +102,8 @@ class Receptacle(Part):
         Field("facing", "float", 0.0, unit="deg", min=-180.0, max=180.0,
               doc="hook: the way the peg points (0 = +x)"),
         Field("peg", "float", 0.06, unit="m", min=0.02, max=0.3, doc="hook: peg tip out from the post"),
+        Field("consume", "bool", False,
+              doc="an accepted object vanishes and stays counted (a dispenser copy goes back, R28)"),
     )
 
     def marker_face_size(self, face):
@@ -128,6 +137,7 @@ class Receptacle(Part):
             raise SchemaError(f"part {name!r}: require order needs `order: [names]`")
         self.wrong_mode = c["wrong"]
         self.close_on_ok = c["close_on_ok"]
+        self.consume = bool(c["consume"])
         a = math.radians(c["facing"])
         self.normal = np.array([math.cos(a), math.sin(a)])
         self.hook_objs: list[Part] = []      # hook: grabbable objects it can hang (add_room_parts)
@@ -143,6 +153,8 @@ class Receptacle(Part):
         self.wrong_in: list[str] = []
         self.locked = self.closed = self.fail = False
         self.hung: list[str] = []            # hook: objects hung, by name
+        self.consumed: list[str] = []        # consume: names of the objects consumed, in order
+        self.consumed_mass = 0.0
         self._mass_in = 0.0
 
     @classmethod
@@ -162,6 +174,8 @@ class Receptacle(Part):
 
     def build(self, spec):
         body = super().build(spec)
+        if self.consume:      # a fixed body: no force, but the model gets ngravcomp > 0 (ball.py `park`)
+            body.gravcomp = 1.0
         hx, hy = self.half
         t, h = self.wall_t, self.wall_h
         body.add_geom(name=self.body_name + "/base", type=mujoco.mjtGeom.mjGEOM_BOX,
@@ -212,7 +226,7 @@ class Receptacle(Part):
     def _write(self) -> None:
         o = self.outputs
         self.write(float(self.ok), o[0])
-        self.write(float(len([n for n in self.inside if n not in self.wrong_in])), o[1])
+        self.write(float(len([n for n in self.inside if n not in self.wrong_in]) + len(self.consumed)), o[1])
         self.write(float(bool(self.wrong_in) or self.locked), o[2])
         self.write(round(self._mass_in, 3), o[3])
 
@@ -289,14 +303,15 @@ class Receptacle(Part):
         good = [n for n in self.inside if n not in self.wrong_in]
         if self.require == "all":
             if not self.accept:
-                return bool(good)
-            owners = [self.world.objects[objs[n]] for n in good]
+                return bool(good or self.consumed)
+            names = {o.name: o for o in self.world.objects.values()}
+            owners = [names[n] for n in good + self.consumed]
             return all(any(self._matches(o, [e]) for o in owners) for e in self.accept)
         if self.require == "count":
-            return len(good) >= self.cfg["count"]
+            return len(good) + len(self.consumed) >= self.cfg["count"]
         if self.require == "mass":
-            return sum(float(model.body_subtreemass[objs[n]]) for n in good) >= self.cfg["mass"]
-        return self.progress == len(self.order) and all(n in good for n in self.order)
+            return self._mass_in >= self.cfg["mass"]
+        return self.progress == len(self.order) and all(n in good or n in self.consumed for n in self.order)
 
     def update(self, model, data, body):
         world = self.world
@@ -306,7 +321,7 @@ class Receptacle(Part):
         if self.shape == "hook":
             self._hook(data)
         objs = {o.name: rid for rid, o in world.objects.items()
-                if world.kinds.get(rid) == "object" and rid not in world.held}
+                if world.kinds.get(rid) == "object" and rid not in world.held and not o.parked}
         now = {n for n, rid in objs.items() if self._is_in(data, rid)}
         if not self.enabled():
             return
@@ -331,8 +346,10 @@ class Receptacle(Part):
                     self.locked = True
                 elif self.wrong_mode == "fail":
                     self.fail = True
-        self._mass_in = sum(float(model.body_subtreemass[objs[n]])
-                            for n in self.inside if n not in self.wrong_in and n in objs)
+            elif self.consume:
+                self._consume(model, data, n, objs[n])
+        self._mass_in = self.consumed_mass + sum(float(model.body_subtreemass[objs[n]])
+                                                 for n in self.inside if n not in self.wrong_in and n in objs)
         ok = self._met(model, data, objs)
         if ok and not self.ok and self.close_on_ok:
             self.closed = True
@@ -340,6 +357,15 @@ class Receptacle(Part):
         self._lid(data, self.locked or self.closed)
         model.geom_rgba[self._base] = RGBA_OK if ok else RGBA
         self._write()
+
+    def _consume(self, model, data, name: str, rid: int) -> None:
+        """`consume`: the accepted object vanishes and stays counted."""
+        if name in self.hung:
+            self._unhang(data, name)
+        self.inside.remove(name)
+        self.consumed.append(name)
+        self.consumed_mass = round(self.consumed_mass + float(model.body_subtreemass[rid]), 6)
+        self.world.objects[rid].vanish(model, data)
 
     def state(self):
         return float(self.ok)

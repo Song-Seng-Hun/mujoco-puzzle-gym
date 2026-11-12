@@ -20,7 +20,9 @@ actions:   the task actions cover what the plan needs (R19): `grab` when an
            held by its knob (a `pull` sub-goal, a pull cord or grab lever in the
            order, R28), `head` when a wall button
            the plan presses sits wholly below the level beak tip (the body's
-           `beak_height`); without them a policy can never do it. Checked after
+           `beak_height`; a dispenser's wall plate counts when the plan takes
+           from it: a `take` sub-goal, or its item for a receptacle in the
+           order, R28); without them a policy can never do it. Checked after
            `order`, on its solution order;
 (a) order: a signal path to a goal exists: a switch/door order that reaches a
            goal (link graph on the room grid), and every coin is reachable (R36);
@@ -277,9 +279,12 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
                        "have no `grab`")
     level = env.body.capabilities.values.get("beak_height")
     if "head" not in env.actions and level is not None:
-        pressed = set(order) | {e[1] for e in demo if e[0] == "press"}
-        low = [n for n in sorted(pressed) if getattr(env.parts[n], "mount", None) == "wall"
-               and env.parts[n].cfg["height"] + env.parts[n].half[1] < level]
+        pressed = set(order) | {e[1] for e in demo if e[0] in ("press", "take")}
+        pressed |= {d.name for d in env.parts.values() if hasattr(d, "copies") and isinstance(d.copies[0], Grabbable)
+                    and any(takes(env.parts[n], d.copies[0]) for n in order)}     # dispensers (R28)
+        plate = {n: getattr(env.parts[n], "press_plate", None) or env.parts[n] for n in pressed}
+        low = [n for n in sorted(pressed) if getattr(plate[n], "mount", None) == "wall"
+               and plate[n].cfg["height"] + plate[n].half[1] < level]
         if low:
             why.append(f"wall buttons {low} are below the level beak tip ({level} m) but the task "
                        f"actions {env.actions} have no `head`")

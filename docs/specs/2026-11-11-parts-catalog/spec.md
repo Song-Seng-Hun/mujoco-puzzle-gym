@@ -1,5 +1,5 @@
 # Spec: mujoco-puzzle-gym 마일스톤 2 (부품 카탈로그, 신호, 체크포인트, 단계별 학습)
-Status: approved 2026-11-12 (E3b-2 drawer strap about 10 cm: "승인"; E3b-2 measurements: R28 `dial` pushed by spokes, `drawer` opened by a strap and in-place turn: "승인"; E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
+Status: approved 2026-11-12 (E3b-3 plan: R28 dispenser parks copies off-stage like the cannon pool, receptacle `consume` and pit return for `recycle`: "승인"; E3b-2 drawer strap about 10 cm: "승인"; E3b-2 measurements: R28 `dial` pushed by spokes, `drawer` opened by a strap and in-place turn: "승인"; E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
 View (read-only copy): (아직 없음)
 
 근거
@@ -295,7 +295,9 @@ View (read-only copy): (아직 없음)
       - `stock`: 총 개수. `max_active`: 동시에 밖에 나와 있을 수 있는 개수. `refill`: 재고를 채우는 채널. `cooldown`: 다시 내보내기까지의 대기.
       - 내보내는 위치와 초기 속도(굴려 내보내기)를 정한다.
       - 출력 채널: `<이름>.stock`(남은 수), `<이름>.empty`.
-      - MuJoCo는 실행 중에 몸체를 새로 만들 수 없다. 그래서 `stock`만큼 몸체를 미리 만들어 방 벽 바깥, 바닥 높이의 닫힌 보관 선반에 서로 떨어뜨려 두고, 내보낼 때 출구로 옮긴다. 그러므로 `stock` 상한을 둔다(기본 최대 20). 바구니나 소켓으로 소비된 물체는 `recycle: true`이면 보관 선반으로 돌아간다. 바닥은 평면(아래 전체가 바닥 속)이라 바닥 아래에 둘 수 없고, NPC는 위아래 관절이 없어 내릴 수도 없다.
+      - MuJoCo는 실행 중에 몸체를 새로 만들 수 없다. 그래서 `stock`만큼 몸체를 미리 만들어 무대 밖 보관 자리에 서로 떨어뜨려 두고, 내보낼 때 출구로 옮긴다. 그러므로 `stock` 상한을 둔다(기본 최대 20).
+      - 보관 자리: 대포 탄 풀(R16 `pool.py`)과 같이 충돌을 끄고(contype·conaffinity 0) 중력을 보정해 세워 둔다. 물체는 바닥 아래(−5 m), NPC는 위아래 관절이 없어 바닥 높이 그대로 방 밖 먼 곳에 두고 구동을 끈다. 벽 바깥 선반은 글자 지도 방(R37)의 이어진 방·낭떠러지와 겹칠 수 있어 쓰지 않는다(E3b-3 계획, 사용자 승인).
+      - 소비와 회수: 받는 부품(R5 `receptacle`)에 `consume: true`(기본 false)를 두면 받아들인 물체는 사라지고 받은 개수는 쌓인다. 사라진 물체가 디스펜서 복제품이고 `recycle: true`이면 그 디스펜서 재고로 돌아간다(아니면 보관 자리에 남는다). 구덩이·낭떠러지로 떨어진 복제품은 밖에 나와 있는 수에서 빼고 보관 자리로 돌린다(`max_active`가 막히지 않게). 이때 재고로 돌리는지도 `recycle`을 따른다.
       - 같은 디스펜서에서 나온 복제품은 원본 물체의 마커 번호(R26)를 함께 쓴다.
     - `scale`: 올린 질량을 수로 내는 저울. 압력판(R5)의 수 출력판이다.
   - 걸음 제약 반영:

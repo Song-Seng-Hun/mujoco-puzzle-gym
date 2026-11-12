@@ -39,6 +39,7 @@ import numpy as np
 
 from ...schema import Field
 from ..base import Part
+from ..pool import PARK_Z
 
 COLORS: dict[str, tuple[float, float, float, float]] = {
     "white": (0.95, 0.95, 0.95, 1.0),
@@ -69,7 +70,15 @@ def contact_solref(e: float) -> list[float]:
 
 
 class FreeObject(Part):
-    """A part that is one free body placed at `pos` on reset (ball, pin)."""
+    """A part that is one free body placed at `pos` on reset (ball, pin).
+
+    `park` takes it off stage (a dispenser's copy, R28, or an object a receptacle
+    with `consume` took, R5): at a given point (below the floor), collisions off
+    and gravity compensated, so it rests there touching nothing; `unpark` gives
+    back its collision bits. `body_gravcomp` acts only in a model that has a body
+    with gravcomp at compile time (MuJoCo `ngravcomp`); dispenser copies and
+    consuming receptacles build one. The bits and `body_gravcomp` are snapshot
+    fields, `parked` is in `save_state`."""
 
     kind = "object"
     object_kind = "object"
@@ -84,12 +93,36 @@ class FreeObject(Part):
         j = model.body_jntadr[self._bid]
         self._q = int(model.jnt_qposadr[j])
         self._v = int(model.jnt_dofadr[j])
+        gids = np.nonzero(model.geom_bodyid == self._bid)[0]
+        self._bits = [(int(g), int(model.geom_contype[g]), int(model.geom_conaffinity[g])) for g in gids]
 
     def place(self, model, xy):
         self.xy = np.asarray(xy, dtype=float)
 
     def reset(self, model, data):
+        self.parked = False
         self.put(data, [*self.xy, self.floor_z + self._rest_z()])
+
+    def park(self, model, data, xyz) -> None:
+        """Off stage at `xyz`: collisions off, gravity compensated (call mj_forward after)."""
+        self.put(data, xyz)
+        for g, _, _ in self._bits:
+            model.geom_contype[g] = model.geom_conaffinity[g] = 0
+        model.body_gravcomp[self._bid] = 1.0
+        self.parked = True
+
+    def unpark(self, model) -> None:
+        for g, ct, ca in self._bits:
+            model.geom_contype[g], model.geom_conaffinity[g] = ct, ca
+        model.body_gravcomp[self._bid] = 0.0
+        self.parked = False
+
+    def vanish(self, model, data) -> None:
+        """A receptacle consumed it (R5 `consume`): parked PARK_Z below where it is."""
+        self.park(model, data, [*self.pos(data)[:2], PARK_Z])
+
+    def save_state(self):
+        return {**super().save_state(), "parked": self.parked}
 
     def put(self, data, xyz, vel=None) -> None:
         """Move the object upright to `xyz` with linear velocity `vel` (call mj_forward after)."""

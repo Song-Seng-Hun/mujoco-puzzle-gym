@@ -235,6 +235,8 @@ class Npc(Part):
         self._v = [int(model.jnt_dofadr[j]) for j in self._j]
         self._act = [model.actuator(f"{self.body_name}/motor_{a}").id for a in ("x", "y", "yaw")]
         self._colliding = (model.geom_contype != 0) | (model.geom_conaffinity != 0)
+        gids = np.nonzero(model.geom_bodyid == self._bid)[0]
+        self._bits = [(int(g), int(model.geom_contype[g]), int(model.geom_conaffinity[g])) for g in gids]
 
     def place(self, model, xy):
         super().place(model, xy)
@@ -243,6 +245,7 @@ class Npc(Part):
                 model.jnt_range[self._j[i]] = [self.leash[i] - self.xy[i], self.leash[i + 2] - self.xy[i]]
 
     def reset(self, model, data):
+        self.parked = False
         model.body_pos[self._bid, 2] = self.floor_z          # no z joint: stand on raised floor
         for i in range(3):
             data.qpos[self._q[i]] = data.qvel[self._v[i]] = data.ctrl[self._act[i]] = 0.0
@@ -257,6 +260,35 @@ class Npc(Part):
         self.on_id = self._button_under(self.now)
         self.write(0.0, self.name + ".moving")
         self.write(float(self.on_id), self.name + ".on")
+
+    # ---- off stage (a dispenser's copy, R28) ------------------------------------------
+    def park(self, model, data, xyz) -> None:
+        """Stand still at `xyz` (no vertical joint: at a floor height) with collisions and
+        motors off; the dispenser skips its `update` while parked."""
+        model.body_pos[self._bid] = xyz
+        for i in range(3):
+            data.qpos[self._q[i]] = data.qvel[self._v[i]] = data.ctrl[self._act[i]] = 0.0
+        for i in range(2):
+            model.jnt_range[self._j[i]] = [-1.0, 1.0]
+        for g, _, _ in self._bits:
+            model.geom_contype[g] = model.geom_conaffinity[g] = 0
+        self.xy = np.asarray(xyz[:2], dtype=float)
+        self.now = self.xy.copy()
+        self.cmd = np.zeros(2)
+        self.parked = True
+        self.write(0.0, self.name + ".moving")
+        self.write(-1.0, self.name + ".on")
+
+    def unpark(self, model, xyz) -> None:
+        """Back on stage at `xyz` (call `teleport` / mj_forward after)."""
+        self.place(model, xyz[:2])
+        model.body_pos[self._bid, 2] = xyz[2]
+        for g, ct, ca in self._bits:
+            model.geom_contype[g], model.geom_conaffinity[g] = ct, ca
+        self.parked = False
+
+    def save_state(self):
+        return {**super().save_state(), "parked": self.parked}
 
     # ---- what the rules read -------------------------------------------------------
     def pos(self, data) -> np.ndarray:

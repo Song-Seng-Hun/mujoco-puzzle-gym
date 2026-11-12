@@ -65,6 +65,11 @@ class Grabbable(FreeObject):
         self.max_hold_force = float(self.cfg["max_hold_force"])
         self.needs_body("beak_grab")
 
+    @property
+    def grabbable_now(self) -> bool:
+        """A parked object (consumed, or a dispenser's stored copy) is out of the grab."""
+        return not self.parked
+
     @classmethod
     def add_room_parts(cls, parts):
         """Add the beak part (grab.py) in front, then let input parts an object can set

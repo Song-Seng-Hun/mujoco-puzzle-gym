@@ -1,6 +1,7 @@
 """R28 beak gimmick presets: the objects (cube_weight, laundry, key, handle_ball,
 egg, stick), receivers (hook, basket, scale, wall_button_beak low / mid) (E3b-1),
-and the devices lever, dial, pull_cord and drawer (E3b-2), with the `look` sub-goal (R27).
+and the devices lever, dial, pull_cord and drawer (E3b-2), with the `look` sub-goal (R27),
+and the dispenser (E3b-3).
 
 Fast: egg breaking, key / socket marker match, stick press window, basket count
 and mass, scale mass, hook hang and take-off, the `beak` obs kind, `demo:`
@@ -10,10 +11,13 @@ cord's flexcomp, latch and snapshots, a held grab lever knob, `turn` / `pull`
 / `look` parsing, `actions` for `pull`, a `.seen` door room's order and
 target point, the turret target point and aim lever role, warping with a held knob;
 dial cells, target, snapshots and aim role, drawer latch, strap off, contents depth,
-`actions` for a drawer.
+`actions` for a drawer; dispenser rising edges, stock, cooldown, max_active, consume /
+recycle / refill, fallen copies, shared marker, snapshots, parked copies out of obs and
+reach, npc copies, config errors, `take` parsing, `actions` for a dispenser room.
 Slow: per preset, the scripted solution (`demo:`: grab, place, hang, drop,
 press, turn, pull, look) turns its signal on; the grid answer pulls a cord and lets go,
-turns a dial and opens a drawer; `turn` sets a dial cell; a cube is grabbed from an opened drawer.
+turns a dial and opens a drawer; `turn` sets a dial cell; a cube is grabbed from an opened drawer;
+both dispenser presets: `take` / `grab` / `place` into a consuming basket, and the grid answer.
 """
 
 import math
@@ -23,7 +27,7 @@ import mujoco
 import numpy as np
 import pytest
 import yaml
-from rooms import body_steps, tick
+from rooms import body_steps, open_room, stand_at, tick
 from test_grab import grab, make, tip, to_beak  # noqa: F401  (make: fixture)
 
 from mujoco_puzzle_gym.env import PuzzleEnv
@@ -943,3 +947,366 @@ def test_pull_opens_the_drawer_and_the_cube_inside_is_grabbed(asset_dir, tmp_pat
             bad[seed] = (sol.step_i, env.signals.get("dr"), env.signals.get("c.held"))
         env.close()
     assert SEEDS - len(bad) >= NEED, bad
+
+
+# ---- dispenser (E3b-3) -------------------------------------------------------------------
+DISP = {"name": "d", "preset": "beak/dispenser", "pos": [-0.6, 0.6], "facing": 0.0}   # plate at (-0.25, 0.6)
+BASKET = {"name": "bk", "preset": "beak/basket", "pos": [0.6, -0.6], "consume": True, "count": 3}
+
+
+def step_on(env, seconds=0.05):
+    """Stand on d's floor plate (a rising edge after `step_off`) and step `seconds`."""
+    stand_at(env, *env.parts["d"].press_plate.xy)
+    body_steps(env, seconds)
+
+
+def step_off(env, seconds=0.05):
+    stand_at(env, 0.0, 0.0)
+    body_steps(env, seconds)
+
+
+def out_copies(env):
+    return [c.name for c in env.parts["d"].copies if not c.parked]
+
+
+def test_dispenser_hands_out_one_copy_per_rising_edge(make):
+    env = make([{**DISP, "stock": 2, "max_active": 2, "cooldown": 1.0}])
+    d = env.parts["d"]
+    assert [c.name for c in d.copies] == ["d/0", "d/1"] and out_copies(env) == []
+    assert env.signals.get("d.stock") == 2 and env.signals.get("d.empty") == 0
+    assert all(c.pos(env.data)[2] < -4 for c in d.copies)              # parked below the floor
+    step_on(env, 0.2)
+    assert out_copies(env) == ["d/0"] and env.signals.get("d.stock") == 1
+    p = d.copies[0].pos(env.data)
+    assert np.linalg.norm(p[:2] - d.exit_xy()) < 0.01 and p[2] == pytest.approx(0.17 + 0.02, abs=0.005)
+    step_on(env, 0.2)                                                  # still on: no new edge
+    assert out_copies(env) == ["d/0"]
+    step_off(env)
+    step_on(env)                                                       # cooldown 1 s not over
+    assert out_copies(env) == ["d/0"]
+    step_off(env, 1.0)
+    step_on(env)
+    assert out_copies(env) == ["d/0", "d/1"]
+    assert env.signals.get("d.stock") == 0 and env.signals.get("d.empty") == 1
+    step_off(env, 1.2)
+    step_on(env)                                                       # empty: nothing more
+    assert d.dispensed == 2
+
+
+def test_dispenser_max_active_waits_for_the_copy_to_go(make):
+    env = make([{**DISP, "cooldown": 0.0, "recycle": True}, BASKET])
+    d = env.parts["d"]
+    step_on(env)
+    step_off(env)
+    step_on(env)
+    assert out_copies(env) == ["d/0"]                                  # max_active 1
+    d.copies[0].put(env.data, [0.6, -0.6, 0.05])                       # into the consuming basket
+    mujoco.mj_forward(env.model, env.data)
+    step_off(env, 0.6)
+    assert env.signals.get("bk.count") == 1 and env.parts["bk"].consumed == ["d/0"]
+    assert out_copies(env) == [] and env.signals.get("d.stock") == 5   # recycle: in stock again
+    step_on(env)
+    assert out_copies(env) == ["d/0"]                                  # the same copy, handed out again
+
+
+def test_consumed_copy_without_recycle_waits_for_refill(make):
+    env = make([{**DISP, "refill": "rf"}, BASKET,
+                {"name": "rf", "type": "button", "pos": [0.6, 0.6], "trigger": "body"}])
+    d = env.parts["d"]
+    step_on(env)
+    d.copies[0].put(env.data, [0.6, -0.6, 0.05])
+    mujoco.mj_forward(env.model, env.data)
+    step_off(env, 0.6)
+    assert env.signals.get("bk.count") == 1 and env.signals.get("d.stock") == 4 and d.spent == {0}
+    stand_at(env, 0.6, 0.6)                                            # refill's rising edge
+    body_steps(env, 0.05)
+    assert env.signals.get("d.stock") == 5 and d.spent == set()
+
+
+def test_a_basket_without_consume_keeps_the_copy(make):
+    env = make([DISP, {**BASKET, "consume": False}])
+    d = env.parts["d"]
+    step_on(env)
+    d.copies[0].put(env.data, [0.6, -0.6, 0.05])
+    mujoco.mj_forward(env.model, env.data)
+    step_off(env, 0.6)
+    assert env.signals.get("bk.count") == 1 and out_copies(env) == ["d/0"]
+
+
+@pytest.mark.parametrize("recycle, stock", [(True, 5), (False, 4)])
+def test_a_copy_fallen_through_the_floor_goes_back(make, recycle, stock):
+    env = make([{**DISP, "recycle": recycle, "cooldown": 0.0}])
+    d = env.parts["d"]
+    step_on(env)
+    d.copies[0].put(env.data, [0.0, 0.8, -0.5])                        # under the floor (pit, cliff)
+    mujoco.mj_forward(env.model, env.data)
+    step_off(env)
+    assert out_copies(env) == [] and env.signals.get("d.stock") == stock
+    step_on(env)
+    assert len(out_copies(env)) == 1                                   # max_active is free again
+
+
+LEVEL_MAP = """
+##########
+#LLLL....#
+#LLLL....#
+#LLLL....#
+#........#
+#....HHHH#
+#....HHHH#
+##########
+"""
+
+
+@pytest.mark.parametrize("at, caught", [((0.25, -0.15), False), ((-0.25, 0.15), False),
+                                         ((0.25, -0.15, -0.48), True)])
+def test_fallen_copy_is_judged_by_the_catch_plane_not_the_dispenser_floor(asset_dir, tmp_path, at, caught):
+    """The dispenser stands on a 0.3 m floor (H); a copy on the 0 m floor or the -0.2 m
+    floor (L) is still out, one on the catch plane goes back."""
+    raw = {"name": "lv", "cell": 0.1, "map": LEVEL_MAP, "spawn": {"pos": [-0.05, -0.05], "yaw": 0.0},
+           "legend": {"H": {"type": "floor", "height": 0.3}, "L": {"type": "floor", "height": -0.2}},
+           "parts": [{**DISP, "pos": [0.2, -0.15], "facing": 180, "button": "none", "in": ["sw"]},
+                     {"name": "sw", "type": "switch", "pos": [-0.05, -0.05], "size": [0.2, 0.2]},
+                     {"name": "goal", "type": "goal", "pos": [0.3, 0.2], "radius": 0.05}]}
+    path = tmp_path / "lv.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(room=path)
+    env.reset(seed=0)
+    d = env.parts["d"]
+    assert d.floor_z == pytest.approx(0.3)
+    body_steps(env, 0.2)
+    assert out_copies(env) == ["d/0"]                                  # the body stands on sw
+    c = d.copies[0]
+    z = at[2] if len(at) == 3 else env.floor_height(at[:2])[0] + c._rest_z()
+    c.put(env.data, [*at[:2], z])
+    mujoco.mj_forward(env.model, env.data)
+    body_steps(env, 0.3)
+    assert (out_copies(env) == []) is caught
+    env.close()
+
+
+def test_a_recycled_broken_egg_comes_out_whole(make):
+    env = make([{**DISP, "item": {"preset": "beak/egg", "on_break": "none"}, "stock": 1, "recycle": True,
+                 "cooldown": 0.0}, BASKET])
+    d = env.parts["d"]
+    step_on(env)
+    egg = d.copies[0]
+    egg._set(env.model, True)                                          # broken on the way
+    egg.put(env.data, [0.6, -0.6, 0.05])
+    mujoco.mj_forward(env.model, env.data)
+    step_off(env, 1.0)
+    assert env.signals.get("bk.count") == 1 and egg.parked and env.signals.get("d/0.broken") == 1
+    step_on(env)
+    assert not egg.parked and not egg.broken and env.signals.get("d/0.broken") == 0
+
+
+def test_solver_leaves_objects_that_hold_an_input_on(make):
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+
+    env = make([{"name": "a", "preset": "beak/cube_weight", "pos": [0.8, 0.8]},
+                {"name": "b", "preset": "beak/cube_weight", "pos": [0.8, 0.5]},
+                {"name": "c", "preset": "beak/cube_weight", "pos": [0.8, -0.8]},
+                {"name": "full", "preset": "beak/basket", "pos": [-0.6, -0.6]},
+                {"name": "pl", "type": "pressure", "pos": [-0.6, 0.6], "size": [0.2, 0.2], "min_mass": 0.02}])
+    env.parts["a"].put(env.data, [-0.6, -0.6, 0.03])
+    env.parts["b"].put(env.data, [-0.6, 0.6, 0.03])
+    mujoco.mj_forward(env.model, env.data)
+    body_steps(env, 0.6)
+    assert env.signals.get("full.ok") == 1 and env.signals.get("pl") == 1
+    sol = ScriptedSolver(env)
+    assert [sol._in_use(env.parts[n]) for n in "abc"] == [True, True, False]
+
+
+def test_copies_share_one_marker_id(make):
+    env = make([{**DISP, "item": {"preset": "beak/cube_weight", "marker": {"id": 5}}, "stock": 3}])
+    d = env.parts["d"]
+    assert [c.marker.id for c in d.copies] == [5, 5, 5]
+    assert d.marker is not None and d.marker.id != 5                   # the plate has its own
+
+
+def test_dispenser_snapshot_and_reset_round_trip(make):
+    env = make([{**DISP, "max_active": 2, "cooldown": 0.0}])
+    d = env.parts["d"]
+    step_on(env, 0.5)
+    snap = env.save_snapshot()
+    p0 = d.copies[0].pos(env.data)
+    step_off(env)
+    step_on(env)
+    assert out_copies(env) == ["d/0", "d/1"]
+    env.restore_snapshot(snap)
+    assert out_copies(env) == ["d/0"] and env.signals.get("d.stock") == 4
+    assert np.allclose(d.copies[0].pos(env.data), p0) and d.copies[1].pos(env.data)[2] < -4
+    assert env.model.geom_contype[env.model.body_geomadr[d.copies[1]._bid]] == 0
+    step_off(env)
+    step_on(env)
+    assert out_copies(env) == ["d/0", "d/1"]                           # the trigger memory came back
+    env.reset(seed=0)
+    assert out_copies(env) == [] and env.signals.get("d.stock") == 5 and d.dispensed == 0
+
+
+def test_parked_copies_are_out_of_obs_and_reach(make):
+    from mujoco_puzzle_gym.obs import beak, part_pos, part_state
+
+    env = make([DISP])
+    d = env.parts["d"]
+    names = [n for n in env.parts if not n.startswith("_look_")]
+    rows = [names.index(c.name) for c in d.copies]
+    assert not part_pos(env).reshape(-1, 2)[rows].any() and not part_state(env)[rows].any()
+    to_beak(env, "d/0")                                                # still parked, its handle at the tip
+    grab(env, seconds=0.02)
+    assert env.signals.get("beak.holding") == 0 and beak(env)[0] == 0
+    step_on(env)
+    assert part_pos(env).reshape(-1, 2)[rows[0]].any() and not part_pos(env).reshape(-1, 2)[rows[1]].any()
+
+
+def test_npc_item_parks_far_off_and_comes_out_on_the_floor(make):
+    env = make([{**DISP, "item": "npc/patrol", "stock": 2}])
+    d = env.parts["d"]
+    r0 = d.copies[0]
+    assert d.npc_item and r0.parked and r0.pos(env.data)[0] > 90
+    step_on(env, 0.3)
+    assert not r0.parked and np.linalg.norm(r0.pos(env.data)[:2] - d.exit_xy()) < 0.05
+
+
+@pytest.mark.parametrize("cfg, needle", [({"item": "beak/basket"}, "grabbable object"),
+                                         ({"button": "none"}, "needs `in`"),
+                                         ({"stock": 21}, "stock")])
+def test_dispenser_config_errors(make, cfg, needle):
+    with pytest.raises(RoomError, match=needle):
+        make([{**DISP, **cfg}])
+
+
+def test_demo_take_parsing(asset_dir, tmp_path):
+    from mujoco_puzzle_gym.room import parse_demo
+
+    env = open_room(tmp_path, [DISP, BASKET, {**DISP, "name": "dn", "pos": [0.6, 0.6], "item": "npc/patrol"}])
+    parts = env.parts
+    assert parse_demo(["take d", "grab d", "place d bk"], parts) == [("take", "d"), ("grab", "d"),
+                                                                     ("place", "d", "bk")]
+    with pytest.raises(RoomError, match="take from a dispenser"):
+        parse_demo(["take bk"], parts)
+    with pytest.raises(RoomError, match="`take d` first"):
+        parse_demo(["grab d"], parts)
+    with pytest.raises(RoomError, match="robots, not grabbable"):
+        parse_demo(["take dn", "grab dn"], parts)
+    env.close()
+
+
+# Slow: the scripted solution presses the dispenser, carries the copy into a consuming
+# basket (demo `take` / `grab` / `place`), and the grid answer takes and delivers it.
+DISP_PRESETS = ["dispenser", "dispenser_wall"]
+DISP_AT, BASKET_AT = [-0.2, 0.33], [0.25, -0.1]       # measured (plan.md E3b-3 review) (plan.md E3b-3 review)
+
+
+def disp_room(tmp_path, preset, demo, name):
+    parts = [{"name": "d", "preset": f"beak/{preset}", "pos": DISP_AT, "facing": -90},
+             {"name": "bk", "preset": "beak/basket", "pos": BASKET_AT, "consume": True}]
+    raw = {"name": name, "cell": 0.1, "map": WALL_ROOM, "demo": demo,
+           "spawn": {"pos": [-0.6, -0.25], "yaw": 0.0, "random": [0.05, 0.05, 0.3]},
+           "parts": [*parts, {"name": "goal", "type": "goal", "pos": [0.8, -0.35], "radius": 0.05}]}
+    path = tmp_path / f"{name}.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("preset", DISP_PRESETS)
+def test_scripted_solution_takes_from_the_dispenser_and_delivers(asset_dir, tmp_path, preset):
+    bad = {}
+    for seed in range(SEEDS):
+        path = disp_room(tmp_path, preset, ["take d", "grab d", "place d bk"], f"{preset}_{seed}")
+        env, on, sol = solve(path, "bk.ok", seed, seconds=60.0)
+        if on is None or sol.in_demo or env.body_state.fallen:
+            bad[seed] = (on, sol.step_i, env.body_state.fallen)
+        else:
+            assert env.signals.get("bk.count") == 1 and env.parts["bk"].consumed == ["d/0"]
+            d = env.parts["d"]                # walking off may cross the floor plate again
+            assert env.signals.get("d.stock") == 5 - d.dispensed and d.copies[0].parked
+        env.close()
+    assert SEEDS - len(bad) >= NEED, f"{preset}: {bad}"
+
+
+@pytest.mark.parametrize("preset, actions, ok", [("dispenser_wall", ["move", "grab"], False),
+                                                 ("dispenser_wall", ["move", "head", "grab"], True),
+                                                 ("dispenser", ["move", "grab"], True),
+                                                 ("dispenser", ["move"], False)])
+def test_check_actions_for_a_dispenser(asset_dir, tmp_path, preset, actions, ok):
+    from mujoco_puzzle_gym.check import check
+
+    path = disp_room(tmp_path, preset, ["take d", "grab d", "place d bk"], f"chk_{preset}")
+    res = check(path, task={"actions": actions}, static_only=True)
+    assert res["actions"]["ok"] is ok and res["ok"] is ok, res
+
+
+def gate_disp_room(tmp_path, preset, name):
+    """The basket (consume) opens the door to the goal; no `demo:`."""
+    raw = {"name": name, "cell": 0.1, "map": GATE_MAP,
+           "spawn": {"pos": [-0.6, -0.25], "yaw": 0.0, "random": [0.05, 0.05, 0.3]},
+           "parts": [{"name": "d", "preset": f"beak/{preset}", "pos": DISP_AT, "facing": -90},
+                     {"name": "bk", "preset": "beak/basket", "pos": [0.35, 0.15], "consume": True},
+                     {"name": "door", "type": "door", "pos": [0.65, 0.0], "width": 0.3, "axis": "y",
+                      "in": ["bk.ok"]},
+                     {"name": "goal", "type": "goal", "pos": [0.85, 0.0], "radius": 0.08}]}
+    path = tmp_path / f"{name}.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+@pytest.mark.parametrize("preset", DISP_PRESETS)
+def test_gate_dispenser_room_passes_the_static_check(asset_dir, tmp_path, preset):
+    from mujoco_puzzle_gym.check import check
+
+    res = check(gate_disp_room(tmp_path, preset, f"gchk_{preset}"),
+                task={"actions": ["move", "head", "grab"]}, static_only=True)
+    assert res["ok"] and res["order"]["order"][:1] == ["bk"], res
+
+
+GATE_MAP = """
+####################
+#...............#..#
+#...............#..#
+#...............#..#
+#..................#
+#..................#
+#..................#
+#...............#..#
+#...............#..#
+#...............#..#
+####################
+"""
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("preset", DISP_PRESETS)
+def test_grid_answer_takes_a_copy_for_the_basket(asset_dir, tmp_path, preset):
+    """No `demo:`: the basket opens the door to the goal, so the plan orders it first and
+    the grid answer presses the dispenser and carries the copy in (until bk.ok)."""
+    bad = {}
+    for seed in range(SEEDS):
+        path = gate_disp_room(tmp_path, preset, f"g_{preset}_{seed}")
+        env, on, sol = solve(path, "bk.ok", seed, seconds=60.0)
+        assert [t.name for t in env.targets] == ["bk", "goal"]
+        if on is None or env.body_state.fallen:
+            bad[seed] = (on, env.body_state.fallen)
+        env.close()
+    assert SEEDS - len(bad) >= NEED, f"{preset}: {bad}"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("preset", DISP_PRESETS)
+def test_take_twice_waits_out_the_cooldown(asset_dir, tmp_path, preset):
+    """`take` again while on the plate (or before the cooldown ends): step off, press again."""
+    path = disp_room(tmp_path, preset, ["take d", "take d"], f"twice_{preset}")
+    raw = yaml.safe_load(path.read_text())
+    raw["parts"][0].update(max_active=2, cooldown=5.0)
+    path.write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(task={"actions": ["move", "head", "grab"]}, room=path)
+    sol = ScriptedSolver(env)
+    env.reset(seed=0)
+    sol.reset()
+    for _ in range(int(60 * env.hz)):
+        env.step(sol.act())
+        if not sol.in_demo:
+            break
+    assert not sol.in_demo and env.parts["d"].dispensed == 2 and not env.body_state.fallen
+    env.close()

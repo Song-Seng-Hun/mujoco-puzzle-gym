@@ -170,7 +170,7 @@ Dynamic phase:
 | Stage | What it checks |
 |---|---|
 | `stability` | That the body does not fall or blow up numerically for 10 s at zero command |
-| `solver` | That a scripted solver that knows the answer solves at least 18 of 20 random layouts. If the room has `demo:` (`goto`, `press`, `wait`, `push <ball> to <goal_net>`, `herd <robot> <part>`, `turn <lever or dial> <value>`, `pull <cord or drawer>`, `look <part>`), the solver follows that order first, and a grid solver takes over for the rest |
+| `solver` | That a scripted solver that knows the answer solves at least 18 of 20 random layouts. If the room has `demo:` (`goto`, `press`, `wait`, `push <ball> to <goal_net>`, `herd <robot> <part>`, `turn <lever or dial> <value>`, `pull <cord or drawer>`, `look <part>`, `take <dispenser>`), the solver follows that order first, and a grid solver takes over for the rest |
 
 The solver stage saves a snapshot for each flag it passes in `runs/check/<room>/checkpoints/<flag>.pkl`.
 
@@ -273,6 +273,26 @@ A device stands in place and the body works it from its `facing` side (deg). All
 - Turrets and levers: when a turret reads a lever's `.angle` through `bind`, `mpg check`'s ballistic check aims once per lever cell instead of over a continuous range. In a room with a turret that aims by a signal and fires when its signal turns on, the target board (`input/target`) becomes a switch in the solution order, and its target area (and the `target_pos` observation) is the spot of the part that fires the turret. A lever or dial whose `.angle` only `bind`s read is a setting knob, not a switch: pushing it to 1 pays no `new_on` and the grid solver does not push it (aim with `turn` in `demo:`).
 - Example [`examples/rooms/turret.yaml`](../examples/rooms/turret.yaml): push the lever over one cell to aim the turret at the target, step on the pad to fire, and the door opens.
 - Known limits: the scripted solver does not turn grab levers (`turn` rejects them). A push lever is pushed one way (-1 → 1) by default; turning it back (1 → -1) pushes from the other side. A dial turns one way only, so its cell cycles through 0–3, and each further cell takes about 11 s. The static check does not look at the dial's return loop (about 1 m on the `facing` side). Opening a drawer takes 4.8–14 s, and an opened drawer stays open until reset.
+
+## Dispenser
+
+A `dispenser` is a cabinet that hands out one item each time its signal turns on. `pos` is the cabinet front, `facing` (deg) the side the body stands on, and the top `height` (default 0.17 m) is a stand height the beak reaches.
+
+| Preset | Type | Defaults | Use |
+|---|---|---|---|
+| `beak/dispenser` | `dispenser` `button: floor` | 5 × `beak/cube_weight`, `max_active` 1, `cooldown` 1 s, a 20 × 20 cm floor plate 0.35 m in front | Step on the plate and a weight appears on the top front edge |
+| `beak/dispenser_wall` | `dispenser` `button: wall_beak` | Same item and stock, a 10 × 5 cm plate on the front at 0.14 m | Press the plate with the beak, head lowered (`head` action) |
+
+- Why `beak/cube_weight` by default: it has a handle on each of its four sides, so it can be grabbed from any side; 40 g is within the body's `max_lift_mass` (0.05 kg); and the top height matches the measurement that the beak only reaches objects on 0.17–0.19 m stands.
+- Trigger (`button`): `floor` is a floor plate at `button_at` ([out, left] m, default [0.35, 0]), `wall_beak` a wall plate on the front at `button_height` (R4 window, 6 cm in front of the plate), `none` the `in` channels. With a plate, `in` channels count too.
+- Item (`item`): a grabbable object preset (R28) or NPC preset (R29) by name, or `{preset: <name>, <value>: ...}` with values to override. Other types are rejected when the room loads.
+- `stock` (at most 20): copies built up front. `max_active`: copies out at once at most. `cooldown`: wait before the next one. `refill` (a channel): each time it turns on, every stored copy goes back in stock. Exit `exit` ([out, left] m; default objects 2 cm behind the top front edge, robots on the floor 0.15 m in front) and initial velocity `exit_vel` ([out, left, up] m/s, to roll it out).
+- Channels: `<dispenser>.stock` (copies left), `<dispenser>.empty` (1 when none). Copies are parts `<dispenser>/<i>`, with `.held` / `.dropped` channels under that name. Copies from one dispenser share one marker id.
+- Storage: MuJoCo cannot add bodies while running, so copies are built up front. A stored object waits 5 m below the floor with collisions off and gravity compensated; a stored robot waits at floor height 100 m outside the room with its motors off. Stored copies are left out of observations (`part_pos`, `part_state`, `npcs`, `beak`), beak grabbing, sight (`.seen`), sensors and the solvers. Snapshots and reset restore stock and positions (reset fills the stock).
+- Consuming (`consume`): a receiver (`receptacle`, e.g. `beak/basket`) with `consume: true` (default false) makes an accepted object vanish; it still counts (`.count`, `.mass`). A vanished copy no longer counts as out, and with `recycle: true` on its dispenser it is back in stock (otherwise stored until `refill`). A copy that falls through a pit or off a cliff goes back the same way.
+- Solution `demo:`: `take <dispenser>` (step on the plate or press it to get one, then stand until it rests). After that, `grab <dispenser>`, `place <dispenser> <part>` and `drop <dispenser> <part>` work on the copy handed out last. The grid solver takes a copy from a dispenser when a receiver in the solution order has nothing it accepts left in the room. A room that takes from a wall-plate dispenser needs `head` in the task `actions`; one that carries objects needs `grab`.
+- Measured (2026-11-12, 10 seeds, dispenser at `[-0.2, 0.33]` with `facing: -90`, basket at `[0.25, -0.1]` with `consume: true`): `demo: [take d, grab d, place d bk]` 9/10 with the floor plate (9.9–13.3 s) and 10/10 with the wall plate (12.7–25.8 s). In a room where the basket opens the door, the grid solver turns the basket on 10/10 (floor) and 9/10 (wall), and reaches the goal 7/10 (floor) and 5/10 (wall). On a second `take`, the body steps off the plate and presses again once the dispenser is ready (`cooldown`).
+- Known limits: putting it in a basket succeeds 4–10 times in 10 depending on where the basket stands (caught on its edge, a fall leaning on the basket wall, or stuck in the corner between basket and room wall). After letting go of a consumed object the body stands 1.5 s, then walks off. The planning grid does not treat basket walls as obstacles, so after filling a basket the walk to the next target can stall against the basket wall or fall. The solver does not check the input condition of a `button: none` dispenser or a `max_active` that blocks it (`mpg check`'s dynamic stage catches it). The scripted solver does not use dispensers that hand out robots.
 
 ## Python plugins
 
@@ -472,6 +492,27 @@ Role `switch`, update stage `input`.
 | `target` | vec |  | `[1, 1]` |  |  | cells [from, to] that turn `<name>` on |
 | `detent` | float | N m | `0.03` | [0, 1] |  | torque pulling to the nearest cell at its edge |
 
+
+### `dispenser`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `button` | enum |  | `floor` | `floor`, `wall_beak`, `none` |  | floor: a plate the body steps on; wall_beak: a plate on the front the beak presses; none: the `in` channels |
+| `item` | any |  | `beak/cube_weight` |  |  | what it hands out: an object (R28) or npc (R29) preset, or {preset, <value>: ...} |
+| `stock` | int |  | `5` | [1, 20] |  | copies built (all in stock at reset) |
+| `max_active` | int |  | `1` | [1, 20] | yes | copies out at once at most |
+| `cooldown` | float | s | `1.0` | [0, 60] | yes | least time between two copies |
+| `refill` | str |  | — |  |  | channel: each rising edge restocks every stored copy |
+| `recycle` | bool |  | `False` |  |  | a consumed or fallen copy goes back in stock (else it stays stored until refill) |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | the way the front faces (where the body stands) |
+| `height` | float | m | `0.17` | [0.1, 0.25] |  | cabinet top (a stand height the beak reaches) |
+| `exit` | vec | m | — | [-0.5, 1] |  | [out, left] from pos where a copy appears; default objects [-0.02, 0] (top), npc [0.15, 0] (floor) |
+| `exit_vel` | vec | m/s | `[0.0, 0.0, 0.0]` | [-3, 3] |  | [out, left, up] velocity of a new copy |
+| `button_at` | vec | m | — | [-1, 1] |  | [out, left] of the plate from pos; default floor [0.35, 0], wall_beak [0, 0] |
+| `button_size` | vec | m | — | [0.02, 1] |  | plate size; default floor [0.2, 0.2], wall_beak [0.1, 0.05] (width, height) |
+| `button_height` | float | m | `0.14` | [0.05, 0.25] |  | wall_beak: plate centre above the floor (below the top) |
 
 ### `door`
 
@@ -799,6 +840,7 @@ Role `sensor`, update stage `input`.
 | `height` | float | m | `0.19` | [0.05, 1] |  | hook: peg height |
 | `facing` | float | deg | `0.0` | [-180, 180] |  | hook: the way the peg points (0 = +x) |
 | `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
+| `consume` | bool |  | `False` |  |  | an accepted object vanishes and stays counted (a dispenser copy goes back, R28) |
 
 ### `setter`
 
@@ -970,6 +1012,10 @@ Role `switch`, update stage `input`.
 | `beak/basket` | `receptacle` | `shape: box`, `size: [0.3, 0.3]`, `wall_height: 0.1`, `require: count`, `count: 1` |
 | `beak/cube_weight` | `cube` | `size: 0.04`, `mass: 0.04` |
 | `beak/dial` | `dial` | `spokes: 4`, `target: [1, 1]` |
+| `beak/dispenser` | `dispenser` `button: floor` | `beak/cube_weight` 5개, `max_active` 1, `cooldown` 1 s, 앞 0.35 m에 20 × 20 cm 발판 | 발판을 밟으면 윗면 앞 모서리에 추가 하나 나옵니다 |
+| `beak/dispenser_wall` | `dispenser` `button: wall_beak` | 같은 물체·재고, 앞면 0.14 m 높이에 10 × 5 cm 판 | 머리를 숙여(`head` 행동) 부리로 판을 누릅니다 |
+| `beak/dispenser` | `dispenser` | `button: floor`, `item: beak/cube_weight`, `stock: 5`, `max_active: 1`, `cooldown: 1.0` |
+| `beak/dispenser_wall` | `dispenser` | `button: wall_beak`, `item: beak/cube_weight`, `stock: 5`, `max_active: 1`, `cooldown: 1.0` |
 | `beak/drawer` | `drawer` | `travel: 0.15`, `strap: 0.1` |
 | `beak/egg` | `egg` | `break_height: 0.05`, `on_break: fail` |
 | `beak/handle_ball` | `handle_ball` | `radius: 0.03`, `mass: 0.03` |

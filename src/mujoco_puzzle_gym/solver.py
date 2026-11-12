@@ -27,7 +27,11 @@ is passable, an opening trapdoor as a hole):
   past the dial, looping round clockwise, until it is at that cell (R28);
 - `pull <cord or drawer>`: hold the knob, turn round, walk away until the cord is on
   or the drawer latched open, then let go (R28);
-- `look <part>`: stand facing the part's marker until `<part>.seen` is 1 (R27).
+- `look <part>`: stand facing the part's marker until `<part>.seen` is 1 (R27);
+- `take <dispenser>`: step on its floor plate, press its wall plate with the beak
+  tip, or (no plate) stand, until it hands out a copy, then stand until the copy
+  rests (at most SETTLE s); later `grab` / `place` / `drop` with the dispenser's
+  name work on that copy (R28).
 `press` on a wall button (and a wall button in the grid answer) walks up to
 the plate with the beak tip at its height, or with a held stick's far end
 (R28). Head and grab values are kept between steps (a held object stays held
@@ -35,8 +39,10 @@ through later sub-goals until `place`)
 and go to the env through `env.scripted_action`.
 After the last sub-goal, and in rooms without `demo:`, it follows the grid
 answer: the env's solution-order targets, pushing a ball for a target with
-`push_target` (goal nets, pins), pushing a lever to 1, pulling a cord and
-looking at a part for a `_look_` switch (gaze.py).
+`push_target` (goal nets, pins), pushing a lever to 1, pulling a cord,
+looking at a part for a `_look_` switch (gaze.py) and, for a receptacle,
+carrying an object it accepts there: the nearest free one not in it yet, or
+else a copy taken from a dispenser with stock whose item it accepts (R5, R28).
 """
 
 from __future__ import annotations
@@ -51,6 +57,9 @@ TURN_GAIN = 2.5        # action[2] per rad of heading error
 FACING = 0.4           # |heading error| [rad] below which it walks at full speed
 PEEK = 0.12            # look this far ahead for walls before creeping while turning [m]
 STAND = np.array([-1.0, 0.0, 0.0], dtype=np.float32)
+TAKE_SETTLE = 1.5      # [s] take: wait at most this long for a new copy to rest
+WALL_WAIT = 0.35        # [m] off a dispenser's wall plate while it cannot hand out (take)
+REST_SPEED = 0.02      # [m/s] a copy this slow rests
 
 
 class ScriptedSolver:
@@ -79,6 +88,9 @@ class ScriptedSolver:
         self.step_i = 0                    # current `demo:` entry
         self._wait = 0                     # env steps left in a `wait`
         self._worked = None                # grid-answer device / look target the carrier works
+        self.taken: dict[str, object] = {}     # dispenser -> copy its last `take` handed out
+        self._take_from: int | None = None     # take: the dispenser's count when it began
+        self._step: tuple | None = None        # grid-answer delivery: ("take" | "grab" | "place", part)
 
     @property
     def in_demo(self) -> bool:
@@ -113,6 +125,10 @@ class ScriptedSolver:
         if env.current_target() is None:
             return STAND.copy()
         target = env.current_target()
+        if self._step is not None and self._step[0] == "place" and self._worked is not target:
+            act = self._deliver(self._worked)          # the receptacle turned on: let go, walk off
+            if act is not None:
+                return act
         if self._worked is not None and self._worked is not target:   # done with it (a cord turns
             self._worked = None                                        # on mid-walk): let go
             self.carrier.reset()
@@ -121,6 +137,9 @@ class ScriptedSolver:
             return self.pusher.act(target)
         if getattr(target, "mount", None) == "wall":
             return self.carrier.press_wall_act(target) if not target.satisfied() else STAND.copy()
+        act = self._deliver(target)
+        if act is not None:
+            return act
         act = self._work(target)
         if act is not None:
             return act
@@ -147,6 +166,96 @@ class ScriptedSolver:
         else:
             act = c.pull_act(target)
         return STAND.copy() if act is None else act
+
+    def _deliver(self, target) -> np.ndarray | None:
+        """Grid answer: carry an object receptacle `target` accepts to it, taking one from a
+        dispenser when no free one is left (None: not a receptacle, or nothing to carry)."""
+        from .parts.object.grabbable import Grabbable
+
+        if not hasattr(target, "accepts"):
+            return None
+        env, c = self.env, self.carrier
+        if self._worked is not target:
+            self._worked, self._step = target, None
+            c.reset()
+        if self._step is None:
+            held = c.held()
+            if held is not None and target.accepts(held):
+                self._step = ("place", held)
+            else:
+                here = env.body_state.pos[:2]
+                free = [o for o in env.parts.values() if isinstance(o, Grabbable) and not o.parked
+                        and target.accepts(o) and o.name not in target.inside and not self._in_use(o)]
+                free.sort(key=lambda o: float(np.linalg.norm(o.pos(env.data)[:2] - here)))
+                ds = [d for d in env.parts.values() if hasattr(d, "copies") and d.stock_left() > 0
+                      and isinstance(d.copies[0], Grabbable) and target.accepts(d.copies[0])]
+                if free:
+                    self._step = ("grab", free[0])
+                elif ds:
+                    self._step = ("take", ds[0])
+                else:
+                    return None
+            self._take_from = None
+            c.reset()
+        kind, part = self._step
+        act = (c.place_act(part, target) if kind == "place" else c.grab_act(part) if kind == "grab"
+               else self.take_act(part))
+        if act is None:
+            self._step = None
+            return STAND.copy()
+        return act
+
+    def _in_use(self, obj) -> bool:
+        """`obj` lies in or on another input that is on (a filled receptacle, a plate it
+        holds down): taking it away would turn that input off."""
+        from .parts.input._sense import in_rect
+
+        xy = obj.pos(self.env.data)[:2]
+        for p in self.env.parts.values():
+            if p.stage != "input" or not p.satisfied():
+                continue
+            if obj.name in getattr(p, "inside", ()):
+                return True
+            half = getattr(p, "half", None)
+            if half is not None and getattr(p, "mount", None) != "wall" and in_rect(xy, p.xy, half):
+                return True
+        return False
+
+    def take_act(self, disp) -> np.ndarray | None:
+        """Trigger dispenser `disp` until it hands out a copy, then stand until the copy
+        rests; None once it does (the copy is `taken[disp.name]`)."""
+        env = self.env
+        if self._take_from is None:
+            self._take_from, self._take_wait = disp.dispensed, 0
+        copy = disp.last_copy()
+        if disp.dispensed > self._take_from and copy is not None:
+            self.carrier.head = -1.0
+            self._take_wait += 1
+            if (self._take_wait > 2 and float(np.linalg.norm(copy.vel(env.data))) < REST_SPEED) \
+                    or self._take_wait > TAKE_SETTLE * env.hz:
+                self.taken[disp.name] = copy
+                self._take_from = None
+                return None
+            return STAND.copy()
+        self._take_from = disp.dispensed
+        b = disp.press_plate
+        if b is None:
+            return STAND.copy()               # the `in` channels hand it out
+        if b.on:                              # pressed, nothing came (cooldown, or pressed before):
+            self.carrier.head = -1.0          # let go of it (a wall plate: head up, the tip clears
+            if b.mount == "wall":             # its top), press again when ready
+                return STAND.copy()
+            act = self.carrier._walk_off(b.xy, float(max(b.half)) + env.body.footprint_radius + CLEARANCE)
+            return STAND.copy() if act is None else act
+        if not disp.ready(float(env.data.time)):
+            if b.mount == "wall":             # wait off the plate: coming in again square on
+                act = self.carrier._walk_off(b.xy, WALL_WAIT)     # (turning in place to it is slow)
+                return STAND.copy() if act is None else act
+            return STAND.copy()
+        if b.mount == "wall":
+            act = self.carrier.press_wall_act(b)
+            return STAND.copy() if act is None else act
+        return self._walk_to(b)
 
     def _steer(self, field: np.ndarray, target_xy) -> np.ndarray:
         env = self.env
@@ -194,6 +303,11 @@ class ScriptedSolver:
             return STAND.copy()        # behind a closed door or a hole: wait for it to change
         return self._steer(field, part.xy)
 
+    def _object(self, name: str):
+        """Part `name`, or for a dispenser the copy its last `take` handed out."""
+        part = self.env.parts[name]
+        return self.taken[name] if hasattr(part, "copies") else part
+
     def _demo_act(self, entry: tuple) -> np.ndarray | None:
         """Action for the `demo:` entry, or None when it is done."""
         env = self.env
@@ -209,10 +323,12 @@ class ScriptedSolver:
             return None if done else self.pusher.act(target, ball=ball)
         if cmd == "herd":
             return self.herder.act(env.parts[entry[1]], entry[2])
+        if cmd == "take":
+            return self.take_act(env.parts[entry[1]])
         if cmd == "grab":
-            return self.carrier.grab_act(env.parts[entry[1]])
+            return self.carrier.grab_act(self._object(entry[1]))
         if cmd in ("place", "drop"):
-            return self.carrier.place_act(env.parts[entry[1]], env.parts[entry[2]], drop=cmd == "drop")
+            return self.carrier.place_act(self._object(entry[1]), env.parts[entry[2]], drop=cmd == "drop")
         if cmd == "turn":
             return self.carrier.turn_act(env.parts[entry[1]], entry[2])
         if cmd == "pull":

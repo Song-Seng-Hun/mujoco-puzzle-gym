@@ -131,6 +131,9 @@ class Part:
     marker_faces: ClassVar[tuple[str, ...]] = ()   # allowed faces; first is the default
     marker = None                        # markers.Marker, set when the room loads
     plan_driver = None                   # planning: a part that turns this input on itself (R29)
+    #: Off stage (a dispenser's copy in storage, a consumed object, R28 / R5): sensors,
+    #: observations, the gaze sensor and the planners leave it out.
+    parked: bool = False
     #: Values this class adds to its base classes' schema (R3).
     fields: ClassVar[tuple[Field, ...]] = (
         Field("pos", "vec", length=2, unit="m", doc="position [x, y] on the floor"),
