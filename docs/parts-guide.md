@@ -7,7 +7,7 @@
 ## 부품, 프리셋, 조립 프리셋
 
 - **부품**은 `room.yaml`의 `parts:` 한 줄입니다. 종류(`type`)와 값들로 이루어집니다. 종류마다 받는 값과 단위, 기본값, 허용 범위가 정해져 있고(값 스키마), 범위 밖 값은 `mpg build`와 `mpg check`가 이유와 범위를 들어 거절합니다.
-- **부품 프리셋**은 부품 종류 하나와 기본값 묶음입니다. 코드는 없습니다. `src/mujoco_puzzle_gym/presets/parts/<분류>/<이름>.yaml`에 있고, 분류는 `input`(버튼·센서), `logic`(게이트·카운터·트랜시버), `device`(문·워프·골대·플랫폼·기둥·회전판·컨베이어·스프링·설정 변경기), `floor`, `trap`, `object`, `beak`, `npc`입니다. `beak`과 `npc`는 아직 비어 있습니다.
+- **부품 프리셋**은 부품 종류 하나와 기본값 묶음입니다. 코드는 없습니다. `src/mujoco_puzzle_gym/presets/parts/<분류>/<이름>.yaml`에 있고, 분류는 `input`(버튼·센서), `logic`(게이트·카운터·트랜시버), `device`(문·워프·골대·플랫폼·기둥·회전판·컨베이어·스프링·설정 변경기), `floor`, `trap`, `object`, `beak`, `npc`(스스로 움직이는 로봇)입니다. `beak`은 아직 비어 있습니다.
 - **조립 프리셋**은 여러 부품을 묶은 것, 또는 방 하나 전체입니다. `presets/puzzles/<주제>/<이름>.yaml`에 있습니다.
 
 `mpg parts --json`은 등록된 부품과 값 스키마, 프리셋 목록을 냅니다. 직접 만든 부품까지 보려면 `--plugin my_parts`를 붙입니다.
@@ -101,6 +101,27 @@ parts:
 - 넘어뜨리는 세기 기록(2026-11-12, 서 있는 몸, 0.4 m 거리, 옆과 앞에서 각 3번): 포탄 질량 × 속도가 0.5 N·s 이하면 한 번도 넘어지지 않았고, 0.6 N·s(0.1 kg, 6 m/s, 앞)부터 넘어지기 시작해 0.8 N·s(0.2 kg, 4 m/s)에서 6번 중 4번, 1.0 N·s(0.2 kg, 5 m/s)에서 6번 모두 넘어졌습니다. 그래서 기본값은 0.2 kg, 5 m/s입니다. 걷는 중에는 더 약해서, 0.4 N·s 포탄을 2.5초마다 맞은 해답이 20번 중 6번 넘어졌습니다.
 - 포탄 질량(`shell_mass`)은 방을 지을 때만 정합니다. MuJoCo가 물체의 질량 행렬을 미리 계산해 두어서, 실행 중에 바꾸면 움직임이 틀어집니다.
 
+## NPC 로봇
+
+`npc` 분류는 스스로 바닥을 미끄러져 다니는 작은 로봇입니다(`type: npc`). 평면 관절 3개(x, y 미끄럼, z 회전)와 속도 구동기로 움직이고, 질량이 있어 몸·물체·벽과 부딪힙니다. 바닥 버튼과 구역은 로봇 중심을 물체처럼 봅니다(`trigger: npc`나 `any`). 위아래 관절이 없어 바닥을 누르지 않으므로, 압력판은 중심이 판 위에 있는 동안 로봇의 `mass`를 셉니다. 위에 마커가 붙습니다.
+
+| 행동 `behavior` | 프리셋 | 하는 일 |
+|---|---|---|
+| `flee` | `npc/flee` | 몸이 `sense` 안에 오면 반대쪽으로 도망칩니다. 막히면 벽을 따라 미끄러집니다 |
+| `follow` | `npc/follow` | `sense` 안의 몸 쪽으로 와서 `keep`만큼 떨어져 멈춥니다 |
+| `lure` | `npc/lure` | 몸이 `bait` 물체를 물고 있으면 그쪽으로 옵니다. 잡기(E3)가 들어오기 전에는 움직이지 않습니다 |
+| `patrol` | `npc/patrol` | `path`(`pos`에서 잰 점들, 한 바퀴)를 돕니다. 몸이 앞을 막으면 멈춰 기다립니다 |
+| `guard` | `npc/guard` | 자리(`pos`)를 지키다가 몸이 `sense + reach` 안에 오면 `reach`까지 나와 막아섭니다 |
+| `shy_gaze` | `npc/shy_gaze` | 몸이 마커를 쳐다보면(시선 센서, 방 `gaze:`) 멈추고, 안 보면 몸 쪽으로 다가옵니다. `invert: true`면 반대입니다 |
+| `seek_button` | `npc/seek_button` | `in`이 켜지면 `button` 부품 위로 가서 섭니다 |
+| `sleepy` | `npc/sleepy` | `awake`초 동안 `path`를 돌고 `asleep`초 동안 멈추기를 되풀이합니다 |
+
+- 공통 값: `speed`(최고 속도, 기본 0.08 m/s), `accel`, `sense`(감지 반경), `size`, `mass`, `leash: [x0, y0, x1, y1]`(로봇 중심이 벗어나지 않는 상자, 방 좌표). `enable`이 꺼지면 그 자리에 멈춥니다. `speed`, `accel`, `sense`, `keep`, `reach`, `awake`, `asleep`은 실행 중 바꿀 수 있습니다.
+- 벽 피하기: 가려는 방향과 그 ±35°, ±70°로 광선 5개를 쏴서 막히지 않은 첫 방향으로 갑니다. 다섯 다 막히면 멈춥니다. 규칙에 난수가 없어서 같은 시드면 같은 궤적입니다.
+- 채널: `<이름>.moving`(움직이는 동안 1), `<이름>.on`(올라선 버튼의 마커 번호, 없으면 -1). 관측 항목 `npcs`는 로봇마다 상대 위치, 속도, 움직임, 반응 중인지(6칸)입니다.
+- `speed`가 몸의 걷는 속도(약 0.16 m/s) 이상이면 `mpg check`의 `parts` 단계가 경고합니다(실패는 아님). 몸이 따라잡지 못하기 때문입니다.
+- 로봇만 누르는 버튼(`trigger: npc`)은 몰 수 있는 로봇(`flee`, `follow`, `lure`)의 `leash` 안에 있으면 풀이 순서에서 발판으로 칩니다. 해답의 `demo:`에 `herd <로봇> <부품>`(또는 `herd <로봇> <x> <y>`)을 쓰면 `flee` 로봇은 반대편에서 몰고, `follow`·`lure` 로봇은 앞장서 끌고 갑니다.
+
 ## 조립 예
 
 모두 `mpg check`의 해답 단계를 20번 중 18번 이상 통과합니다.
@@ -117,6 +138,8 @@ parts:
 | `puzzles/ball/color_sort` | 색별 골대 두 개에 공을 나눠 넣고 카운터로 문을 엽니다 | `ball`, `goal_net`, `counter` |
 | [`examples/rooms/lift_spring.yaml`](../examples/rooms/lift_spring.yaml) | 버튼 하나가 문을 열고, 엘리베이터를 올리고, 설정 변경기로 스프링을 켜서 공이 튀어 오릅니다 | `device/elevator`, `device/spring_pad`, `device/setter`, `device/sliding_door` |
 | [`examples/rooms/trap_run.yaml`](../examples/rooms/trap_run.yaml) | 구덩이를 돌아가고, 바닥에서 도는 막대 옆과 약한 옆바람 속을 지나 골로 | `trap/pit`, `trap/spinning_bar`, `trap/crosswind` |
+| [`examples/rooms/herd.yaml`](../examples/rooms/herd.yaml) | 도망치는 로봇을 구석의 버튼 위로 몰아 두면 그동안 문이 열려 있습니다 | `npc/flee`, `input/floor_momentary`(`trigger: npc`), `device/sliding_door` |
+| [`examples/rooms/warp_hop.yaml`](../examples/rooms/warp_hop.yaml) | 문 없는 벽 너머의 골로 워프 발판을 타고 넘어갑니다 | `warp` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 글자 지도로 그린 두 방, 계단과 경사로 | `button`, `door` |
 
 공 조립 프리셋은 방 하나 전체라서 그대로 `mpg check`에 넣어도 되고, `preset: puzzles/ball/bowling`으로 깔고 값을 바꿔 써도 됩니다.
@@ -133,7 +156,7 @@ parts:
 | `channels` | 아무도 쓰지 않는 채널을 읽는지, 한 채널에 쓰는 부품이 둘인지, 상태 없는 고리, 없는 부품을 가리키는 링크 |
 | `demo` | `demo:` 하위 목표의 명령과 대상 |
 | `body` | 부품의 `requires_body` 능력이 몸에 있는지 |
-| `parts` | 부품별 점검(골대 입구보다 큰 공, 닿을 수 없는 공·코인) |
+| `parts` | 부품별 점검(골대 입구보다 큰 공, 닿을 수 없는 공·코인). 몸만큼 빠른 NPC 로봇은 경고(`warnings`)만 하고 실패하지 않습니다 |
 | `overlap` | 기본 배치에서 부품의 단단한 몸체가 벽이나 다른 부품에 5 mm 넘게 박혔는지. 바닥 패드·깃발·골 구역은 빠지고, 문은 자기 벽(문이 막는 틈의 벽, 같은 선 위의 벽)과만 겹쳐도 됩니다 |
 | `order` | 신호와 벽으로 볼 때 골까지 가는 풀이 순서가 있는지. 글자 지도 방은 부품이 바닥 칸 위에 있는지와 막는 턱·경사도 |
 
@@ -144,7 +167,7 @@ parts:
 | 단계 | 보는 것 |
 |---|---|
 | `stability` | 명령 0으로 10초 동안 넘어지거나 계산이 터지지 않는지 |
-| `solver` | 정답을 아는 스크립트가 무작위 배치 20개 중 18개 이상을 푸는지. 방에 `demo:`(`goto`, `press`, `wait`, `push <공> to <골대>`)가 있으면 그 순서를 먼저 따르고, 나머지는 격자 해답이 이어 갑니다 |
+| `solver` | 정답을 아는 스크립트가 무작위 배치 20개 중 18개 이상을 푸는지. 방에 `demo:`(`goto`, `press`, `wait`, `push <공> to <골대>`, `herd <로봇> <부품>`)가 있으면 그 순서를 먼저 따르고, 나머지는 격자 해답이 이어 갑니다 |
 
 해답 단계는 지나간 깃발마다 저장본을 `runs/check/<방>/checkpoints/<깃발>.pkl`에 남깁니다.
 
@@ -423,6 +446,28 @@ def majority(inputs, state, dt):
 | `to` | vec | m | 필수 |  |  | receiver position [x, y] |
 | `height` | float | m | `0.05` | [0.01, 0.5] |  | beam height |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  |  |
+
+### `npc`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `behavior` | enum |  | `flee` | `flee`, `follow`, `lure`, `patrol`, `guard`, `shy_gaze`, `seek_button`, `sleepy` |  | flee, follow, lure, patrol, guard, shy_gaze, seek_button or sleepy |
+| `size` | vec | m | `[0.12, 0.12, 0.07]` | [0.04, 0.5] |  | chassis [x, y, z] |
+| `mass` | float | kg | `0.3` | [0.02, 5] |  |  |
+| `speed` | float | m/s | `0.08` | [0, 1] | 예 | top speed; at or above the body's 0.16 m/s `mpg check` warns |
+| `accel` | float | m/s^2 | `0.5` | [0.05, 10] | 예 |  |
+| `sense` | float | m | `0.4` | [0.05, 5] | 예 | reacts to the body this close (flee, follow, lure, patrol, guard) |
+| `leash` | vec | m | — | [-50, 50] |  | [x0, y0, x1, y1] box (world) its centre never leaves; default: none |
+| `keep` | float | m | `0.3` | [0, 3] | 예 | follow, lure, shy_gaze: stops this far from the body / bait |
+| `reach` | float | m | `0.25` | [0, 3] | 예 | guard: how far it steps out from its post |
+| `path` | any |  | — |  |  | patrol, sleepy: [[dx, dy], ...] from `pos`, 2 or more points, a loop |
+| `button` | str |  | — |  |  | seek_button: the part it goes onto |
+| `bait` | str |  | — |  |  | lure: the object the body must hold |
+| `awake` | float | s | `2.0` | [0.1, 60] | 예 | sleepy: seconds moving |
+| `asleep` | float | s | `2.0` | [0.1, 60] | 예 | sleepy: seconds still |
+| `invert` | bool |  | `False` |  |  | shy_gaze: move while looked at, stop otherwise |
 
 ### `pendulum`
 
@@ -728,6 +773,14 @@ def majority(inputs, state, dt):
 | `logic/receiver` | `receiver` | `band: radio`, `delay: 0.0` |
 | `logic/transmitter` | `transmitter` | `band: radio`, `delay: 0.0` |
 | `logic/xor` | `gate` | `op: xor` |
+| `npc/flee` | `npc` | `behavior: flee`, `speed: 0.08`, `sense: 0.4` |
+| `npc/follow` | `npc` | `behavior: follow`, `sense: 0.8`, `keep: 0.3` |
+| `npc/guard` | `npc` | `behavior: guard`, `sense: 0.4`, `reach: 0.25` |
+| `npc/lure` | `npc` | `behavior: lure`, `sense: 0.8`, `keep: 0.25` |
+| `npc/patrol` | `npc` | `behavior: patrol`, `path: [[0.0, 0.0], [0.4, 0.0]]`, `sense: 0.35` |
+| `npc/seek_button` | `npc` | `behavior: seek_button` |
+| `npc/shy_gaze` | `npc` | `behavior: shy_gaze`, `keep: 0.3` |
+| `npc/sleepy` | `npc` | `behavior: sleepy`, `path: [[0.0, 0.0], [0.4, 0.0]]`, `awake: 2.0`, `asleep: 2.0` |
 | `object/ball` | `ball` | `radius: 0.05`, `mass: 0.05`, `elasticity: 0.5` |
 | `object/bowling_pin` | `pin` | `radius: 0.02`, `height: 0.12`, `mass: 0.03` |
 | `object/heavy_ball` | `ball` | `radius: 0.08`, `mass: 0.5`, `elasticity: 0.2` |
