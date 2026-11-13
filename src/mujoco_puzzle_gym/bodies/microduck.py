@@ -530,6 +530,12 @@ class MicroduckAdapter(BodyAdapter):
         mujoco.mj_forward(m, data)
         return dz
 
+    def wheel_dofs(self, model: mujoco.MjModel) -> list[int]:
+        if ADDON_ROLLER not in self.addons:
+            return []
+        tires = {model.body(PREFIX + WHEEL_PREFIX + t).id for ts in ROLLER_WHEELS.values() for t in ts}
+        return [int(model.jnt_dofadr[j]) for j in range(model.njnt) if model.jnt_bodyid[j] in tires]
+
     def crouch(self, data: mujoco.MjData) -> bool:
         """Start `roller_crouch` (R30): only on wheels, not crouching yet, and at a
         horizontal speed of at least `crouch_min_speed`. Returns whether it started."""

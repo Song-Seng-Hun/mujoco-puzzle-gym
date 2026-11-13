@@ -16,6 +16,13 @@ step (`World.requests` "addon"): `BodyAdapter.set_addon` (trunk height, zero
 velocity, collision groups, lower policy). The pad is drawn on the floor (no
 collision) and lights up while the body wears this station's addon.
 
+Static check (`mpg check` stage `parts`, a warning): the room's first station
+floods the floor (every switch on) from each attach or toggle pad, with the
+other detach and toggle pads blocked; raised or lowered floor it reaches (step
+cells of a letter map, floor tiles with a height, `STEP_EPS`) is a way onto
+steps on wheels, which the roller policy does not climb. Lay a detach pad
+across the way before the steps.
+
 Signals: `<name>.attached` (1 while the body wears the addon) and `body.addon`
 (the body's mode: 0 none, 1 roller; written by the room's first station).
 """
@@ -36,6 +43,7 @@ MODES = ("attach", "detach", "toggle")
 BODY_ADDON = "body.addon"
 RGBA_OFF = (0.35, 0.35, 0.45, 1.0)
 RGBA_ON = (0.95, 0.75, 0.2, 1.0)
+STEP_EPS = 0.003     # [m] floor this far above or below the room floor counts as a step
 
 
 class AddonStation(Part):
@@ -148,6 +156,45 @@ class AddonStation(Part):
 
     def state(self):
         return float(self._body_mode() == self.addon)
+
+    def check_warnings(self, env) -> list[str]:
+        """Steps reachable on wheels (R30 mode_switch_route): see the module docs."""
+        if not self.writes_body:
+            return []
+        from ...logic import free_mask
+
+        stations = [p for p in env.parts.values() if isinstance(p, AddonStation)]
+        sources = [p for p in stations if p.mode in ("attach", "toggle")]
+        if not sources:
+            return []
+        grid = env.grid
+        steps = np.zeros(grid.X.shape, dtype=bool)
+        if env.floor is not None:
+            for iy, ix in np.ndindex(*steps.shape):
+                top, _ = env.floor_height(grid.center(iy, ix))
+                steps[iy, ix] = top is not None and abs(top) > STEP_EPS
+        for p in env.parts.values():         # rising floor tiles count at their `on` height too
+            on_h = p.cfg.get("on_height") if getattr(p, "floor_part", False) else None
+            if on_h is not None and abs(float(on_h)) > STEP_EPS:
+                steps |= grid.rect(p.base_xy, tuple(p.half))
+        if not steps.any():
+            return []
+        on = {p.name for p in env.parts.values() if p.role in ("switch", "warp")}
+        free = free_mask(grid, env.walls, env.parts, on)
+        out = []
+        for src in sources:
+            mask = free.copy()
+            for st in stations:
+                if st is not src and st.mode in ("detach", "toggle"):
+                    mask &= ~grid.rect(st.base_xy, tuple(st.half))
+            hit = grid.flood(mask, src.base_xy) & steps
+            if hit.any():
+                iy, ix = np.argwhere(hit)[0]
+                x, y = grid.center(iy, ix)
+                out.append(f"part {src.name!r}: on wheels from this station the body can reach steps "
+                           f"(e.g. at ({x:.2f}, {y:.2f})) without passing a detach station; the roller "
+                           f"policy does not climb steps (lay a detach pad across the way)")
+        return out
 
     def target_mask(self, grid):
         return grid.rect(self.xy, tuple(np.maximum(self.half - 0.05, 0.03)))

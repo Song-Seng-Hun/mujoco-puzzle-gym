@@ -1,0 +1,35 @@
+# Example room (R30): a roller route. Put the wheels on, take a run-up and
+# cross the speed zone (`min_speed` 0.28 m/s, walking never reaches it) to open
+# the one-shot door, roll through a light crosswind (0.3 N), stop on the brake
+# strip (wheel friction 0.01 N m) where the short detach pad takes the wheels
+# off, and walk up the steps (1 cm each) to the goal.
+name: roller_route
+cell: 0.15
+step_height: 0.01
+map: |
+  #####################################
+  #................#............123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #................#............123333#
+  #####################################
+spawn: {pos: [-2.45, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: station, preset: device/addon_roller, pos: [-2.05, 0.0]}
+  - {name: gate, preset: input/body_zone, pos: [-0.9, 0.0], size: [0.3, 1.48], min_speed: 0.28}
+  - {name: door, preset: device/oneshot_door, pos: [-0.15, 0.0], width: 1.16, in: [gate]}
+  - {name: wind, preset: trap/crosswind, pos: [0.6, 0.0], size: [0.6, 1.48], power: 0.3}
+  - {name: brake, preset: trap/brake_strip, pos: [1.4, 0.0], size: [0.4, 1.48]}
+  - {name: wheels_off, preset: device/addon_roller, mode: detach, pos: [1.4, 0.0], size: [0.3, 1.48]}
+  - {name: goal, type: goal, pos: [2.35, 0.0], radius: 0.12, random: [0.05, 0.1]}
+demo:
+  - addon station
+  - press gate
+  - addon wheels_off
+  - goto goal

@@ -1,0 +1,33 @@
+# Mode switch route (R30): roll the flat run, then take the wheels off at the
+# detach station before the steps (1 cm each, `step_height`), and walk up to
+# the goal on the dais. The roller policy does not climb steps; `mpg check`
+# warns when steps are reachable on wheels without a detach pad in the way
+# (both pads here span the corridor). The detach pad is 0.7 m long: a duck
+# coasting from 0.3-0.5 m/s rolls 0.24-0.44 m before it stops on the pad.
+name: mode_switch_route
+cell: 0.1
+step_height: 0.01
+map: |
+  ######################################
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  ######################################
+spawn: {pos: [-1.65, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: wheels_on, preset: device/addon_roller, pos: [-1.25, 0.0], size: [0.3, 1.18]}
+  - {name: wheels_off, preset: device/addon_roller, mode: detach, pos: [0.4, 0.0], size: [0.7, 1.18]}
+  - {name: goal, type: goal, pos: [1.5, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - addon wheels_on
+  - addon wheels_off
+  - goto goal

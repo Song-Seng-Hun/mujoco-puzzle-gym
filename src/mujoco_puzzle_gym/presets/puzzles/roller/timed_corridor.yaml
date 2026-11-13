@@ -1,0 +1,21 @@
+# Timed corridor (R30): the button at the start keeps the door at the far end
+# of a long corridor open for `seconds` after the body leaves it (`logic/hold`).
+# Rolling reaches the door in time, walking does not: put the wheels on at the
+# station first.
+name: timed_corridor
+size: [4.2, 0.8]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [1.4, -0.4], to: [1.4, -0.28]}
+  - {from: [1.4, 0.28], to: [1.4, 0.4]}
+spawn: {pos: [-1.85, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: station, preset: device/addon_roller, pos: [-1.45, 0.0]}
+  - {name: button, preset: input/floor_momentary, pos: [-1.0, 0.0], size: [0.25, 0.5]}
+  - {name: timer, preset: logic/hold, in: [button], seconds: 7.5}
+  - {name: door, preset: device/sliding_door, pos: [1.4, 0.0], in: [timer]}
+  - {name: goal, type: goal, pos: [1.8, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - addon station
+  - press button
+  - goto goal

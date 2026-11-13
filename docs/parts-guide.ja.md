@@ -92,6 +92,7 @@ parts:
 | 穴 `pit` | `trap/pit` | なし。落ちると`on_fall: fail`(エピソード失敗)か`reset`(出発点かチェックポイントへ)。`in`があるとオフの間はふたが閉じています |
 | 大砲 `cannon` | `trap/cannon`, `trap/cannon_turret` | 砲弾を撃ち出す速さ [m/s] |
 | 滑る床、粘つく床 | `trap/slippery_floor`, `trap/sticky_floor` | 床タイル(`floor_tile`)の摩擦 |
+| ブレーキ帯 `brake_strip` | `trap/brake_strip` | なし。体が帯の上にいる間、車輪関節の`frictionloss`(既定0.01 N m)と`damping`(既定0)。下の[アドオンステーション](#アドオンステーション) |
 
 - 解く順序と解答スクリプトは、穴、回転バーと振り子が掃く範囲、押し板が出る範囲を穴とみなして回り込みます。
 - 大砲は`period`秒ごとに`burst`発撃ちます(`fire: edge`なら信号がオンになるたびに)。狙い`aim`は`fixed`(`yaw` + `aim_yaw`、`aim_pitch`)、`at_body`(今の体の位置)、`lead`(体が向かう先)、`signal`(`aim_yaw`と`aim_pitch`を`bind`でチャンネルにつなぐ)です。`spread`は狙いの周りの円錐の半角です。`<名前>.fired`は撃った瞬間に1ステップだけオン、`<名前>.hits`は体に当たった数です。
@@ -145,10 +146,12 @@ parts:
 | [`examples/rooms/cube_socket.yaml`](../examples/rooms/cube_socket.yaml) | 台の上の鍵(マーカー7)を同じ番号のソケットに入れると、ドアが開きます。`--task examples/task_cube_socket.yaml` | `beak/key`, `input/socket`, `device/sliding_door` |
 | [`examples/rooms/wall_button.yaml`](../examples/rooms/wall_button.yaml) | 壁のボタンをくちばしで押すと、ドアが開きます | `beak/wall_button_beak_mid`, `device/sliding_door` |
 | [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | 二つの台の洗濯物をかごに入れる(2枚)と、ドアが開きます。`--task examples/task_laundry.yaml`(60秒のエピソード) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
-| [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | ステーションで車輪を付け、リンクの端のゴールへ転がっていきます | `device/addon_roller` |
+| [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | ステーションで車輪を付け、ボタンを通って長い廊下を転がり、時間制ドア(7.5秒)を抜け、廊下の端のステーションで外して段を歩いて上りゴールへ | `device/addon_roller`, `input/floor_momentary`, `logic/hold`, `device/sliding_door` |
+| [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml) | 車輪で速度区域を通ってドアを開け、横風を抜け、ブレーキ帯の上のステーションで外して段を上りゴールへ | `device/addon_roller`, `input/body_zone`(`min_speed`), `trap/crosswind`, `trap/brake_strip` |
+| `puzzles/roller/speed_gate`, `timed_corridor`, `mode_switch_route`, `brake_strip`, `one_way_station`, `crosswind` | 車輪パズル6種。下の[アドオンステーション](#アドオンステーション) | `device/addon_roller` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 文字マップで描いた二つの部屋、階段と坂 | `button`, `door` |
 
-ボールの組み立てプリセットは部屋一つ全体なので、そのまま`mpg check`に渡してもよく、`preset: puzzles/ball/bowling`で敷いて値を変えて使ってもかまいません。
+ボールと車輪の組み立てプリセットは部屋一つ全体なので、そのまま`mpg check`に渡してもよく、`preset: puzzles/ball/bowling`で敷いて値を変えて使ってもかまいません。
 
 ## 点検の二段階
 
@@ -310,8 +313,22 @@ curriculum: {mode: forward, order: difficulty_first}
 - `crouch`行動: taskの`actions`に`crouch`を入れると(順序は`head`、`grab`、`crouch`)行動が一つ増え、0.5を超えると`roller_crouch.onnx`を3.5秒動かします。車輪状態でないか、速度が`env.crouch_min_speed`(既定0.2 m/s)未満なら無視します。かがんでいる間の転倒判定は傾きだけを見ます。測定値: 胴体の最低0.067 m、かがむ3.5秒の間に0.41〜0.54 m滑走、かがみ28回で転倒0。
 - 解答の`demo:`: `addon <ステーション>`(パッドの中央へ歩いて行き、モードが変わるまで立つ)。格子の解答はステーションを使いません。
 - 測定値(2026-11-13、シード20個): 立ったまま付けて指令0/0.3/0.4で2秒、止まってから外して指令0で2秒、そのあと3秒歩いて転倒0、最大傾き9.3°/13.8°/14.1°(付けたあと)、10.6°以下(外したあと)。1 cmの段差タイルの上でも転びません(テスト、シード10個)。
-- 例[`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): スタート横のステーションで車輪を付け、長いリンクの端のゴールへ転がっていきます。
-- 既知の限界: パッド上のブレーキはありません(車輪関節の摩擦0.0015で、指令0なら自然に止まる)。動きながらの切り替えと、車輪で坂や段を上ることは測っておらず、車輪状態で段に当たる経路を静的点検はまだ警告しません。車輪パズルの組み立てプリセット(`puzzles/roller/`)と`roller_route`の例は次の作業です。
+- 速度区域: 区域センサー(`zone`)に`min_speed` [m/s]を与えると、対象がその速さ以上で動いている間だけ数えます。速さはステップ間の動きを約0.5秒でならした値(速度ベクトルのローパス)なので、歩きの左右の揺れは消えます。測定値(2026-11-13、シード3個): 全力で歩くと0.20–0.25 m/s、車輪で全力で押すと0.32–0.53 m/s。車輪プリセットは0.28を使います。`rearm: leave`か`direction`があると、速さはオンになる瞬間だけ見ます。なし(既定)なら以前と同じです。
+- ブレーキ帯`brake_strip`(プリセット`trap/brake_strip`): 胴が帯の上にあり帯が働いている間(罠の規則: `in`、`enable`、`enabled`)、車輪関節4つの`frictionloss`と`damping`を帯の値に上げ、体が離れると元の値(0.0015、0)に戻します。モデルの値なので、スナップショットとリセットも戻します。帯が複数あれば、体の下の帯の大きいほうの値を使います。足の状態では車輪が床に触れないので何も起きません。ステーションのない部屋に置くと点検が警告します。測定値(0.29–0.48 m/sで転がり込んだとき、シード5個): `frictionloss` 0.01なら押し0で帯の端から0.08–0.12 m(0.4–0.6秒)、押し続けても0.12–0.13 m以内で止まり、転倒0。0.004だと押せば転がり続け、0.03や`damping` 0.002以上は0.44 m/sから転びます(止まり方が急すぎる)。0.01の帯の上で止まったアヒルは車輪では出られないので、外すステーションの下か道の終わりに敷きます。
+- 段の警告(`mpg check`の`parts`段、失敗ではない): 部屋の最初のステーションが、付ける・切り替えるパッドごとに床を塗りつぶしてみます(スイッチは全部オン、ほかの外す・切り替えるパッドはふさぐ)。高さの違う床(文字マップの段のマス、高さのある床タイル、3 mm超)に届けば、車輪の状態で段へ行ける道なので警告します。車輪のポリシーは段を上れません。外すパッドを道を横切って敷いてください。
+- 車輪の組み立てプリセット`puzzles/roller/`(どれも部屋一つ全体、`demo:`付き、`mpg check` 20/20)。時間は成功の平均です。
+
+| プリセット | すること | 数字 |
+|---|---|---|
+| `puzzles/roller/speed_gate` | 車輪で助走して速度区域を通ると一度きりのドアが開きます | `min_speed` 0.28 m/s。20/20(10.3 s)、歩きだけ0/20 |
+| `puzzles/roller/timed_corridor` | スタートのボタンが、長い廊下(2.4 m)の端のドアを体が離れてから7.5秒開けておきます | ボタンからドアまで歩き10.1–10.4 s、車輪5.2–5.7 s(シード10個)。20/20(16.5 s)、歩きだけ0/20 |
+| `puzzles/roller/mode_switch_route` | 平地を転がり、段の前の外すステーション(0.7 mのパッド)で外し、段(1 cmずつ)を歩いて上りゴールへ | 20/20(15.5 s)。廊下幅1.2 m(0.8 mでは転がりながら壁側に寄り2/6で詰まった) |
+| `puzzles/roller/brake_strip` | 段の前の短い外すパッド(0.3 m)をブレーキ帯の上に敷き、転がり込んでパッドの上で止まります | 20/20(16.7 s)。帯なし(摩擦0.0015)だと18/20、16–35 s |
+| `puzzles/roller/one_way_station` | 西端の付ける専用ステーション、部屋の向こうの段の前に外す専用ステーション、その間に速度区域のドア。順番に使います | 20/20(24.1 s) |
+| `puzzles/roller/crosswind` | 時間制の廊下を横風(`yaw` 90°)が横切ります | 既定0.5 N 20/20(12.9 s)。シード20個: 0.75 N 18/20、1.0 N 12/20(転倒)、2 N 0/10 |
+
+- 例: [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): ステーションで車輪を付け、歩きでは間に合わない長い廊下を転がって時間制ドア(7.5秒)を抜け、廊下の端の外すステーションで外し、段を歩いて上りゴールへ。[`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml): 速度区域 → 一度きりのドア → 横風(0.3 N) → ブレーキ帯の上の外すステーション → 段 → ゴール。
+- 既知の限界: ステーションのパッド自体のブレーキはありません(ブレーキ帯を敷く)。動きながらの切り替えと、車輪で坂や段を上ることは測っていません。段の警告は、外すパッドが道を全部ふさぐときだけ出ません(パッドの横にすき間があれば警告)。歩く体のその場回転は遅い(3秒で0.15 rad)ので、転がって壁際の膨らませたマスで外すと解答が詰まることがあります(廊下を広く)。`glide_under`、`fast_herd`、`roll_delivery`は測定値がないのでまだありません。
 
 ## Pythonプラグイン
 
@@ -382,6 +399,17 @@ def majority(inputs, state, dt):
 | `roll_friction` | float | m | `0.005` | [0, 0.05] |  | rolling friction (0.005: a 0.5 m/s ball stops in about 0.2 m) |
 | `roll_damping` | float | N m s/rad | `0.0` | [0, 1] |  | damping on the rotational dofs |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
+
+### `brake_strip`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | 可 | 0 turns the trap off (setters, difficulty steps) |
+| `size` | vec | m | `[0.3, 0.6]` | [0.05, 5] |  | strip size [x, y] |
+| `frictionloss` | float | N m | `0.01` | [0, 1] | 可 | wheel joint friction while the body is on the strip |
+| `damping` | float | N m s/rad | `0.0` | [0, 1] | 可 | wheel joint damping while the body is on the strip |
 
 ### `button`
 
@@ -1035,6 +1063,7 @@ def majority(inputs, state, dt):
 | `direction` | vec |  | — |  |  | count only entries moving this way |
 | `rearm` | enum |  | `always` | `always`, `leave` |  |  |
 | `leave_margin` | float | m | `0.05` | [0, 1] |  | rearm leave: how far outside the box a target must go |
+| `min_speed` | float | m/s | — | [0, 2] |  | count a target only while its horizontal speed (averaged ~0.5 s) is at least this |
 
 ### 部品プリセット
 
@@ -1109,6 +1138,7 @@ def majority(inputs, state, dt):
 | `object/ball` | `ball` | `radius: 0.05`, `mass: 0.05`, `elasticity: 0.5` |
 | `object/bowling_pin` | `pin` | `radius: 0.02`, `height: 0.12`, `mass: 0.03` |
 | `object/heavy_ball` | `ball` | `radius: 0.08`, `mass: 0.5`, `elasticity: 0.2` |
+| `trap/brake_strip` | `brake_strip` | `size: [0.3, 0.6]`, `frictionloss: 0.01`, `damping: 0.0` |
 | `trap/cannon` | `cannon` | `aim: at_body` |
 | `trap/cannon_turret` | `cannon` | `fire: edge`, `aim: signal`, `spread: 0.0`, `burst: 1` |
 | `trap/crosswind` | `wind` | `size: [0.6, 1.0]`, `height: 0.4`, `yaw: 90.0`, `power: 1.0` |
@@ -1126,4 +1156,10 @@ def majority(inputs, state, dt):
 - `puzzles/ball/color_sort`
 - `puzzles/ball/mini_soccer`
 - `puzzles/coins/coin_lock`
+- `puzzles/roller/brake_strip`
+- `puzzles/roller/crosswind`
+- `puzzles/roller/mode_switch_route`
+- `puzzles/roller/one_way_station`
+- `puzzles/roller/speed_gate`
+- `puzzles/roller/timed_corridor`
 <!-- mpg parts --markdown: end -->
