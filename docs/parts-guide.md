@@ -74,6 +74,7 @@ parts:
 
 - 플랫폼(`platform`, 프리셋 `device/moving_platform`, `device/elevator`): `pos`에서 잰 `path: [[dx, dy, z], …]`(z는 윗면 높이)를 `speed`로 따라갑니다. `mode`는 `loop`, `pingpong`, `once`이고, `run`은 `always`, `while_signal`(신호가 켜진 동안), `on_signal`(켜지는 순간마다 한 번 운행)입니다. 미끄럼 관절과 위치 구동기로 움직여서 위에 놓인 물체를 함께 나릅니다.
 - 승강 기둥(`pillar`), 회전판(`turntable`), 컨베이어(`conveyor`): 신호가 켜진 동안 솟고, 돌고, 띠 위의 몸과 물체를 띠 속도로 옮깁니다. 컨베이어 띠는 바닥에 그린 띠라서 마찰은 바닥과 같습니다.
+- 낮은 막대(`low_bar`, 프리셋 `device/low_bar`): 길을 가로지르는 고정 막대입니다. 숙인 바퀴 오리만 밑으로 지나갑니다. 아래 [애드온 장착대](#애드온-장착대).
 - 스프링(`spring`, 프리셋 `device/spring_pad`): 패드 위의 대상에 속도 `velocity` [vx, vy, vz]를 줍니다. 프리셋은 물체만 쏩니다(`trigger: object`).
 - 설정 변경기(`setter`): 신호가 켜지는 순간 `target: <부품>.<값>`을 `value`로 바꾸고, `revert: true`면 꺼질 때 되돌립니다. 아래 값 표에서 "실행 중 변경"이 "예"인 값만 바꿀 수 있습니다. 문 폭 같은 크기 값은 방을 읽을 때 거절합니다.
 - 값 연결 `bind`: 모든 부품이 받는 값입니다. `bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}`처럼 실행 중 변경할 수 있는 수 값을 채널에 직선으로 잇고, 매 몸 스텝 값의 범위로 잘라 적용합니다. 같은 값을 `bind`와 설정 변경기가 함께 바꾸면 거절합니다.
@@ -148,7 +149,7 @@ parts:
 | [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | 받침대 두 곳의 빨래를 바구니에 넣으면(2장) 문이 열립니다. `--task examples/task_laundry.yaml`(60초 판) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
 | [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | 장착대에서 바퀴를 달고 버튼을 지나 긴 복도를 굴러 시간제 문(7.5초)을 통과하고, 복도 끝 장착대에서 떼어 계단을 걸어 올라 골로 | `device/addon_roller`, `input/floor_momentary`, `logic/hold`, `device/sliding_door` |
 | [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml) | 바퀴로 속도 구역을 지나 문을 열고, 옆바람을 지나, 제동 띠 위 장착대에서 떼고 계단을 올라 골로 | `device/addon_roller`, `input/body_zone`(`min_speed`), `trap/crosswind`, `trap/brake_strip` |
-| `puzzles/roller/speed_gate`, `timed_corridor`, `mode_switch_route`, `brake_strip`, `one_way_station`, `crosswind` | 바퀴 퍼즐 6종. 아래 [애드온 장착대](#애드온-장착대) | `device/addon_roller` |
+| `puzzles/roller/speed_gate`, `timed_corridor`, `mode_switch_route`, `brake_strip`, `one_way_station`, `crosswind`, `glide_under`, `roll_delivery` | 바퀴 퍼즐 8종. 아래 [애드온 장착대](#애드온-장착대) | `device/addon_roller` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 글자 지도로 그린 두 방, 계단과 경사로 | `button`, `door` |
 
 공과 바퀴 조립 프리셋은 방 하나 전체라서 그대로 `mpg check`에 넣어도 되고, `preset: puzzles/ball/bowling`으로 깔고 값을 바꿔 써도 됩니다.
@@ -315,8 +316,10 @@ curriculum: {mode: forward, order: difficulty_first}
 - 잰 값(2026-11-13, 시드 20개): 선 채로 달고 명령 0/0.3/0.4로 2초, 멈춘 뒤 떼고 명령 0으로 2초, 그 뒤 3초 걷기에서 넘어짐 0, 최대 기울기 9.3°/13.8°/14.1°(달기), 10.6° 이하(떼기). 1 cm 계단 타일 위에서도 넘어지지 않습니다(시험 시드 10개).
 - 속도 구역: 구역 센서(`zone`)에 `min_speed` [m/s]를 주면 대상이 그 속도 이상으로 움직이는 동안만 셉니다. 속도는 스텝 사이 움직임을 약 0.5초로 고르게 한 값(속도 벡터의 저역 통과)이라 걸음의 좌우 흔들림은 빠집니다. 잰 값(2026-11-13, 시드 3개): 끝까지 걸을 때 0.20–0.25 m/s, 바퀴로 끝까지 밀 때 0.32–0.53 m/s. 바퀴 프리셋은 0.28을 씁니다. `rearm: leave`나 `direction`이 있으면 속도는 켜지는 순간에만 봅니다. 기본(없음)은 예전과 같습니다.
 - 제동 띠 `brake_strip`(프리셋 `trap/brake_strip`): 몸통이 띠 위에 있고 띠가 켜진 동안(함정 규칙: `in`, `enable`, `enabled`) 바퀴 관절 4개의 `frictionloss`와 `damping`을 띠의 값으로 올리고, 몸이 떠나면 원래 값(0.0015, 0)으로 되돌립니다. 모델 값이라 저장본과 리셋이 함께 되돌립니다. 띠가 여럿이면 몸이 올라선 띠들의 큰 값을 씁니다. 발 상태에서는 바퀴가 바닥에 닿지 않아 아무 일도 없습니다. 장착대 없는 방에 두면 점검이 경고합니다. 잰 값(0.29–0.48 m/s로 굴러 들어올 때, 시드 5개): `frictionloss` 0.01이면 밀기 0에서 띠 끝에서 0.08–0.12 m(0.4–0.6초), 계속 밀어도 0.12–0.13 m 안에 멈추고 넘어짐 0. 0.004는 밀면 계속 굴러가고, 0.03이나 `damping` 0.002 이상은 0.44 m/s에서 넘어집니다(너무 갑자기 멈춤). 0.01 띠 위에 멈춘 오리는 바퀴로 다시 나가지 못하므로 떼기 장착대 밑이나 길 끝에 깝니다.
+- 낮은 막대 `low_bar`(프리셋 `device/low_bar`): 길을 가로지르는 고정 상자(깊이 4 cm, 두께 3 cm)입니다. `axis` 방향으로 `length`만큼 놓이고, 아랫면 높이가 `bottom`(기본 0.228 m, 범위 0.21–0.246 m)입니다. 몸과 부딪히고 상태가 없어 저장본에 담을 것이 없습니다. 범위는 잰 값입니다: 숙이기는 몸통을 낮추지만 머리(`jaw_soft`) 꼭대기는 0.256–0.268 m에서 0.197–0.200 m로 7 cm쯤만 내려갑니다(숙인 지 약 0.7–2.3초). 그래서 아랫면은 숙인 머리보다 1 cm 위, 선 바퀴 머리보다 1 cm 아래여야 합니다. 걷거나 바퀴로 선 채 오면 막힙니다. 풀이 순서는 막대를 벽처럼 보지만, 방에 바퀴를 다는 장착대(`attach`나 `toggle`)가 있으면 미끄러져 지나갈 수 있다고 봅니다. 그런 장착대가 없으면 점검이 경고합니다. 길을 다 가로지르게 까세요(복도 폭보다 몇 cm 짧게; 벽과 겹치면 점검 `overlap` 실패).
+- 해답의 `glide <막대>`: 바퀴 상태에서 몸통이 막대 중심선에서 1 m보다 가까우면 1.2 m 앞으로 물러나고, 막대를 마주 본 뒤 막대 가운데를 지나는 선을 따라 끝까지 밀다가 몸통이 중심선 0.30 m 앞에 오면 `crouch`를 보냅니다(10 Hz라 실제로는 0.26–0.30 m). 중심선을 0.3 m 지나면 끝납니다. task `actions`에 `crouch`가 있어야 합니다(없으면 점검 `actions` 단계 실패). 잰 값(0.228 m 막대, 1.5 m 복도, 시드 20개, 숙이기 시작 거리 0.2/0.25/0.3/0.35/0.4/0.5 m): 진입 0.32–0.48 m/s에서 6/14/20/20/20/7번, 0.35–0.41 m/s에서 19/20/20/20/0/0번 닿지 않고 지납니다. 숙이지 않으면 20/20 막힙니다. 끝까지 밀면 3–4초 도움닫기 뒤 0.38–0.45 m/s이고 진입이 0.29–0.35 m/s면 9/20 이하라서, 도움닫기를 1 m 넘게 잡습니다. `crouch_min_speed`(0.2 m/s)는 숙이기를 시작할 수 있는 문턱일 뿐이고, 막대를 지나려면 약 0.35 m/s 이상이 필요합니다.
 - 계단 경고(`mpg check` `parts` 단계, 실패 아님): 방의 첫 장착대가 달기·바꾸기 패드마다 바닥을 채워 봅니다(스위치는 모두 켬, 다른 떼기·바꾸기 패드는 막음). 높이가 다른 바닥(글자 지도의 계단 칸, 높이가 있는 바닥 칸, 3 mm 넘게)에 닿으면 바퀴 상태로 계단에 가는 길이라 경고합니다. 바퀴 정책은 계단을 오르지 못합니다. 떼기 패드를 길을 가로질러 까세요.
-- 바퀴 퍼즐 조립 프리셋 `puzzles/roller/`(모두 방 하나 전체, `demo:` 포함, `mpg check` 20/20). 걸린 시간은 성공 평균입니다.
+- 바퀴 퍼즐 조립 프리셋 `puzzles/roller/`(모두 방 하나 전체, `demo:` 포함, `mpg check` 시드 20개). 걸린 시간은 성공 평균입니다. `glide_under`와 `roll_delivery`는 행동이 더 필요해 task와 함께 점검합니다(`mpg check <프리셋> --task examples/task_glide_under.yaml`).
 
 | 프리셋 | 하는 일 | 숫자 |
 |---|---|---|
@@ -326,9 +329,11 @@ curriculum: {mode: forward, order: difficulty_first}
 | `puzzles/roller/brake_strip` | 계단 앞 짧은 떼기 패드(0.3 m)를 제동 띠 위에 깔아, 굴러 들어와 패드 위에 멈춥니다 | 20/20(16.7 s). 띠 없이(마찰 0.0015)는 18/20, 16–35 s |
 | `puzzles/roller/one_way_station` | 서쪽 끝의 달기 전용 장착대, 방 건너편 계단 앞의 떼기 전용 장착대. 속도 구역 문이 사이에 있어 순서대로 써야 합니다 | 20/20(24.1 s) |
 | `puzzles/roller/crosswind` | 시간제 복도에 옆바람(`yaw` 90°)이 지나갑니다 | 기본 0.5 N 20/20(12.9 s). 시드 20개: 0.75 N 18/20, 1.0 N 12/20(넘어짐), 2 N 0/10 |
+| `puzzles/roller/glide_under` | 5.0 × 1.5 m 복도를 낮은 막대(0.228 m)가 가로지릅니다. 장착대에서 바퀴를 달고, 막대 1.8 m 앞에서 도움닫기해 숙여 지나 골로 | task `examples/task_glide_under.yaml`(`crouch`). 20/20(14.7 s), 숙이기 시작 0.26–0.30 m 앞, 0.36–0.53 m/s, 막대에 닿음 0. `glide` 없이 바퀴로 그냥 가면 0/20(넘어짐 10), 걷기만 0/20 |
+| `puzzles/roller/roll_delivery` | 받침대의 열쇠를 물고, 문 채로 장착대에서 바퀴를 달고, 버튼을 눌러 2.4 m 앞 시간제 문(7.5초)까지 굴러, 떼기 패드(0.7 × 1.0 m, 같은 크기의 제동 띠 위)에 멈춰 떼고, 발로 열쇠를 바구니에 넣으면 바구니가 골로 가는 문을 엽니다 | task `examples/task_roll_delivery.yaml`(`head`, `grab`, 60초). 19/20(37.5 s; 시드 2는 문틀에 부딪혀 넘어짐). 걷기만 0/20(16번은 닫힌 문 앞에서 기다림) |
 
 - 예제 [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): 장착대에서 바퀴를 달고, 걷기로는 시간 안에 못 가는 긴 복도를 지나 시간제 문(7.5초)을 통과하고, 복도 끝 떼기 장착대에서 떼고 계단을 걸어 올라 골로 갑니다. [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml): 속도 구역 → 한 번 열림 문 → 옆바람(0.3 N) → 제동 띠 위 떼기 장착대 → 계단 → 골.
-- 알려진 한계: 장착대 패드 자체의 제동은 없습니다(제동 띠를 까세요). 움직이는 중 바꾸기, 바퀴로 경사·계단 오르기는 재지 않았습니다. 계단 경고는 떼기 패드가 길을 다 가로막을 때만 조용합니다(패드 옆으로 돌아갈 틈이 있으면 경고). 걷는 몸의 제자리 돌기가 느려(3초에 0.15 rad), 굴러가다 벽 쪽 부풀린 칸에서 떼면 해답이 막힐 수 있습니다(복도를 넓게). `glide_under`, `fast_herd`, `roll_delivery`는 잰 값이 없어 아직 없습니다.
+- 알려진 한계: 장착대 패드 자체의 제동은 없습니다(제동 띠를 까세요). 움직이는 중 바꾸기, 바퀴로 경사·계단 오르기는 재지 않았습니다. 계단 경고는 떼기 패드가 길을 다 가로막을 때만 조용합니다(패드 옆으로 돌아갈 틈이 있으면 경고). 걷는 몸의 제자리 돌기가 느려(3초에 0.15 rad), 굴러가다 벽 쪽 부풀린 칸에서 떼면 해답이 막힐 수 있습니다(복도를 넓게). `fast_herd`(도망 NPC를 바퀴로 몰기)는 뺐습니다: 도망 NPC는 `sense`(0.4 m) 안에서만 움직여서 NPC 속도 0.25–0.30 m/s에서도 걷기로 20/20 몰립니다. 새 NPC 행동과 함께 다시 봅니다. `roll_delivery`: 바퀴 상태에서는 머리 명령이 고정되어 물건은 발로 놓습니다(바퀴로 놓기 0/20). 제동 띠 없이 복도 폭 전체의 떼기 패드를 쓰면 굴러가던 오리가 옆벽으로 흘러가 열쇠를 떨어뜨렸습니다(14/20).
 
 ## 파이썬 플러그인
 
@@ -743,6 +748,16 @@ def majority(inputs, state, dt):
 | `height` | float | m | `0.19` | [0.12, 0.3] |  | grab: knob height |
 | `detent` | float | N m | `0.03` | [0, 1] |  | torque pulling to the nearest cell at its edge (continuous: friction) |
 
+### `low_bar`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `length` | float | m | `1.5` | [0.1, 5] |  | bar length along `axis` |
+| `axis` | enum |  | `y` | `x`, `y` |  | direction the bar lies along |
+| `bottom` | float | m | `0.228` | [0.21, 0.246] |  | underside height; measured window: crouched head 0.20 m, rolling head 0.256 m |
+
 ### `npc`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -1089,6 +1104,7 @@ def majority(inputs, state, dt):
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
 | `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
+| `device/low_bar` | `low_bar` | `length: 1.5`, `axis: y`, `bottom: 0.228` |
 | `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
@@ -1154,8 +1170,10 @@ def majority(inputs, state, dt):
 - `puzzles/coins/coin_lock`
 - `puzzles/roller/brake_strip`
 - `puzzles/roller/crosswind`
+- `puzzles/roller/glide_under`
 - `puzzles/roller/mode_switch_route`
 - `puzzles/roller/one_way_station`
+- `puzzles/roller/roll_delivery`
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
 <!-- mpg parts --markdown: end -->

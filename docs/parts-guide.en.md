@@ -74,6 +74,7 @@ What expressions can use: channel names (a dotted name like `laps.count` is also
 
 - Platform (`platform`, presets `device/moving_platform`, `device/elevator`): follows `path: [[dx, dy, z], ...]`, measured from `pos` (z is the top face height), at `speed`. `mode` is `loop`, `pingpong` or `once`; `run` is `always`, `while_signal` (while the signal is on) or `on_signal` (one trip per turn-on). It moves on slide joints with position actuators, so objects on it ride along.
 - Lift pillar (`pillar`), turntable (`turntable`), conveyor (`conveyor`): while the signal is on they rise, spin, or move the body and objects on the belt at belt speed. The conveyor belt is drawn on the floor, so its friction is the floor's.
+- Low bar (`low_bar`, preset `device/low_bar`): a static bar across the way; only a crouching roller duck glides under it. See [Addon station](#addon-station).
 - Spring (`spring`, preset `device/spring_pad`): gives what is on the pad the velocity `velocity` [vx, vy, vz]. The preset launches objects only (`trigger: object`).
 - Setter (`setter`): when the signal turns on it sets `target: <part>.<value>` to `value`; with `revert: true` it puts the old value back when the signal turns off. Only values marked "yes" under "Runtime change" in the tables below can be targets; size values such as a door's width are rejected when the room loads.
 - Value binding `bind`: a value every part takes. `bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}` maps a channel linearly onto a number value that can change while running, clipped to the value's range every body step. A value changed by both a `bind` and a setter is rejected.
@@ -148,7 +149,7 @@ All of these pass the solver stage of `mpg check` at least 18 times out of 20.
 | [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | Put the laundry from two stands into the basket (2 pieces) to open the door. `--task examples/task_laundry.yaml` (60 s episodes) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
 | [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | Put the wheels on, cross the button and roll down the long corridor through the timed door (7.5 s), take the wheels off at the station at its end and walk up the steps to the goal | `device/addon_roller`, `input/floor_momentary`, `logic/hold`, `device/sliding_door` |
 | [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml) | On wheels, cross the speed zone to open the door, roll through a crosswind, take the wheels off at the station on a brake strip and walk up the steps to the goal | `device/addon_roller`, `input/body_zone` (`min_speed`), `trap/crosswind`, `trap/brake_strip` |
-| `puzzles/roller/speed_gate`, `timed_corridor`, `mode_switch_route`, `brake_strip`, `one_way_station`, `crosswind` | Six roller puzzles. See [Addon station](#addon-station) | `device/addon_roller` |
+| `puzzles/roller/speed_gate`, `timed_corridor`, `mode_switch_route`, `brake_strip`, `one_way_station`, `crosswind`, `glide_under`, `roll_delivery` | Eight roller puzzles. See [Addon station](#addon-station) | `device/addon_roller` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | Two rooms, and stairs and a ramp, drawn as text maps | `button`, `door` |
 
 The ball and roller assembly presets are whole rooms, so you can pass one to `mpg check` as is, or lay it down with `preset: puzzles/ball/bowling` and change values.
@@ -315,8 +316,10 @@ A `dispenser` is a cabinet that hands out one item each time its signal turns on
 - Measured (2026-11-13, 20 seeds): attach standing, then command 0/0.3/0.4 for 2 s, stop, detach, command 0 for 2 s, walk 3 s: 0 falls, max tilt 9.3/13.8/14.1 deg after attaching, 10.6 deg or less after detaching. No falls on a 1 cm step tile either (test, 10 seeds).
 - Speed zone: give a zone sensor (`zone`) `min_speed` [m/s] and it counts a target only while it moves at least that fast. The speed is the step-to-step motion smoothed over about 0.5 s (a low-pass of the velocity vector), so the gait's side-to-side sway drops out. Measured (2026-11-13, 3 seeds): 0.20-0.25 m/s walking flat out, 0.32-0.53 m/s pushing flat out on wheels. The roller presets use 0.28. With `rearm: leave` or a `direction`, the speed counts at the turn-on only. Without it (the default) the zone works as before.
 - Brake strip `brake_strip` (preset `trap/brake_strip`): while the trunk is over the strip and the strip acts (trap rule: `in`, `enable`, `enabled`), the four wheel joints get the strip's `frictionloss` and `damping`; when the body leaves, they go back to the built values (0.0015, 0). These are model values, so snapshots and reset restore them. With several strips, the largest values of the strips under the body count. On feet the wheels do not touch the floor, so it does nothing. In a room without a station the check warns. Measured (rolling in at 0.29-0.48 m/s, 5 seeds): `frictionloss` 0.01 stops the duck 0.08-0.12 m past the edge (0.4-0.6 s) with no push, 0.12-0.13 m while it keeps pushing, no falls. At 0.004 a push keeps rolling; 0.03, or any `damping` of 0.002 or more, tips it over from 0.44 m/s (the stop is too sudden). A duck stopped on a 0.01 strip cannot roll off it on wheels, so lay the strip under a detach station or at the end of a run.
+- Low bar `low_bar` (preset `device/low_bar`): a static box across the way (4 cm deep, 3 cm thick), `length` long along `axis`, its underside at `bottom` (default 0.228 m, range 0.21-0.246 m). It collides with the body and has no state (nothing for snapshots). The range is measured: the crouch lowers the trunk, but the top of the head (`jaw_soft`) only drops from 0.256-0.268 m to 0.197-0.200 m, about 7 cm (0.7-2.3 s into the crouch), so the underside must be 1 cm above the crouched head and 1 cm below the upright rolling one. Walking or rolling upright, the duck is blocked. The planner treats the bar as a wall unless the room has a station that puts the wheels on (`attach` or `toggle`): then a gliding body passes it. Without such a station `mpg check` warns. Lay it across the whole way (a few cm shorter than the corridor is wide; overlapping a wall fails stage `overlap`).
+- Solver `glide <bar>`: on wheels, if the trunk is closer than 1 m to the bar's centre line it goes back to 1.2 m, faces the bar, pushes at full strength along the line through the bar's middle and sends `crouch` once the trunk is 0.30 m before the centre line (0.26-0.30 m at 10 Hz); done 0.3 m past the line. The task needs the `crouch` action (else stage `actions` fails). Measured (0.228 m bar, 1.5 m corridor, 20 seeds, crouch start 0.2/0.25/0.3/0.35/0.4/0.5 m before the line): entering at 0.32-0.48 m/s it passes without a touch 6/14/20/20/20/7 times, at 0.35-0.41 m/s 19/20/20/20/0/0 times. Without a crouch it is blocked 20/20. Full push reaches 0.38-0.45 m/s after a 3-4 s run-up and entering at 0.29-0.35 m/s passes at most 9/20, so give the run-up more than 1 m. `crouch_min_speed` (0.2 m/s) is only the threshold for starting a crouch; passing the bar needs about 0.35 m/s or more.
 - Step warning (`mpg check` stage `parts`, not a failure): the room's first station floods the floor from each attach or toggle pad (every switch on, the other detach and toggle pads blocked). If it reaches floor at another height (step cells of a letter map, floor tiles with a height, more than 3 mm), that is a way onto steps on wheels, and the check warns: the roller policy does not climb steps. Lay a detach pad across the way.
-- Roller assembly presets `puzzles/roller/` (each a whole room with `demo:`, `mpg check` 20/20). Times are success means.
+- Roller assembly presets `puzzles/roller/` (each a whole room with `demo:`, `mpg check` with 20 seeds). Times are success means. `glide_under` and `roll_delivery` need more actions and are checked with their tasks (`mpg check <preset> --task examples/task_glide_under.yaml`).
 
 | Preset | What it does | Numbers |
 |---|---|---|
@@ -326,9 +329,11 @@ A `dispenser` is a cabinet that hands out one item each time its signal turns on
 | `puzzles/roller/brake_strip` | The short detach pad (0.3 m) before the steps lies on a brake strip, so the duck rolling in stops on the pad | 20/20 (16.7 s). Without the strip (friction 0.0015) 18/20, 16-35 s |
 | `puzzles/roller/one_way_station` | An attach-only station at the west end, a detach-only station across the room before the steps, a speed-zone door between them: use them in order | 20/20 (24.1 s) |
 | `puzzles/roller/crosswind` | A timed corridor with a crosswind (`yaw` 90) across it | Default 0.5 N 20/20 (12.9 s). 20 seeds: 0.75 N 18/20, 1.0 N 12/20 (falls), 2 N 0/10 |
+| `puzzles/roller/glide_under` | A low bar (0.228 m) across a 5.0 x 1.5 m corridor. Put the wheels on at the station, run up from 1.8 m before the bar, crouch under it and go to the goal | Task `examples/task_glide_under.yaml` (`crouch`). 20/20 (14.7 s), crouch started 0.26-0.30 m before the bar at 0.36-0.53 m/s, no touch. Rolling on without `glide` 0/20 (10 falls), walking only 0/20 |
+| `puzzles/roller/roll_delivery` | Take the key from its stand, put the wheels on while holding it, press the button and roll 2.4 m to the timed door (7.5 s); stop on the detach pad (0.7 x 1.0 m on a brake strip of the same size), put the key into the basket on feet; the basket opens the door to the goal | Task `examples/task_roll_delivery.yaml` (`head`, `grab`, 60 s). 19/20 (37.5 s; seed 2 rolls into the door frame and falls). Walking only 0/20 (16 wait at the closed door) |
 
 - Examples: [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): put the wheels on at the station, roll down a corridor too long to walk in time, through the timed door (7.5 s), take the wheels off at the detach station at its end and walk up the steps to the goal. [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml): speed zone -> one-shot door -> crosswind (0.3 N) -> detach station on a brake strip -> steps -> goal.
-- Known limits: no braking on the station pad itself (lay a brake strip). Switching while moving and climbing slopes or steps on wheels are not measured. The step warning stays quiet only when a detach pad blocks the whole way (a gap beside the pad warns). The walking body turns in place slowly (0.15 rad in 3 s), so detaching in the inflated cells next to a wall can leave the solver stuck (make corridors wide). `glide_under`, `fast_herd` and `roll_delivery` wait for measurements.
+- Known limits: no braking on the station pad itself (lay a brake strip). Switching while moving and climbing slopes or steps on wheels are not measured. The step warning stays quiet only when a detach pad blocks the whole way (a gap beside the pad warns). The walking body turns in place slowly (0.15 rad in 3 s), so detaching in the inflated cells next to a wall can leave the solver stuck (make corridors wide). `fast_herd` (herding a flee NPC on wheels) was dropped: the flee NPC moves only within its `sense` (0.4 m), so walking herds it 20/20 even at NPC speeds 0.25-0.30 m/s. It comes back with a new NPC behaviour. `roll_delivery`: the head command is fixed on wheels, so objects are placed on feet (placing on wheels 0/20); a full-width detach pad without the brake strip let the rolling duck drift into the side wall and lose the key (14/20).
 
 ## Python plugins
 
@@ -745,6 +750,16 @@ Role `switch`, update stage `input`.
 | `height` | float | m | `0.19` | [0.12, 0.3] |  | grab: knob height |
 | `detent` | float | N m | `0.03` | [0, 1] |  | torque pulling to the nearest cell at its edge (continuous: friction) |
 
+### `low_bar`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `length` | float | m | `1.5` | [0.1, 5] |  | bar length along `axis` |
+| `axis` | enum |  | `y` | `x`, `y` |  | direction the bar lies along |
+| `bottom` | float | m | `0.228` | [0.21, 0.246] |  | underside height; measured window: crouched head 0.20 m, rolling head 0.256 m |
+
 ### `npc`
 
 Role `prop`, update stage `device`.
@@ -1093,6 +1108,7 @@ Role `switch`, update stage `input`.
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
 | `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
+| `device/low_bar` | `low_bar` | `length: 1.5`, `axis: y`, `bottom: 0.228` |
 | `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
@@ -1158,8 +1174,10 @@ Role `switch`, update stage `input`.
 - `puzzles/coins/coin_lock`
 - `puzzles/roller/brake_strip`
 - `puzzles/roller/crosswind`
+- `puzzles/roller/glide_under`
 - `puzzles/roller/mode_switch_route`
 - `puzzles/roller/one_way_station`
+- `puzzles/roller/roll_delivery`
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
 <!-- mpg parts --markdown: end -->
