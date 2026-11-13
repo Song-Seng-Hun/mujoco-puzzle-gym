@@ -5,6 +5,8 @@ input adds nothing more. A turn-on of `reset` sets the count back to `start`
 (and wins over `up`/`down` in the same step). The count stays in [min, max];
 with `wrap: true` going past `max` gives `min` and below `min` gives `max`.
 
+`body: true` puts the counter in the room as a box with a lamp (R33, `base.py`).
+
 Channels: `<name>.count` (the count, an integer) and `<name>.reached`
 (1 when count >= target). The count is part of checkpoint snapshots (R6);
 with `persist: true` it survives a restore (respawn, reset warp) instead of
@@ -18,19 +20,18 @@ import numpy as np
 
 from ...schema import Field, SchemaError
 from ...signals import is_on
-from ..base import Part
+from .base import BodiedLogic
 
 LIMIT = 1_000_000
 
 
-class Counter(Part):
+class Counter(BodiedLogic):
     stage = "logic"
     stateful = True
-    has_body = False
     suffixes = (".count", ".reached")
     fields = (
         Field("pos", "vec", [0.0, 0.0], length=2, unit="m",
-              doc="where guides draw the counter (it has no body)"),
+              doc="where the counter stands (`body: true`) or where guides draw it"),
         Field("up", "str", doc="channel whose turn-ons add 1"),
         Field("down", "str", None, doc="channel whose turn-ons subtract 1"),
         Field("reset", "str", None, doc="channel whose turn-on sets the count to start"),
@@ -59,6 +60,7 @@ class Counter(Part):
         self.count = self.start
         self.prev = {ch: False for ch in self.inputs}
         self._write()
+        self.paint(model)
 
     def _rising(self, ch: str | None) -> bool:
         if ch is None:
@@ -87,6 +89,7 @@ class Counter(Part):
                 n = self.hi if self.wrap else self.lo
             self.count = n
         self._write()
+        self.paint(model)
 
     def state(self):
         if self.target <= 0:
@@ -111,3 +114,4 @@ class Counter(Part):
         if not self.persist:
             self.count, self.prev = st["count"], dict(st["prev"])
         self._write()
+        self.paint(model)

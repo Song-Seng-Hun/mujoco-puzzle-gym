@@ -70,6 +70,23 @@ Parts send and receive signals through named channels.
 
 What expressions can use: channel names (a dotted name like `laps.count` is also one channel), numbers, `and or not xor`, comparisons (`< <= > >= == !=`), parentheses, and the functions `delay(x, s)`, `hold(x, s)`, `pulse(x)`, `latch(set, reset)`, `count(x)` and `timer(x)`. Arithmetic, attribute access, calls to other functions and strings are rejected when the room is loaded. Expressions are parsed with `ast`, checked against an allow list and evaluated by this package itself, so opening a room file someone else made does not run any code.
 
+## Signal sources and logic-part bodies
+
+`type: source` is a box in the room that writes a value to its own channel every body step, so a circuit runs with no button in it.
+
+- Four modes: `const` (`value`, held), `clock` (on for `duty` of every `period`, shifted by `phase`), `pattern` (the values of `pattern`, one every `step`, repeating), `random` (a value in `low`..`high`, redrawn every `hold`).
+- With `enable` off it writes `off_value` (default 0) and the clock stops: no time passes in the dark, so switching it back on continues the phase where it stopped.
+- `random` is seeded from the part name and `seed`, so the same room gives the same sequence in every episode and a `demo:` solution and `mpg check` stay reproducible. Per-episode variety comes from randomisation (R35).
+- Checkpoint snapshots carry the clock and pattern phase and the generator state, so a restore continues the cycle instead of starting it again.
+- Presets: `logic/source_const`, `logic/source_clock`, `logic/source_pattern`.
+
+`body: true` puts a gate, counter or source in the room as a small box (a source is in the room by default).
+
+- A lamp on the box shows the current value, so a picture shows where a signal comes from.
+- The box collides. The walking body climbs a 1 cm step at most, so the box blocks the way like a wall; the part reports its footprint, and the grid planner and the `demo:` executor walk round it.
+- Being blocked is also what makes pecking possible: the walking body drifts forward at command 0 and cannot walk backwards, so it cannot hold a place on open floor.
+- `size` (footprint [x, y]) and `height` set how big it is.
+
 ## Moving devices and setters
 
 - Platform (`platform`, presets `device/moving_platform`, `device/elevator`): follows `path: [[dx, dy, z], ...]`, measured from `pos` (z is the top face height), at `speed`. `mode` is `loop`, `pingpong` or `once`; `run` is `always`, `while_signal` (while the signal is on) or `on_signal` (one trip per turn-on). It moves on slide joints with position actuators, so objects on it ride along.
@@ -541,7 +558,10 @@ Role `prop`, update stage `logic`.
 
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
-| `pos` | vec | m | `[0.0, 0.0]` |  |  | where guides draw the counter (it has no body) |
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | where the counter stands (`body: true`) or where guides draw it |
+| `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
 | `up` | str |  | — |  |  | set to <group>.picked |
 | `down` | str |  | — |  |  | channel whose turn-ons subtract 1 |
 | `reset` | str |  | — |  |  | channel whose turn-on sets the count to start |
@@ -572,7 +592,10 @@ Role `prop`, update stage `logic`.
 
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
-| `pos` | vec | m | `[0.0, 0.0]` |  |  | where guides draw the counter (it has no body) |
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | where the counter stands (`body: true`) or where guides draw it |
+| `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
 | `up` | str |  | required |  |  | channel whose turn-ons add 1 |
 | `down` | str |  | — |  |  | channel whose turn-ons subtract 1 |
 | `reset` | str |  | — |  |  | channel whose turn-on sets the count to start |
@@ -707,7 +730,10 @@ Role `prop`, update stage `logic`.
 
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
-| `pos` | vec | m | `[0.0, 0.0]` |  |  | where guides draw the gate (it has no body) |
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | where the gate stands (`body: true`) or where guides draw it |
+| `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
 | `expr` | str |  | — |  |  | safe expression over channels (R7) |
 | `op` | enum |  | — | `and`, `or`, `xor`, `not`, `delay`, `hold`, `pulse`, `timer`, `count`, `latch` |  | preset logic over `in` |
 | `seconds` | float | s | `1.0` | [0, 3600] |  | time for op delay / hold |
@@ -1045,6 +1071,27 @@ Role `prop`, update stage `device`.
 | `value` | any |  | required |  |  | new value (checked against the target value's schema) |
 | `revert` | bool |  | `False` |  |  | put the old value back when the signal turns off |
 
+### `source`
+
+Role `prop`, update stage `input`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `body` | bool |  | `True` |  |  | put the source in the room as a box with a lamp (R33) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
+| `mode` | enum |  | `const` | `const`, `clock`, `pattern`, `random` |  | const \| clock \| pattern \| random |
+| `value` | float |  | `1.0` | [-1000, 1000] | Yes | `const`: the value it sends |
+| `period` | float | s | `2.0` | [0.02, 3600] | Yes | `clock`: length of one cycle |
+| `duty` | float |  | `0.5` | [0, 1] | Yes | `clock`: share of the cycle that is on |
+| `phase` | float | s | `0.0` | [0, 3600] |  | `clock` / `pattern`: shift of the cycle at the episode start |
+| `pattern` | vec |  | — | [-1000, 1000] |  | `pattern`: the values, in order |
+| `step` | float | s | `1.0` | [0.02, 3600] |  | `pattern`: seconds per value |
+| `hold` | float | s | `1.0` | [0.02, 3600] | Yes | `random`: seconds a drawn value is held |
+| `low` | float |  | `0.0` | [-1000, 1000] |  | `random`: lowest value |
+| `high` | float |  | `1.0` | [-1000, 1000] |  | `random`: highest value |
+| `off_value` | float |  | `0.0` | [-1000, 1000] |  | what it writes while `enable` is off |
+| `seed` | int |  | `0` | [0, 2.14748e+09] |  | `random`: seed beside the part name |
 ### `spinner`
 
 Role `prop`, update stage `device`.
@@ -1261,6 +1308,9 @@ Role `switch`, update stage `input`.
 | `logic/or` | `gate` | `op: or` |
 | `logic/pulse` | `gate` | `op: pulse` |
 | `logic/receiver` | `receiver` | `band: radio`, `delay: 0.0` |
+| `logic/source_clock` | `source` | `mode: clock`, `period: 4.0`, `duty: 0.5` |
+| `logic/source_const` | `source` | `mode: const`, `value: 1.0` |
+| `logic/source_pattern` | `source` | `mode: pattern`, `pattern: [1.0, 0.0, 1.0, 0.0, 0.0]`, `step: 1.0` |
 | `logic/transmitter` | `transmitter` | `band: radio`, `delay: 0.0` |
 | `logic/xor` | `gate` | `op: xor` |
 | `npc/flee` | `npc` | `behavior: flee`, `speed: 0.08`, `sense: 0.4` |

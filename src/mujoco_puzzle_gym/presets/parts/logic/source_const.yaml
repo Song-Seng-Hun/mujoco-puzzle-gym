@@ -1,0 +1,4 @@
+# Signal source (R33): sends `value` every body step. Set: pos; optional value, enable.
+type: source
+mode: const
+value: 1.0
