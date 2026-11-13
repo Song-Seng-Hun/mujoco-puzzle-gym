@@ -1,0 +1,33 @@
+# Example room (R31, R24 "tow rope"): the duck starts tied to a post.
+# - The button within the rope's reach unties the rope from the post (walking
+#   off instead snaps the rope, which fails); the loose end trails behind.
+# - On the hitch station next to the sled the rope's loose end ties to the sled
+#   (0.2 kg at friction 0.1, too heavy for the beak).
+# - Drag the sled into the zone in front of the door, stop on the detach
+#   station at the zone's far edge, and go through the door alone: it stays
+#   open only while the sled is in the zone.
+# Built from part presets (R3) and the R31 parts.
+name: tow_yard
+size: [5.6, 1.6]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [1.4, -0.8], to: [1.4, -0.28]}      # divider, opening at y = 0
+  - {from: [1.4, 0.28], to: [1.4, 0.8]}
+spawn: {pos: [-2.4, 0.3], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: post, type: anchor, pos: [-2.65, 0.3]}
+  - {name: rope, type: rope, pos: [-2.4, 0.7], a: body, b: post, length: 0.6, hitch_radius: 0.35,
+     on_snap: fail, detach_b: button}
+  - {name: button, preset: input/floor_momentary, pos: [-2.3, -0.1], trigger: body}
+  - {name: sled, type: cube, pos: [-1.4, 0.25], size: 0.1, mass: 0.2, friction: 0.1, hitch: true}
+  - {name: hitch, type: hitch_station, pos: [-1.4, 0.0], mode: attach}
+  - {name: zone, preset: input/object_zone, pos: [0.0, 0.0], size: [0.5, 0.5], objects: [sled]}
+  - {name: unhitch, type: hitch_station, pos: [0.45, 0.0], mode: detach}
+  - {name: door, preset: device/sliding_door, pos: [1.4, 0.0], in: [zone]}
+  - {name: goal, type: goal, pos: [2.2, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - press button
+  - tow rope sled
+  - drag rope zone
+  - untow rope
+  - goto goal

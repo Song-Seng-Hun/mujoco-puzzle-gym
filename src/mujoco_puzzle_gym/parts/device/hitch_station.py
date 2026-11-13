@@ -3,8 +3,10 @@
 `hitch_station`: a floor pad. With the walking body's trunk inside it, slower than
 `max_speed` (default 0.1 m/s, as the addon station, R30), the signal ties the body to
 the nearest other hitch within the rope's `hitch_radius` of the body's hitch (`attach`;
-the rope end already on that hitch stays, the other end moves to the body) or unties
-the body's end (`detach`); `toggle` does whichever applies. A hitch farther than the
+the rope end already on that hitch stays, the other end moves to the body; a rope
+already on the body with its other end loose ties that end) or unties the body's end
+(`detach`); `toggle` does whichever applies (attach unless the rope ties the body to
+something). A hitch farther than the
 rope's length pulses `<rope>.attach_failed` and ties nothing. Signal: with `in`
 channels, their turning on (later while they stay on, once the body is on the pad and
 slow); without, entering the pad. `enable` off holds it; after a change it waits
@@ -124,8 +126,9 @@ class HitchStation(Part):
         if data.time < self.until or float(np.hypot(*body.lin_vel[:2])) >= self.max_speed:
             return
         self.armed = False
-        attach = self.mode == "attach" or (self.mode == "toggle" and not towing)
-        if attach == towing:                         # nothing to change
+        full = towing and None not in rope.tied      # the body tows something (a loose far end does not)
+        attach = self.mode == "attach" or (self.mode == "toggle" and not full)
+        if (attach and full) or (not attach and not towing):     # nothing to change
             return
         done = rope.station_attach(model, data) if attach else rope.station_detach(model, data)
         if done:

@@ -44,6 +44,15 @@ is passable, an opening trapdoor as a hole):
   it ties (no such station: stand, a channel ties it) (R31);
 - `untow <rope>`: done once the rope is off the body; else the same with a detach
   (or toggle) station.
+- `drag <rope> <part>`: the towed hitch is the rope's end away from the body (its
+  other end, or for a rope between two towed things the end farther along the
+  chain); walk forward to a point beyond the part's centre, on the line from the
+  hitch (where it is when the sub-goal starts) through that centre, so the hitch
+  follows into the part: DRAG_PAST farther than the rope length or than the body's
+  distance from the hitch then (a chain of ropes), short of walls; done once the hitch is
+  DRAG_MARGIN inside the part's floor area, or once the hitch comes loose on the
+  way (the part's own detach channel) (R31). Nothing towed through the rope at
+  the start: stand (a channel may tie it).
 `press` on a wall button (and a wall button in the grid answer) walks up to
 the plate with the beak tip at its height, or with a held stick's far end
 (R28). Head and grab values are kept between steps (a held object stays held
@@ -84,6 +93,9 @@ GLIDE_CROUCH = 0.30    # [m] send `crouch` once the trunk is this close to the l
 GLIDE_PAST = 0.3       # [m] done this far beyond the line
 GLIDE_FACE = 0.15      # [rad] heading error at which the run-up starts
 GLIDE_LINE = 1.5       # [rad/m] heading correction per metre off the line
+DRAG_PAST = 0.25       # [m] drag: aim this far beyond the rope length past the part's centre
+DRAG_MARGIN = 0.05     # [m] drag: done with the hitch this far inside the part's edge
+DRAG_STOP = 0.1        # [m] drag: at the aim point with the hitch still outside: stand
 
 
 def plan_free(env, free: np.ndarray, inflate: float) -> np.ndarray:
@@ -126,6 +138,7 @@ class ScriptedSolver:
         self._glide: dict | None = None        # glide: travel direction and phase
         self._crouch = False                   # glide: send `crouch` this step
         self._tow_off = False                  # tow / untow: stepping off a used station pad
+        self._drag: dict | None = None         # drag: the aim point
 
     @property
     def in_demo(self) -> bool:
@@ -344,6 +357,67 @@ class ScriptedSolver:
             return STAND.copy()
         return self._walk_to(st)
 
+    def towed_hitch(self, rope):
+        """The hitch `rope` tows now: its end away from the body (the other end when one
+        end is on the body; between two towed things, the end not tied to something
+        the body tows through other ropes), or None."""
+        env = self.env
+        m = env.model
+        ends = [rope.tied_hitch(e) for e in range(2)]
+        if rope.on_body:
+            return ends[1 - rope.tied.index(rope._body_h)]
+        from .parts.device.rope import far_end
+
+        others = []
+        for r in env.world.ropes:                 # the other ropes tied at both ends (a chain)
+            hs = [r.tied_hitch(e) for e in range(2)]
+            if r is not rope and None not in hs:
+                others.append((hs[0].rid, hs[1].rid))
+        e = far_end([h.rid if h is not None else None for h in ends], others,
+                    int(m.body_rootid[env.body.root_body_id(m)]))
+        return None if e is None else ends[e]
+
+    def drag_act(self, rope, target) -> np.ndarray | None:
+        """Walk on so that `rope`'s towed hitch follows into `target`'s floor area (R31);
+        None once it is DRAG_MARGIN inside."""
+        from .parts.input._sense import in_rect
+
+        env = self.env
+        h = self.towed_hitch(rope)
+        if h is None:
+            if self._drag is not None:     # let go on the way (a zone's detach channel): done
+                self._drag = None
+                return None
+            return STAND.copy()            # nothing towed through it (yet)
+        hp = env.data.site_xpos[h.sid][:2].copy()
+        if in_rect(hp, target.xy, np.maximum(target.half - DRAG_MARGIN, 0.02)):
+            self._drag = None
+            return None
+        if self._drag is None:
+            d = target.xy - hp
+            n = float(np.linalg.norm(d))
+            if n < 1e-6:
+                yaw = float(env.body_state.yaw)
+                d, n = np.array([math.cos(yaw), math.sin(yaw)]), 1.0
+            gap = max(float(rope.cur), float(np.linalg.norm(env.body_state.pos[:2] - hp)))   # a chain: longer
+            self._drag = {"aim": self._free_along(target.xy, d / n, gap + DRAG_PAST)}
+        aim = self._drag["aim"]
+        if float(np.linalg.norm(aim - env.body_state.pos[:2])) < DRAG_STOP:
+            return STAND.copy()            # there, and the hitch did not follow in
+        return self._steer(self._point_field(aim), aim)
+
+    def _free_along(self, xy, d, dist: float) -> np.ndarray:
+        """The point farthest along `d` from `xy`, up to `dist`, on a free cell now (walls
+        inflated by the footprint)."""
+        self._point_field(xy)
+        free = self._live[("point", round(float(xy[0]), 3), round(float(xy[1]), 3))][0]
+        env = self.env
+        for t in np.arange(dist, 0.0, -env.grid.res):
+            p = np.asarray(xy, float) + d * t
+            if free[env.grid.cell(p)]:
+                return p
+        return np.asarray(xy, float)
+
     def glide_act(self, bar) -> np.ndarray | None:
         """Run up to low bar `bar` on wheels and crouch under it (R30); None once the
         trunk is GLIDE_PAST beyond the bar's centre line."""
@@ -479,6 +553,8 @@ class ScriptedSolver:
             return self.glide_act(env.parts[entry[1]])
         if cmd in ("tow", "untow"):
             return self.tow_act(env.parts[entry[1]], entry[2] if cmd == "tow" else None)
+        if cmd == "drag":
+            return self.drag_act(env.parts[entry[1]], env.parts[entry[2]])
         part = env.parts[entry[1]]
         if part.satisfied():
             return None

@@ -62,12 +62,15 @@ the body step), `.snapped`, `.attach_failed` (pulse), and `body.towing` (1 while
 rope is tied to the body; written by the room's first rope). Observation item `tow`.
 
 Static check (`mpg check` stage `parts`): `hitch_radius` and `clip_radius` at most
-`length`; the default ends (with their random ranges) within `length`. Warnings: a hitch
+`length`; the default ends (with their random ranges) within `length`; a box the
+`demo:` drags into a pit (`drag <rope> <pit>`) as tall as the pit is deep (rim to the
+catch plane, `floor.CATCH_DEPTH`) within 1 cm, so its top is flush with the floor. Warnings: a hitch
 object whose sliding friction x weight is above DRAG_WARN (OQ9: walking keeps 0.8 of its
 speed up to about 0.4 N), and on the `demo:` way while towing (from `tow <rope> ...` to
-`untow <rope>`): a door narrower than the towed thing, or a bend sharper than a right
-angle within `length` (the tendon is straight through walls; a towed thing catches on
-corners).
+`untow <rope>`, from the start for a rope tying the body to an object or NPC at reset,
+and on `drag <rope> <part>` legs): a door narrower than the towed thing, or a bend
+sharper than a right angle within `length` (the tendon is straight through walls; a
+towed thing catches on corners).
 """
 
 from __future__ import annotations
@@ -94,6 +97,7 @@ PAIR_FRICTION = [1.0, 1.0, 0.005, 0.0001, 0.0001]
 HITCH_PRIORITY = 2        # hitch objects' own friction wins over the floor's (priority 1)
 DRAG_WARN = 0.4           # [N] OQ9: walking keeps >= 0.8 of its speed up to a steady ~0.4 N
 G = 9.81
+FLUSH_TOL = 0.01          # [m] a box dragged into a pit: its top this close to the floor
 LOOSE_BOX = 1.0e3         # [m] leash limits while a rope holds an NPC (none in effect)
 
 
@@ -626,7 +630,7 @@ class Rope(Part):
         if worst > L + 1e-6:
             out.append(f"rope {self.name!r}: its ends at reset can be {worst:.2f} m apart (random ranges "
                        f"included), longer than its length {L:g} m")
-        return out
+        return out + pit_fill_problems(env, self)
 
     def check_warnings(self, env) -> list[str]:
         out = []
@@ -639,6 +643,56 @@ class Rope(Part):
                                    f"above {DRAG_WARN:g} N; the walking body slows below 0.8 of its speed (OQ9)")
         out += tow_path_warnings(env, self)
         return out
+
+
+# ---- towed ends ---------------------------------------------------------------------
+def far_end(ends, others, start):
+    """Index (0 / 1) of the end of a rope that the body tows: `ends` are the rope's two
+    end nodes (None: loose), `others` the (node, node) pairs of the other ropes tied at
+    both ends, `start` the body's node. The far end is the one opposite an end reached
+    from `start` through `others` (a chain, either way round); None if neither is."""
+    reach = {start}
+    grew = True
+    while grew:
+        grew = False
+        for x, y in others:
+            if (x in reach) != (y in reach):
+                reach |= {x, y}
+                grew = True
+    for e in range(2):
+        if ends[e] is not None and ends[e] in reach and ends[1 - e] is not None:
+            return 1 - e
+    return None
+
+
+def reset_towed(env, rope: "Rope") -> str | None:
+    """The part `rope` tows at reset (from its configured, tied ends and the other ropes'),
+    by `far_end`; None for none or an anchor."""
+    def tied_ends(r):
+        return [h if h and t else None for h, t in zip(r.ends_cfg, r.tied0)]
+
+    others = [tuple(tied_ends(r)) for r in env.world.ropes if r is not rope and None not in tied_ends(r)]
+    ends = tied_ends(rope)
+    e = far_end(ends, others, BODY_HITCH)
+    if e is None or getattr(env.parts.get(ends[e]), "is_anchor", False):
+        return None
+    return ends[e]
+
+
+def demo_far_end(env, rope: "Rope") -> str | None:
+    """The end a `drag <rope> ...` step tows when no `tow` named one: the far end at reset,
+    else the rope's configured end that is not the body."""
+    towed = reset_towed(env, rope)
+    if towed is None:
+        plain = [h for h in rope.ends_cfg if h and h != BODY_HITCH]
+        towed = plain[-1] if plain else None
+    return towed
+
+
+def _detaches(rope: "Rope", part: str) -> bool:
+    """Whether part `part`'s output feeds one of `rope`'s `detach_*` channels."""
+    return any(k.startswith("detach") and (ch == part or ch.startswith(part + "."))
+               for k, ch in rope.channels.items())
 
 
 # ---- NPC leash (R29) --------------------------------------------------------------
@@ -737,36 +791,23 @@ def warp_bundle(env, key, pose, warp_one) -> None:
 # ---- static warnings on the demo way ------------------------------------------------
 def tow_path_warnings(env, rope: Rope) -> list[str]:
     """Doors narrower than the towed thing and bends sharper than a right angle within
-    `length` on the `demo:` way between `tow <rope> ...` and `untow <rope>`."""
+    `length` on the `demo:` way while the rope tows: from `tow <rope> ...` (or from the
+    start when the rope tows an object or NPC at reset, also down a chain of ropes) to
+    `untow <rope>` or a `drag` onto a part that feeds the rope's `detach_*` channel, and
+    on every `drag <rope> <part>` leg (towing its far end, `demo_far_end`, when no `tow`
+    named one). Every `drag` step (any rope) moves the body to its part."""
     demo = list(getattr(env.room, "demo", []) or [])
-    if not any(e[0] == "tow" and e[1] == rope.name for e in demo):
+    start = reset_towed(env, rope)
+    if start is None and not any(e[0] in ("tow", "drag") and e[1] == rope.name for e in demo):
         return []
     from ...logic import free_mask
 
     grid, parts = env.grid, env.parts
     on = {p.name for p in parts.values() if p.role in ("switch", "warp")}
     free = free_mask(grid, env.walls, parts, on, inflate=env.body.footprint_radius)
-    legs: list[tuple[np.ndarray, np.ndarray, str]] = []   # (from, to, towed hitch name)
-    here = np.asarray(env.room.spawn_pos, dtype=float)
-    towing: str | None = None
-    for e in demo:
-        if e[0] == "tow" and e[1] == rope.name:
-            st = _station_for(parts, rope, e[2])
-            to = st.xy if st is not None else parts[e[2]].base_xy
-            towing = e[2]
-            here = np.asarray(to, dtype=float)
-            continue
-        if e[0] == "untow" and e[1] == rope.name:
-            towing = None
-            continue
-        if e[0] in ("goto", "press") and e[1] in parts:
-            to = np.asarray(parts[e[1]].target_xy(), dtype=float)
-            if towing is not None:
-                legs.append((here, to, towing))
-            here = to
     out = []
     L = float(rope.cfg["length"])
-    for a, b, towed in legs:
+    for a, b, towed in tow_legs(env, rope, start):
         path = _grid_path(grid, free, a, b)
         if len(path) < 2:
             continue
@@ -784,6 +825,89 @@ def tow_path_warnings(env, rope: Rope) -> list[str]:
             out.append(f"rope {rope.name!r}: the demo way bends more than 90 deg within the rope length "
                        f"{L:g} m near ({sharp[0]:.2f}, {sharp[1]:.2f}); the towed {towed!r} catches on the corner")
     return out
+
+
+def pit_fill_problems(env, rope: Rope) -> list[str]:
+    """A box the `demo:` drags into a pit (`drag <rope> <pit>`) must fill it flush: its
+    height equal to the pit's depth (rim to the catch plane) within FLUSH_TOL, else the
+    walk across it steps down or up (R31 `pit_bridge`). The towed box is the last `tow`
+    hitch, else the far end at reset (`reset_towed`, chains either way round), else the
+    rope's configured end that is not the body."""
+    from ...floor import CATCH_DEPTH
+    from ..trap.pit import Pit
+
+    demo = list(getattr(env.room, "demo", []) or [])
+    fallback = demo_far_end(env, rope)
+    towing = reset_towed(env, rope)
+    out = []
+    for e in demo:
+        if e[1:2] != (rope.name,):
+            continue
+        if e[0] == "tow":
+            towing = e[2]
+        elif e[0] == "untow":
+            towing = None
+        elif e[0] == "drag" and isinstance(env.parts.get(e[2]), Pit):
+            towed = towing or fallback
+            box = env.parts.get(towed) if towed is not None else None
+            if box is None or not box.has_body:
+                continue
+            pit = env.parts[e[2]]
+            depth = float(pit.height_at(pit.xy)[1]) + CATCH_DEPTH
+            h = _height(env, box)
+            if abs(h - depth) > FLUSH_TOL:
+                out.append(f"rope {rope.name!r}: {towed!r} ({h:.2f} m high) dragged into pit {pit.name!r} "
+                           f"({depth:.2f} m deep) leaves its top {abs(depth - h):.2f} m "
+                           f"{'below' if h < depth else 'above'} the floor; a box filling a pit must be "
+                           f"flush within {FLUSH_TOL * 100:.0f} cm")
+    return out
+
+
+def _height(env, part) -> float:
+    """Height [m] of `part`'s colliding geoms (body frame z extent, 0 if none)."""
+    m = env.model
+    lo, hi = math.inf, -math.inf
+    for g in np.nonzero(m.geom_bodyid == part._bid)[0]:
+        if m.geom_contype[g] or m.geom_conaffinity[g]:
+            c = float(m.geom_pos[g][2] + m.geom_aabb[g][2])
+            lo, hi = min(lo, c - float(m.geom_aabb[g][5])), max(hi, c + float(m.geom_aabb[g][5]))
+    return hi - lo if hi > lo else 0.0
+
+
+def tow_legs(env, rope: Rope, start: str | None = None) -> list[tuple[np.ndarray, np.ndarray, str]]:
+    """(from, to, towed part) for each `demo:` leg the rope tows on (see
+    `tow_path_warnings`); `start` is what it tows at reset (`reset_towed`)."""
+    demo = list(getattr(env.room, "demo", []) or [])
+    parts = env.parts
+    fallback = demo_far_end(env, rope)
+    legs: list[tuple[np.ndarray, np.ndarray, str]] = []
+    here = np.asarray(env.room.spawn_pos, dtype=float)
+    towing: str | None = start
+    for e in demo:
+        if e[0] == "tow" and e[1] == rope.name:
+            st = _station_for(parts, rope, e[2])
+            to = st.xy if st is not None else parts[e[2]].base_xy
+            towing = e[2]
+            here = np.asarray(to, dtype=float)
+            continue
+        if e[0] == "untow" and e[1] == rope.name:
+            towing = None
+            continue
+        if e[0] == "drag" and e[2] in parts:                  # any rope's drag moves the body
+            to = np.asarray(parts[e[2]].xy, dtype=float)
+            towed = towing or (fallback if e[1] == rope.name else None)
+            if towed is not None:
+                legs.append((here, to, towed))
+            here = to
+            if _detaches(rope, e[2]):                         # the target unties this rope there
+                towing = None
+            continue
+        if e[0] in ("goto", "press") and e[1] in parts:
+            to = np.asarray(parts[e[1]].target_xy(), dtype=float)
+            if towing is not None:
+                legs.append((here, to, towing))
+            here = to
+    return legs
 
 
 def _station_for(parts, rope: Rope, hitch: str):

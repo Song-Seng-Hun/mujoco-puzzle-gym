@@ -150,9 +150,11 @@ parts:
 | [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | ステーションで車輪を付け、ボタンを通って長い廊下を転がり、時間制ドア(7.5秒)を抜け、廊下の端のステーションで外して段を歩いて上りゴールへ | `device/addon_roller`, `input/floor_momentary`, `logic/hold`, `device/sliding_door` |
 | [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml) | 車輪で速度区域を通ってドアを開け、横風を抜け、ブレーキ帯の上のステーションで外して段を上りゴールへ | `device/addon_roller`, `input/body_zone`(`min_speed`), `trap/crosswind`, `trap/brake_strip` |
 | `puzzles/roller/speed_gate`, `timed_corridor`, `mode_switch_route`, `brake_strip`, `one_way_station`, `crosswind`, `glide_under`, `roll_delivery` | 車輪パズル8種。下の[アドオンステーション](#アドオンステーション) | `device/addon_roller` |
+| [`examples/rooms/tow_yard.yaml`](../examples/rooms/tow_yard.yaml) | 柱に結ばれたまま始まり、ボタンでほどき、連結パッドでそりをつないで区域まで引き、ほどくパッドでほどいて一羽でドアを通る | `rope`, `anchor`, `hitch_station`, `input/object_zone`, `device/sliding_door` |
+| `puzzles/tow/sled_delivery`, `drop_and_go`, `chain_dropoff`, `tethered_start` | 牽引ロープのパズル4種。下の[牽引ロープ](#牽引ロープ) | `rope`, `hitch_station`, `input/object_zone` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 文字マップで描いた二つの部屋、階段と坂 | `button`, `door` |
 
-ボールと車輪の組み立てプリセットは部屋一つ全体なので、そのまま`mpg check`に渡してもよく、`preset: puzzles/ball/bowling`で敷いて値を変えて使ってもかまいません。
+ボール、車輪、牽引の組み立てプリセットは部屋一つ全体なので、そのまま`mpg check`に渡してもよく、`preset: puzzles/ball/bowling`で敷いて値を変えて使ってもかまいません。
 
 ## 点検の二段階
 
@@ -341,7 +343,7 @@ curriculum: {mode: forward, order: difficulty_first}
 
 - 掛け所(hitch): ロープの端を結べる所。体(`body`、胴体の下の床から0.04 m)、`hitch: true`の物(その中心)、NPCロボット、固定の柱`anchor`(`hitch_height`、既定0.04 m。描くだけで体は通り抜けます)。ロープの`a`、`b`が端の掛け所の名前、`tied`(既定は両方)がリセット時に結ばれている端です。結ばれていない端の結び目は`rest`([[xa, ya], [xb, yb]]、既定は`pos`からxに∓0.4 × `length`)に置かれます。部屋の掛け所は`max_hitches`(既定16、体を含む)までです。ロープのある部屋では`hitch: true`の物の摩擦が床より優先されます(物の`friction`が引く荷の重さを決めます)。
 - 結ぶ・ほどく三つの道:
-  - 連結パッド`hitch_station`: 胴体がパッドの上にあり`max_speed`(既定0.1 m/s)より遅いとき、信号(`in`チャンネルがオンになる瞬間、なければパッドに乗る瞬間)が来ると、体の掛け所からロープの`hitch_radius`(既定0.3 m)以内で一番近い掛け所と体をつなぎます(`attach`。その掛け所にすでに結ばれた端はそのまま、もう一方の端が体に来ます)。`detach`は体側の端をほどき、`toggle`は合う方をします。`cooldown`(既定1 s)と`enable`はアドオンステーションと同じです。`rope`でロープを選びます(部屋にロープが一本なら省略可)。出力`<パッド>.towing`。
+  - 連結パッド`hitch_station`: 胴体がパッドの上にあり`max_speed`(既定0.1 m/s)より遅いとき、信号(`in`チャンネルがオンになる瞬間、なければパッドに乗る瞬間)が来ると、体の掛け所からロープの`hitch_radius`(既定0.3 m)以内で一番近い掛け所と体をつなぎます(`attach`。その掛け所にすでに結ばれた端はそのまま、もう一方の端が体に来ます。すでに体に結ばれ、もう一方の端がほどけているロープはその端を結びます)。`detach`は体側の端をほどき、`toggle`は合う方をします(ロープがすでに体と何かをつないでいなければ結ぶ)。`cooldown`(既定1 s)と`enable`はアドオンステーションと同じです。`rope`でロープを選びます(部屋にロープが一本なら省略可)。出力`<パッド>.towing`。
   - チャンネル: ロープの`attach_a`、`detach_a`、`attach_b`、`detach_b`がオンになる瞬間、その端を`a`/`b`(なければ結び目から`hitch_radius`以内で一番近い掛け所)に結ぶかほどきます。
   - くちばし: 結び目をくわえて掛け所の`clip_radius`(既定0.04 m)以内で放すと結ばれ、結ばれた結び目を`untie_time`(既定0.5 s)くわえ続けるとほどけます。そうしてほどいた結び目は、その場で放しても結ばれ直しません(くわえ直して放すと結ばれます)。
   - 結ぶとき、もう一方の端までが`length`より遠ければ結ばず、`<ロープ>.attach_failed`を1ステップ出します(範囲内に掛け所がないときも)。結ばれた結び目は掛け所の位置に移されてから連結拘束(`connect`)で付きます。
@@ -350,10 +352,21 @@ curriculum: {mode: forward, order: difficulty_first}
 - チャンネル: `<ロープ>.attached_a`、`.attached_b`(結ばれている間1)、`.tension`(`max_tension`に対する0..1、1ステップの平均)、`.snapped`、`.attach_failed`、`body.towing`(体に結ばれたロープがあれば1。部屋の最初のロープが書きます)。観測項目`tow`: 体に結ばれているか、張力(`max_tension`に対する0..1)、もう一方の端(結ばれていればその掛け所、なければ結び目)の体基準の位置(x、y)。4個。観測`beak`の物の種類では結び目は10です。
 - NPCを結ぶと、ロープがかかっている間そのロボットの駆動ゲインが0になり、リード(`leash`)の制限が外れて引きずられます。滑り続けないよう、平面移動の関節に減衰(1.0 N·s/m)をかけます(体が止まると1秒以内に止まる、歩くときの張力の平均0.20 N)。ほどけると駆動が戻り、リードの箱の外にいれば中へ歩いて戻ってから制限をかけ直します。リセット・スナップショットの復元・結び目の変化のたびにロープの状態から計算し直します。
 - ワープ: 体をワープすると、ロープでつながった一団(物、結び目、NPC、さらにそれにつながったもの)を同じ相対姿勢で一緒に移します。一団の中の固定端(`anchor`)は先にほどきます。物だけがワープされたとき、スプリングが物を蹴ったとき、ディスペンサーが複製を回収したとき、受ける部品が物を吐き出したときは、その物のロープを先にほどきます。アドオンを替える(`set_addon`)ときは体側の端を先にほどきます。
-- 点検(`mpg check`の`parts`段階): `hitch_radius`と`clip_radius`が`length`以下か、リセット時に既定で結ばれた両端がランダム範囲を入れても`length`以内か(失敗)。引く荷(摩擦 × 重さ)が0.4 Nを超えるとき、また`demo:`の`tow`と`untow`の間の道に引く物より狭い扉や、`length`以内で90°より急な曲がりがあるときは警告します。
-- 解答の`demo:`: `tow <ロープ> <掛け所>`(そのロープを体と掛け所につなぐ連結パッドへ歩いて立つ。パッドをすでに使っていれば降りてまた乗る)、`untow <ロープ>`(ほどくパッドへ)。引いて目的地まで行く段階はまだありません。
+- 点検(`mpg check`の`parts`段階): `hitch_radius`と`clip_radius`が`length`以下か、リセット時に既定で結ばれた両端がランダム範囲を入れても`length`以内か(失敗)。引く荷(摩擦 × 重さ)が0.4 Nを超えるとき、また`demo:`の`tow`と`untow`の間の道に引く物より狭い扉や、`length`以内で90°より急な曲がりがあるときは警告します。この道には`drag`の区間と、リセット時に体と物・NPCをつなぐロープならスタートからの道も入ります。`demo:`が穴へ引き入れる箱(`drag <ロープ> <穴>`)は、高さが穴の深さ(縁から0.5 m下の受け面まで)と1 cm以内で同じで、上面が床とそろわなければなりません(失敗)。まだそれほど高い部品はありません(既知の限界)。
+- 解答の`demo:`: `tow <ロープ> <掛け所>`(そのロープを体と掛け所につなぐ連結パッドへ歩いて立つ。パッドをすでに使っていれば降りてまた乗る)、`untow <ロープ>`(ほどくパッドへ)、`drag <ロープ> <部品>`: 引かれる掛け所はロープの体と反対側の端です(ロープが鎖のようにつながっていれば、鎖でより遠い端)。体は、掛け所(段階が始まったときの位置)から部品の中心を通る線の上で、部品の中心の先の点へ歩きます。その先の距離はロープの長さか体と掛け所の距離(鎖)の長い方より0.25 m遠く、壁の手前で止めます。掛け所が部品の床の領域に5 cm入るか、途中でほどけたら(その部品の`detach_*`チャンネル)終わります。部品には床の領域が必要です(圧力板、区域、パッド、穴)。`drag`の段階が満たすセンサーは`grab`の行動を求めません。
 - 測定値(2026-11-13): 0.2 kgのそり(摩擦0.1)を0.4 mのロープで引いて歩くと、そりは約0.39 m後ろを付いて来て張力は0.1–0.43 N。0.3 kg(摩擦0.5、荷1.47 N)は歩き出すとすぐ切れます。柱に結んだ0.3 kgのそり(摩擦0.5)で`length`の目標を0.4 → 0.1 mに一度に変えると、最大張力は`reel_speed` 0.05/0.1/0.5/2.0 m/sで1.86/2.11/5.06/13.7 Nです(2.0ではそりが柱を通り過ぎます)。体の掛け所はOpen question 9の0.04 m(股関節の軸の中間の下、胴体基準(0.007, 0, −0.0756) m)です。
-- 既知の限界: 結び目の輪の高さ0.16 mは決めた値で、Open question 8(R31の高さ)はまだ開いています。中継器(R34)の掛け所はまだありません。切れたロープはリセットまで使えません。スプリングが体を蹴ったときはロープをほどきません。
+- 牽引の組み立てプリセット`puzzles/tow/`(どれも`demo:`のある部屋一つ全体、taskは`move`だけ、荷は0.4 N未満)。引いていった荷は圧力板ではなく物の区域(`input/object_zone`)に置きます。圧力板の4 mm盛り上がった縁が引かれる箱を止めるためです(0.1 m・0.2 kgのキューブ、摩擦0.1は縁でロープが切れた、最大2.8 N。0.15 kgは最大2.0 Nで乗り越えた)。
+
+| プリセット | パズル |
+|---|---|
+| `puzzles/tow/sled_delivery` | くちばしで持てないそり(0.2 kg、摩擦0.1)が連結パッドの横にあります。つないで区域まで引くと一度きりのドアが開きます。そりを引いたまま通ります(ドアはそりより広い) |
+| `puzzles/tow/drop_and_go` | 台車(0.15 kg)に結ばれたまま始まります。ドアは台車が区域の中にある間だけ開きます。引き入れて区域の端のほどくパッドに立ってほどき、一羽で通ります。台車を引いたまま歩くと区域から引き出されてドアが閉まります |
+| `puzzles/tow/chain_dropoff` | 鎖のようにつないだ台車2台(ロープ`front`: アヒル–`cart_a`、`rear`: `cart_a`–`cart_b`)。区域`drop_b`(道の北)は`cart_b`だけを数えてそれをほどき(`detach_b`)、`drop_a`(南)は`cart_a`に同じことをします。二つの区域が台車を受けている間ドアが開きます。まっすぐ歩くと台車は二つの区域をそれます |
+| `puzzles/tow/tethered_start` | 柱に結ばれて始まります(0.6 mのロープ、`on_snap: fail`)。ロープの届くボタンが柱側の端をほどきます。そのまま歩き出すとロープが切れて失敗します |
+
+- 例: [`examples/rooms/tow_yard.yaml`](../examples/rooms/tow_yard.yaml): 柱に結ばれたまま始まり(`on_snap: fail`)、ボタンで柱側の端をほどくと、ほどけた端が後ろについて来ます。連結パッドがその端をそり(0.2 kg、摩擦0.1)に結びます。そりを区域まで引き、区域の端のほどくパッドに立ってほどいてから、そりが区域にある間開いているドアを通ります。`demo: [press button, tow rope sled, drag rope zone, untow rope, goto goal]`。
+- 測定値(2026-11-13、`mpg check`、シード20個): `sled_delivery` 20/20(平均19.5 s)、`drop_and_go` 20/20(17.4 s)、`chain_dropoff` 20/20(25.6 s)、`tethered_start` 20/20(20.5 s)、`tow_yard` 20/20(40 sのエピソードで31.2 s)。ロープの段階を抜くと解けません(各シード20個): `sled_delivery`を`demo: [goto goal]`で0/20、`drop_and_go`で`untow`を抜くと0/20、`chain_dropoff`で後ろの台車の`drag`を抜くと0/20、`tethered_start`と`tow_yard`でボタンを抜くと0/20(ロープが切れる)、`tow_yard`で`untow`を抜くと0/20。ゴールへまっすぐ歩く(向きを保ち、ドアを無視)のはプリセット4種と`tow_yard`のどれも0/20です。二つの区域を道の上に置いていた`chain_dropoff`はまっすぐ歩くだけで14/20解けたので、区域を道からずらしました。
+- 既知の限界: 結び目の輪の高さ0.16 mは決めた値で、Open question 8(R31の高さ)はまだ開いています。中継器(R34)の掛け所はまだありません。切れたロープはリセットまで使えません。スプリングが体を蹴ったときはロープをほどきません。`pit_bridge`は作っていません: 穴には0.5 m下の受け面まで床がなく、一番大きい箱(キューブ)は0.3 mで、計画は箱が入っても穴を穴として扱います。`drop_and_go`の台車(0.12 m)はドアより広くありません: 解答が歩いて通れる一番狭い壁のすき間は約0.40 m(0.40 mは通れ0.36 mは通れない、各シード3個)で、取っ手付きの一番大きいキューブ(0.33 m)より広いためです。そのため区域とそのドアがほどくことを強いています。`cleat_hold`、`npc_leash`、`overload`、`rope_door`、ロープの`via:`滑車、パッドの`handoff`方式は2部の後半(2b)で作ります。`drag`の段階はまっすぐな線に沿って狙うので、引かれる物から目標を通る道はまっすぐにしてください。
 
 ## Pythonプラグイン
 
@@ -1253,4 +1266,8 @@ def majority(inputs, state, dt):
 - `puzzles/roller/roll_delivery`
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
+- `puzzles/tow/chain_dropoff`
+- `puzzles/tow/drop_and_go`
+- `puzzles/tow/sled_delivery`
+- `puzzles/tow/tethered_start`
 <!-- mpg parts --markdown: end -->

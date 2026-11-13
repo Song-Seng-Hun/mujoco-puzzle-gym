@@ -14,7 +14,11 @@
 - knots press no button; above `max_tension` the rope snaps (`on_snap: fail` fails);
 - a snapshot keeps the ties; `reset()` ties the default ends again; same seed, same run;
 - NPC leash: zero gains and no leash limits while tied, back once untied (inside);
-- obs `tow`, `demo:` `tow` / `untow` and the solver steps, static checks.
+- obs `tow`, `demo:` `tow` / `untow` and the solver steps, static checks;
+- `demo:` `drag <rope> <part>`: parsed (errors for a non-rope, a part without a floor
+  area, a wrong arity), the towed hitch (also down a chain of ropes), the aim beyond
+  the part, done once the hitch is inside or comes loose; a short run drags the sled
+  into a zone; a drag target needs no `grab` action; a drag leg gets the path warnings.
 """
 
 import mujoco
@@ -29,7 +33,7 @@ from mujoco_puzzle_gym.parts.base import Part
 from mujoco_puzzle_gym.parts.device.rope import KNOT_HZ, tow_path_warnings
 from mujoco_puzzle_gym.registry import register_part
 from mujoco_puzzle_gym.room import RoomError, parse_demo
-from mujoco_puzzle_gym.solver import ScriptedSolver
+from mujoco_puzzle_gym.solver import DRAG_PAST, STAND, ScriptedSolver
 
 SLED = {"name": "sled", "type": "cube", "pos": [-1.30, 0.0], "size": 0.1, "mass": 0.3, "friction": 0.1,
         "hitch": True}
@@ -206,6 +210,19 @@ def test_station_ignores_a_moving_body_and_detaches(make):
     stand_at(env, -1.0, 0.8)
     stand_at(env, -1.0, 0.0)                              # enter again: toggle unties the body's end
     assert not rope.on_body and rope.tied == [None, 1]
+
+
+def test_station_ties_the_loose_end_of_a_rope_on_the_body(make):
+    """`tow_yard`: the rope stays on the body after its post end comes loose; an attach
+    (or toggle) station ties that loose end to the hitch next to the pad."""
+    for mode in ("attach", "toggle"):
+        env = make([{**SLED, "pos": [-1.0, 0.25]}, {**ROPE, "b": None, "tied": ["a"], "rest": [[-1.5, 0.5], [-1.6, -0.4]]},
+                    {"name": "pad", "type": "hitch_station", "pos": [-1.0, 0.0], "mode": mode}])
+        rope = rope_of(env)
+        stand_at(env, -1.0, 0.8)
+        assert rope.tied == [0, None] and rope.on_body
+        stand_at(env, -1.0, 0.0)
+        assert rope.tied_hitch(0).name == "body" and rope.tied_hitch(1).name == "sled"
 
 
 def test_beak_ties_and_unties_a_knot(make):
@@ -506,3 +523,122 @@ def test_static_checks(make):
     res = check_parts(heavy)
     assert res["ok"] and any("dragging" in w for w in res["warnings"])
     assert check_parts(make([SLED, ROPE]))["ok"]
+
+
+# ---- drag (demo step) --------------------------------------------------------------------------
+ZONE = {"name": "zone", "preset": "input/object_zone", "pos": [0.2, 0.0], "size": [0.4, 0.4], "objects": ["sled"]}
+
+
+def put_obj(env, name, x, y):
+    """Move free object `name` to (x, y) at its resting height, at rest."""
+    p = env.parts[name]
+    q = env.model.jnt_qposadr[env.model.body_jntadr[p._bid]]
+    env.data.qpos[q:q + 2] = [x, y]
+    mujoco.mj_forward(env.model, env.data)
+
+
+def test_demo_drag_parsed(make):
+    env = make([SLED, ROPE, ZONE])
+    parts = env.parts
+    assert parse_demo(["drag rope zone"], parts) == [("drag", "rope", "zone")]
+    for bad, why in ((["drag rope"], "write `drag"), (["drag rope zone goal"], "write `drag"),
+                     (["drag sled zone"], "not a rope"), (["drag rope goal"], "no floor area"),
+                     (["drag rope sled"], "no floor area"), (["drag rope nope"], "no part named")):
+        with pytest.raises(RoomError, match=why):
+            parse_demo(bad, parts)
+
+
+def test_drag_aims_beyond_the_part_and_ends_inside(make):
+    env = make([SLED, ROPE, ZONE])
+    rope, zone = rope_of(env), env.parts["zone"]
+    env.room.demo = [("drag", "rope", "zone")]
+    solver = ScriptedSolver(env)
+    assert solver.towed_hitch(rope).name == "sled"
+    act = solver.drag_act(rope, zone)
+    aim = solver._drag["aim"]                             # on the line sled -> zone, past the zone
+    sled_xy = env.parts["sled"].pos(env.data)[:2]
+    gap = max(0.4, float(np.linalg.norm(env.body_state.pos[:2] - sled_xy)))
+    assert aim[0] == pytest.approx(0.2 + gap + DRAG_PAST, abs=0.02) and abs(aim[1]) < 0.01
+    assert act[0] == 1.0                                  # facing it: walks on
+    put_obj(env, "sled", 0.2 - 0.2 + 0.03, 0.0)           # inside the zone, but within DRAG_MARGIN of its edge
+    assert solver.drag_act(rope, zone) is not None
+    put_obj(env, "sled", 0.1, 0.0)
+    assert solver.drag_act(rope, zone) is None and solver._drag is None
+
+
+def test_drag_without_a_tow_stands_and_a_loose_hitch_ends_it(make):
+    env = make([SLED, {**ROPE, "tied": ["b"]}, ZONE])
+    rope, zone = rope_of(env), env.parts["zone"]
+    solver = ScriptedSolver(env)
+    assert solver.towed_hitch(rope) is None
+    assert np.array_equal(solver.drag_act(rope, zone), STAND) and solver._drag is None
+    env.world.untie(env.model, env.data, rope.tied_hitch(1).rid)
+    rope.tie(env.model, env.data, 0, rope._body_h, check=False)
+    rope.tie(env.model, env.data, 1, rope._index["sled"], check=False)
+    assert solver.drag_act(rope, zone) is not None and solver._drag is not None
+    rope.untie(env.model, env.data, 1)                     # a detach channel let it go on the way
+    assert solver.drag_act(rope, zone) is None and solver._drag is None
+
+
+def test_towed_hitch_down_a_chain(make):
+    c1 = {**SLED, "name": "c1", "pos": [-1.3, 0.0], "mass": 0.1}
+    c2 = {**SLED, "name": "c2", "pos": [-1.6, 0.0], "mass": 0.1}
+    env = make([c1, c2, {**ROPE, "name": "front", "b": "c1"},
+                {**ROPE, "name": "rear", "pos": [0.5, -1.2], "a": "c2", "b": "c1"}])
+    solver = ScriptedSolver(env)
+    assert solver.towed_hitch(env.parts["front"]).name == "c1"
+    assert solver.towed_hitch(env.parts["rear"]).name == "c2"      # either end order
+    env.parts["front"].untie(env.model, env.data, 1)
+    assert solver.towed_hitch(env.parts["rear"]) is None             # the chain is off the body
+
+
+def test_drag_run_puts_the_sled_in_the_zone(make):
+    env = make([{**SLED, "mass": 0.2}, ROPE, ZONE], spawn=(-1.0, 0.0))
+    env.room.demo = [("drag", "rope", "zone")]
+    solver = ScriptedSolver(env)
+    env.reset(seed=0, options={"layout": env.sample_layout(None)})
+    for k in range(150):                                  # measured: done after 7.2 s (72 steps)
+        env.step(solver.act())
+        if not solver.in_demo:
+            break
+    sled_xy = env.parts["sled"].pos(env.data)[:2]
+    assert not solver.in_demo and env.signals.get("zone") == 1.0
+    assert abs(sled_xy[0] - 0.2) < 0.2 and abs(sled_xy[1]) < 0.2 and not rope_of(env).snapped
+
+
+def test_drag_target_needs_no_grab(asset_dir, tmp_path):
+    raw = {"name": "dragroom", "size": [4.0, 1.5], "spawn": {"pos": [-1.0, 0.0], "yaw": 0.0},
+           "parts": [{**SLED, "mass": 0.2}, ROPE, {k: v for k, v in ZONE.items() if k != "objects"},   # trigger object
+                     {"name": "door", "preset": "device/oneshot_door", "pos": [1.0, 0.0], "in": ["zone"]},
+                     {"name": "goal", "type": "goal", "pos": [1.5, 0.0], "radius": 0.1}],
+           "walls": [{"from": [1.0, -0.75], "to": [1.0, -0.28]}, {"from": [1.0, 0.28], "to": [1.0, 0.75]}]}
+    from mujoco_puzzle_gym.check import check
+
+    for demo, ok in ((["drag rope zone", "goto goal"], True), (None, False)):
+        path = tmp_path / f"drag_{ok}.yaml"
+        path.write_text(yaml.safe_dump({**raw, **({"demo": demo} if demo else {})}))
+        res = check(path, static_only=True)
+        assert res["actions"]["ok"] == ok, res["actions"]
+        if not ok:
+            assert "'zone'" in res["actions"]["reason"] and "grab" in res["actions"]["reason"]
+
+
+def test_drag_leg_path_warning(asset_dir, tmp_path):
+    raw = {"name": "dragwall", "size": [3.0, 3.0], "spawn": {"pos": [-1.0, -0.8], "yaw": 0.0},
+           "walls": [{"from": [0.0, -1.5], "to": [0.0, -1.0]}, {"from": [0.0, -0.6], "to": [0.0, 1.5]}],
+           "parts": [{"name": "sled", "type": "stick", "pos": [-1.4, -0.8], "length": 0.5, "hitch": True},
+                     {**ROPE, "pos": [0.0, 1.2]},
+                     {"name": "btn", "preset": "input/floor_momentary", "pos": [-0.5, 1.0]},
+                     {"name": "door", "preset": "device/sliding_door", "pos": [0.0, -0.8], "in": ["btn"], "width": 0.4},
+                     {**ZONE, "pos": [0.9, -0.8]},
+                     {"name": "goal", "type": "goal", "pos": [1.0, 1.0], "radius": 0.1}],
+           "demo": ["drag rope zone"]}
+    path = tmp_path / "dragwall.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(room=path)
+    env.reset(seed=0)
+    try:
+        got = tow_path_warnings(env, env.parts["rope"])
+    finally:
+        env.close()
+    assert len(got) == 1 and "passes door 'door'" in got[0]

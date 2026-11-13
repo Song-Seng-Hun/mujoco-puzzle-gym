@@ -54,7 +54,9 @@ the level head, R28), `turn <lever> <value>` (a push lever to that cell, R28),
 `take <dispenser>` (trigger it and wait for the new copy; later `grab`, `place`
 and `drop` given the dispenser's name work on that copy, R28), `addon <station>`
 (stand on the station until it switches the body's addon, R30), `glide <low bar>`
-(on wheels: a straight full-push run-up, crouch before the bar, R30). Objects are grabbable parts (cube, laundry, key, ...). After the last one the solver goes on with the grid
+(on wheels: a straight full-push run-up, crouch before the bar, R30), `tow <rope>
+<hitch>` / `untow <rope>` (tie / untie the body at a hitch station, R31), `drag <rope>
+<part>` (walk on until the rope's towed hitch is in the part's floor area, R31). Objects are grabbable parts (cube, laundry, key, ...). After the last one the solver goes on with the grid
 answer (the solution order), so a demo may stop before the goal. Without
 `demo:` the solver uses the grid answer only.
 
@@ -107,7 +109,7 @@ class RoomError(ValueError):
 
 
 DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop", "turn", "pull", "look",
-                 "take", "addon", "glide", "tow", "untow")
+                 "take", "addon", "glide", "tow", "untow", "drag")
 MAX_WAIT = 60.0                        # [s] longest `wait`
 
 
@@ -116,7 +118,7 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
     ("push", ball, target), ("herd", npc, part or (x, y)), ("grab", object),
     ("place" | "drop", object, part), ("turn", lever, value), ("pull", cord), ("look", part),
     ("take", dispenser), ("addon", station), ("glide", low bar), ("tow", rope, hitch),
-    ("untow", rope). `grab` / `place` / `drop`
+    ("untow", rope), ("drag", rope, part). `grab` / `place` / `drop`
     take a dispenser's name after a `take` of it (its copy handed out last). Raises RoomError
     (stage `demo`) naming the bad entry."""
     if raw is None:
@@ -191,6 +193,8 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
                 out.append(("tow", rope, hitch))
             else:
                 out.append(("untow", rope))
+        elif cmd == "drag":
+            out.append(_parse_drag(i, entry, args, parts, part))
         elif cmd == "take":
             if len(args) != 1:
                 raise RoomError(f"demo[{i}]: write `take <dispenser>`, got {entry!r}", "demo")
@@ -268,6 +272,22 @@ def _parse_device(i: int, entry: str, cmd: str, args: list[str], parts: dict[str
         want = f"one of its cells {[float(v) for v in ok]}" if ok is not None else "a value in -1..1"
         raise RoomError(f"demo[{i}]: `turn {name} <value>` needs {want}, got {entry!r}", "demo")
     return ("turn", name, value)
+
+
+def _parse_drag(i: int, entry: str, args: list[str], parts: dict[str, Any], part) -> tuple:
+    """("drag", rope, part) for `drag <rope> <part>`: the part has a floor area (R31)."""
+    if len(args) != 2:
+        raise RoomError(f"demo[{i}]: write `drag <rope> <part>`, got {entry!r}", "demo")
+    rope = part(i, args[0])
+    if not getattr(parts[rope], "is_rope", False):
+        raise RoomError(f"demo[{i}]: {rope!r} is not a rope", "demo")
+    target = part(i, args[1])
+    half = getattr(parts[target], "half", None)
+    if half is None or np.ndim(half) != 1 or getattr(parts[target], "mount", None) == "wall" \
+            or getattr(parts[target], "is_rope", False):
+        raise RoomError(f"demo[{i}]: cannot drag onto {target!r}: it has no floor area (drag onto a "
+                        f"pressure plate, a zone, a pad or a pit)", "demo")
+    return ("drag", rope, target)
 
 
 def _parse_herd(i: int, entry: str, args: list[str], parts: dict[str, Any], part) -> tuple:

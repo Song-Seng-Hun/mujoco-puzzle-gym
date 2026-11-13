@@ -16,7 +16,8 @@ overlap:   at the nominal layout no solid part geometry sits in a wall or in
            do not count);
 actions:   the task actions cover what the plan needs (R19): `grab` when an
            object must be carried (a `grab` sub-goal in `demo:`, or an input in
-           the solution order that only a grabbable object sets off) or a device
+           the solution order that only a grabbable object sets off, unless a
+           `drag` sub-goal drags something onto it, R31) or a device
            held by its knob (a `pull` sub-goal, a pull cord or grab lever in the
            order, R28), `head` when a wall button
            the plan presses sits wholly below the level beak tip (the body's
@@ -264,7 +265,8 @@ def check_solver(env: PuzzleEnv, seeds: int = 20, need: int = 18,
 
 def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
     """Static: task actions the plan needs (R19). `grab`: a `grab` / `pull` sub-goal, a part
-    in `order` that a grabbable object sets off and the body cannot, or a held device
+    in `order` that a grabbable object sets off and the body cannot (unless a `drag`
+    sub-goal drags something there, R31), or a held device
     (`grab_handle`, R28) in `order`; `head`: a wall button in
     `order` (or a `press` sub-goal) whose top edge is below the level beak tip; `crouch`:
     a `glide` sub-goal or a low bar the order stage lets a gliding body pass (R30)."""
@@ -274,7 +276,8 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
     if "grab" not in env.actions:
         need = [e[1] for e in demo if e[0] in ("grab", "pull")]
         need += [n for n in order if getattr(env.parts[n], "grab_handle", False)]     # held devices (R28)
-        need += [n for n in order if any(takes(env.parts[n], o) for o in objs)
+        dragged = {e[2] for e in demo if e[0] == "drag"}           # a rope drags it there (R31)
+        need += [n for n in order if any(takes(env.parts[n], o) for o in objs) and n not in dragged
                  and "body" not in TRIGGERS.get(getattr(env.parts[n], "trigger", None), ())]
         if need:
             why.append(f"{sorted(set(need))} need the beak grab but the task actions {env.actions} "
