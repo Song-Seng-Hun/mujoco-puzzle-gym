@@ -210,3 +210,66 @@ def test_cleat_hold_needs_the_handoff(asset_dir, tmp_path):
         lifted.append(door.lift(env.data))
     env.close()
     assert not any(runs) and max(lifted) < door.clearance
+
+
+# ---- slow: a `drag` leg really tows, it does not push ---------------------------------------
+TAUT, BEHIND = 0.30, 0.50          # measured per leg: taut 0.59-0.95, behind 1.00 (see below)
+
+
+def towed_now(env, rope) -> str | None:
+    """The part `rope` tows at this step: the far end down a chain, else its tied non-body end."""
+    from mujoco_puzzle_gym.parts.device.rope import BODY_HITCH, reset_towed
+
+    towed = reset_towed(env, rope)
+    if towed is None:
+        names = {i: h for h, i in rope._index.items()}
+        loose = [h for h in (names.get(t) for t in rope.tied if t is not None) if h and h != BODY_HITCH]
+        towed = loose[-1] if loose else None
+    return towed
+
+
+def drag_shares(env, solver, seed: int) -> tuple[bool, dict[str, tuple[float, float | None]]]:
+    """Run the demo and give, per `drag` leg, the share of control steps with the rope taut
+    and the share with the towed load behind the trunk (None: nothing was tied to tow)."""
+    legs = {i: e[1] for i, e in enumerate(solver.demo) if e[0] == "drag"}
+    acc = {i: ([], []) for i in legs}
+    towed = dict.fromkeys(legs)
+    env.reset(seed=seed)
+    solver.reset()
+    while True:
+        _, _, term, trunc, info = env.step(solver.act())
+        i = solver.step_i
+        if i in legs:
+            rope = env.parts[legs[i]]
+            towed[i] = towed_now(env, rope) or towed[i]
+            taut, behind = acc[i]
+            taut.append(rope.tension_now(env.data) > 0.02)
+            if towed[i]:
+                b = env.body_state
+                off = env.data.xpos[env.parts[towed[i]]._bid][:2] - b.pos[:2]
+                behind.append(float(off @ np.array([math.cos(b.yaw), math.sin(b.yaw)])) < 0)
+        if term or trunc:
+            break
+    return bool(info["success"]), {legs[i]: (float(np.mean(t)), float(np.mean(b)) if b else None)
+                                   for i, (t, b) in acc.items()}
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name", ["sled_delivery", "drop_and_go", "chain_dropoff"])
+def test_a_drag_leg_pulls_the_load_behind(asset_dir, name):
+    """overload v8 solved its room by walking round the cart and shoving it in with the rope
+    slack, which the preset is not about. Every `drag` leg of the shipped presets has to keep
+    the rope taut and the load behind the duck. `tethered_start` is left out: it has no load
+    to deliver (the rope holds the body to a post), so it cannot be solved by pushing."""
+    env = PuzzleEnv(room=TOW / f"{name}.yaml")
+    solver = ScriptedSolver(env)
+    try:
+        for seed in range(3):
+            won, shares = drag_shares(env, solver, seed)
+            assert won, f"{name} seed {seed}: the demo itself did not solve the room"
+            for rope, (taut, behind) in shares.items():
+                assert behind is not None, f"{name} seed {seed} leg {rope}: nothing was tied to tow"
+                assert taut >= TAUT, f"{name} seed {seed} leg {rope}: rope slack, taut {taut:.2f}"
+                assert behind >= BEHIND, f"{name} seed {seed} leg {rope}: pushed, behind {behind:.2f}"
+    finally:
+        env.close()
