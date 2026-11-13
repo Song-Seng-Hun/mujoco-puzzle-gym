@@ -145,6 +145,7 @@ All of these pass the solver stage of `mpg check` at least 18 times out of 20.
 | [`examples/rooms/cube_socket.yaml`](../examples/rooms/cube_socket.yaml) | Carry the key (marker 7) off its stand into the socket with its number to open the door. `--task examples/task_cube_socket.yaml` | `beak/key`, `input/socket`, `device/sliding_door` |
 | [`examples/rooms/wall_button.yaml`](../examples/rooms/wall_button.yaml) | Press a wall button with the beak to open the door | `beak/wall_button_beak_mid`, `device/sliding_door` |
 | [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | Put the laundry from two stands into the basket (2 pieces) to open the door. `--task examples/task_laundry.yaml` (60 s episodes) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
+| [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | Put the wheels on at the station and roll to the goal at the far end of the rink | `device/addon_roller` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | Two rooms, and stairs and a ramp, drawn as text maps | `button`, `door` |
 
 The ball assembly presets are whole rooms, so you can pass one to `mpg check` as is, or lay it down with `preset: puzzles/ball/bowling` and change values.
@@ -173,7 +174,7 @@ Dynamic phase:
 | Stage | What it checks |
 |---|---|
 | `stability` | That the body does not fall or blow up numerically for 10 s at zero command |
-| `solver` | That a scripted solver that knows the answer solves at least 18 of 20 random layouts. If the room has `demo:` (`goto`, `press`, `wait`, `push <ball> to <goal_net>`, `herd <robot> <part>`, `turn <lever or dial> <value>`, `pull <cord or drawer>`, `look <part>`, `take <dispenser>`), the solver follows that order first, and a grid solver takes over for the rest |
+| `solver` | That a scripted solver that knows the answer solves at least 18 of 20 random layouts. If the room has `demo:` (`goto`, `press`, `wait`, `push <ball> to <goal_net>`, `herd <robot> <part>`, `turn <lever or dial> <value>`, `pull <cord or drawer>`, `look <part>`, `take <dispenser>`, `addon <station>`), the solver follows that order first, and a grid solver takes over for the rest |
 
 The solver stage saves a snapshot for each flag it passes in `runs/check/<room>/checkpoints/<flag>.pkl`.
 
@@ -297,6 +298,21 @@ A `dispenser` is a cabinet that hands out one item each time its signal turns on
 - Measured (2026-11-12, 10 seeds, dispenser at `[-0.2, 0.33]` with `facing: -90`, basket at `[0.25, -0.1]` with `consume: true`): `demo: [take d, grab d, place d bk]` 9/10 with the floor plate (9.9–13.3 s) and 10/10 with the wall plate (12.7–25.8 s). In a room where the basket opens the door, the grid solver turns the basket on 10/10 (floor) and 9/10 (wall), and reaches the goal within 40 s 40/40 (floor) and 35/40 (wall) (standard 0.56 m door gap, 40 seeds). On a second `take`, the body steps off the plate and presses again once the dispenser is ready (`cooldown`).
 - Known limits: putting it in a basket succeeds 4–10 times in 10 depending on where the basket stands (caught on its edge, a fall leaning on the basket wall, or stuck in the corner between basket and room wall). After letting go in a basket the body stands until the object rests (1.5 s if consumed), then walks off until 0.28 m from the basket centre (half its width + body radius + 2 cm). Walking in to place, with a basket wall right ahead and the object over the inside, it stops and lets go standing. The grid solver plans round basket walls. A physical opening narrower than 2 × body radius + 0.1 m (0.32 m for the Microduck) is closed on the planning grid, so the solver may circle in front of the door; use the standard gap (0.56 m between wall ends, a 0.50 m opening). The solver does not check the input condition of a `button: none` dispenser or a `max_active` that blocks it (`mpg check`'s dynamic stage catches it). The scripted solver does not use dispensers that hand out robots.
 
+## Addon station
+
+`addon_station` (preset `device/addon_roller`) is a floor pad that puts an addon on the body or takes it off (for now one: wheels, `roller`). MuJoCo cannot add bodies while running, so a room with at least one station builds a combined model: the foot model with the official roller model's four wheels hung under the ankles, dismounted at first (wheel collisions off, hidden). Rooms without a station build exactly as before.
+
+- When it switches: the trunk is inside the pad, the horizontal speed is below `max_speed` (default 0.1 m/s), and the signal comes. With `in` channels, when they turn on (if they stay on, it also switches when the body arrives and stops later; once per turn-on); without them, on stepping onto the pad (once per visit). `mode` is `attach`, `detach` or `toggle`; with `enable` off it does not switch, and after a switch it waits `cooldown` seconds.
+- What a switch does (body adapter `set_addon`): sets the trunk height from the lowest mesh point of the wheels or feet (+23.6 mm attaching, -15 to -23 mm detaching), zeroes the body velocity, then swaps the collision set, wheel visibility, the lower policy (`velstand` <-> `roller.onnx`, joints matched by name) and its history. Mounted, the collision set is the official roller model's (13 geoms with the wheels).
+- Actions on wheels: forward is the push strength (below -0.6 no push and the duck stops within about a second; above, 0.25-0.6), turn is how fast the target heading moves (+-1 rad/s; the adapter feeds the heading error, clipped to +-0.5, to the policy). Lateral and `head` are not used on wheels. Full push rolls about 0.32 m/s (walking tops out near 0.22 m/s); turn 1 turns 1.00 rad/s while rolling and 0.78 rad/s standing.
+- Signals and observation: `<station>.attached` (1 while the wheels are on), `body.addon` (0 none, 1 roller; written by the room's first station), obs item `addon` (one-hot of the current mode, 2 values).
+- Reset always starts on feet (`velstand`). Checkpoint snapshots keep the mode: restoring one taken on wheels puts the wheels back. Warps move the body with its wheels on.
+- `crouch` action: with `crouch` in task `actions` (order `head`, `grab`, `crouch`) the action gets one more value; above 0.5 it runs `roller_crouch.onnx` for 3.5 s. It is ignored unless on wheels at `env.crouch_min_speed` (default 0.2 m/s) or faster. While crouching the fall check reads the tilt only. Measured: trunk down to 0.067 m, 0.41-0.54 m glide over the 3.5 s, no fall in 28 crouches.
+- Solver `demo:`: `addon <station>` (walk to the middle of the pad, stand until the mode changes). The grid solver does not use stations.
+- Measured (2026-11-13, 20 seeds): attach standing, then command 0/0.3/0.4 for 2 s, stop, detach, command 0 for 2 s, walk 3 s: 0 falls, max tilt 9.3/13.8/14.1 deg after attaching, 10.6 deg or less after detaching. No falls on a 1 cm step tile either (test, 10 seeds).
+- Example [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): the station next to the start puts the wheels on, and the duck rolls to the goal at the far end of the rink.
+- Known limits: no braking on the pad (wheel joint friction 0.0015 stops the duck at command 0 by itself). Switching while moving and climbing slopes or steps on wheels are not measured, and the static check does not yet warn about a route that meets steps on wheels. The roller puzzle presets (`puzzles/roller/`) and the `roller_route` example come next.
+
 ## Python plugins
 
 A new part inherits `Part` and is registered with `register_part`. Write its values in `fields` as `Field`s, and range checks and the `mpg parts` table come with them. A gate function is registered with `register_logic` and called from a room as `logic: <name>`.
@@ -340,6 +356,18 @@ Below is the output of `mpg parts --markdown`. When parts change, replace this p
 | `enable` | str |  | — |  |  | power channel; off (<= 0.5) freezes the part's output |
 | `marker` | any |  | — |  |  | ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one |
 | `bind` | any |  | — |  |  | R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, applied every body step, clipped to the value's range |
+
+### `addon_station`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.3, 0.3]` | [0.2, 2] |  | pad size [x, y] |
+| `addon` | enum |  | `roller` | `roller` |  | the addon it puts on or takes off |
+| `mode` | enum |  | `attach` | `attach`, `detach`, `toggle` |  | attach, detach or toggle |
+| `cooldown` | float | s | `1.0` | [0, 60] |  | time after a switch before the station switches again |
+| `max_speed` | float | m/s | `0.1` | [0.01, 1] |  | the body must be slower than this (horizontal) to switch |
 
 ### `ball`
 
@@ -1031,6 +1059,7 @@ Role `switch`, update stage `input`.
 | `beak/stick` | `stick` | `length: 0.2`, `mass: 0.02` |
 | `beak/wall_button_beak_low` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.15`, `size: [0.12, 0.06]` |
 | `beak/wall_button_beak_mid` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.2`, `size: [0.12, 0.06]` |
+| `device/addon_roller` | `addon_station` | `addon: roller`, `mode: attach`, `size: [0.3, 0.3]`, `max_speed: 0.1`, `cooldown: 1.0` |
 | `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
