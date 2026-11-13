@@ -21,7 +21,10 @@ default walking body's highest colliding geom tops out at 0.30 m walking (measur
 the default 0.34 m leaves 4 cm.
 `state()` (and channel `<name>.lift`) is the lift over `clearance`, 0..1; `<name>.open`
 is 1 once the lift reaches `clearance`. The planners treat it as a gate: in the static
-order (`mpg check`) it opens when a rope in the room can tie to it (it has no switch);
+order (`mpg check`) it opens when a rope in the room that can tie to it has a pulley over
+it (it has no switch; `_over`: a `via` point whose xy lies in the panel's footprint, the
+`width` + 2 cm by `thickness` box the panel fills, and whose z is above the hitch at the
+open lift, `height` + 0.003 + `clearance`; a rope without one never lifts the panel);
 on live walks (`demo:` steps, the grid answer) it blocks until `state()` reaches 1
 (`passable_state`), not at the 0.3 other gates pass at: a half-lifted panel hits the head.
 `travel` is the most it lifts (joint range).
@@ -79,7 +82,8 @@ class RopeDoor(Part):
         if self.travel < self.clearance:
             raise SchemaError(f"part {name!r}: travel {self.travel:g} m is less than clearance "
                               f"{self.clearance:g} m: it could never open")
-        self.liftable = False         # a rope in the room can tie to it (planning)
+        self.tiable = False           # a rope in the room can tie to it
+        self.liftable = False         # ... and has a pulley over it (planning, `_over`)
         self.q = 0.0
 
     @classmethod
@@ -89,7 +93,18 @@ class RopeDoor(Part):
         ropes = [p for p in parts.values() if isinstance(p, Rope)]
         for p in parts.values():
             if isinstance(p, RopeDoor):
-                p.liftable = any(p.name in r.ends_cfg or None in r.ends_cfg for r in ropes)
+                ties = [r for r in ropes if p.name in r.ends_cfg or None in r.ends_cfg]
+                p.tiable = bool(ties)
+                p.liftable = any(p._over(v) for r in ties for v in r.via)
+
+    def _over(self, v) -> bool:
+        """`v` (world [x, y, z]) is a pulley that lifts this door: its xy is in the panel's
+        footprint and it is above the hitch at the open lift (module docstring)."""
+        d = np.asarray(v[:2], float) - self.xy
+        along = abs(float(d @ self._axis_vec()))
+        across = abs(float(d @ self._axis_vec()[::-1]))
+        return (along <= self.width / 2 + 0.01 + 1e-9 and across <= self.thickness / 2 + 1e-9
+                and float(v[2]) > self.height + 0.003 + self.clearance)
 
     def _axis_vec(self) -> np.ndarray:
         return np.array([0.0, 1.0]) if self.axis == "y" else np.array([1.0, 0.0])
@@ -145,7 +160,13 @@ class RopeDoor(Part):
         return [Segment(tuple(self.xy - a), tuple(self.xy + a), self.thickness)]
 
     def check_static(self, env) -> list[str]:
-        if not self.liftable:
+        if not self.tiable:
             return [f"rope door {self.name!r}: no rope in the room can tie to it (name it as a rope's "
                     f"`a` or `b`, or leave a rope end free for a hitch station), so it never opens"]
+        if not self.liftable:
+            top = self.height + 0.003 + self.clearance
+            return [f"rope door {self.name!r}: no rope that can tie to it has a `via` pulley over it "
+                    f"(xy within its {self.width + 0.02:g} x {self.thickness:g} m footprint at "
+                    f"{tuple(round(float(c), 3) for c in self.xy)}, z above {top:.3f} m, its hitch "
+                    f"when open), so no pull lifts it"]
         return []

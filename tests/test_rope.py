@@ -129,11 +129,11 @@ def test_room_without_rope_builds_as_before(make):
 
 
 def test_bad_hitch_names_and_cap(make):
-    with pytest.raises(RoomError, match="not a hitch"):
+    with pytest.raises(RoomError, match="not a hitch .*a rope door"):
         make([{**ROPE, "b": "goal"}])
     with pytest.raises(RoomError, match="no hitch"):
         make([{**ROPE, "b": None, "tied": ["a", "b"]}])
-    with pytest.raises(RoomError, match="max_hitches"):
+    with pytest.raises(RoomError, match="rope doors.*max_hitches"):
         make([SLED, {**ROPE, "max_hitches": 1}])
 
 
@@ -736,8 +736,22 @@ def test_rope_door_is_liftable_with_a_rope_and_a_fixed_hitch(make):
     assert door.liftable and door.check_static(env) == [] and rope.check_static(env) == []
     assert rope.tied_hitch(0).kind == "door" and rope.tied_hitch(0).fixed
     plain = make([DOOR, {**LIFT, "via": None, "length": 0.5}], spawn=(0.25, 0.0))
+    assert not plain.parts["door"].liftable and "no rope that can tie to it has a `via` pulley over it" \
+        in plain.parts["door"].check_static(plain)[0]
     plain.warp("body", (-0.8, 0.5, 0.0))               # a door end is fixed: it comes loose, the rope goes along
     assert rope_of(plain).tied == [None, 0]             # end b stays on the body (hitch 0)
+
+
+@pytest.mark.parametrize("via, ok", [((0.6, 0.0, 0.85), True), ((0.6, 0.26, 0.85), True),
+                                     ((0.6, 0.27, 0.85), False), ((0.62, 0.0, 0.85), True),
+                                     ((0.63, 0.0, 0.85), False), ((0.6, 0.0, 0.59), False),
+                                     ((0.6, 0.0, 0.6), True)])
+def test_rope_door_needs_a_pulley_over_its_footprint(make, via, ok):
+    """The rule (rope_door `_over`): the via point's xy in the panel's 0.52 x 0.04 m footprint
+    (axis y), its z above the hitch at the open lift (0.25 + 0.003 + 0.34 = 0.593 m)."""
+    env = make([DOOR, {**LIFT, "via": [list(via)]}], spawn=(0.25, 0.0))
+    door = env.parts["door"]
+    assert door.liftable == ok and (door.check_static(env) == []) == ok
 
 
 def cleat_room(make, **pad):

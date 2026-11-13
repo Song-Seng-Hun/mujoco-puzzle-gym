@@ -64,6 +64,18 @@ def test_box_dragged_into_a_pit_must_be_flush(asset_dir, tmp_path):
     assert not check(pit_room(tmp_path, 0.3), static_only=True)["parts"]["ok"]
 
 
+def test_cleat_hold_without_its_pulley_fails_static(tmp_path):
+    """A rope door opens in the static order only with a pulley over it (cleat_hold passes above)."""
+    raw = yaml.safe_load((TOW / "cleat_hold.yaml").read_text())
+    for p in raw["parts"]:
+        if p.get("type") == "rope":
+            p.pop("via")
+    out = tmp_path / "cleat_hold.yaml"
+    out.write_text(yaml.safe_dump(raw))
+    res = check(out, static_only=True)
+    assert not res["parts"]["ok"] and "no rope that can tie to it has a `via` pulley" in res["parts"]["reason"]
+
+
 # ---- slow: the rope steps are needed ------------------------------------------------------
 def without(path, tmp_path, demo, drop=()):
     raw = yaml.safe_load(path.read_text())

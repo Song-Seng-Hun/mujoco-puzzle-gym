@@ -318,12 +318,13 @@ class Rope(Part):
             for e, h in zip(ENDS, r.ends_cfg):
                 if h and h != BODY_HITCH and h not in hitchable:
                     raise SchemaError(f"part {r.name!r}: {e}: {h!r} is not a hitch (use `body`, an anchor, "
-                                      f"an npc or an object with `hitch: true`; hitches: {sorted(hitchable)})")
+                                      f"a rope door, an npc or an object with `hitch: true`; "
+                                      f"hitches: {sorted(hitchable)})")
         n = len(hitchable) + 1
         cap = min(r.cfg["max_hitches"] for r in ropes)
         if n > cap:
-            raise SchemaError(f"room has {n} rope hitches (body, anchors, npcs, objects with hitch: true), "
-                              f"more than max_hitches {cap}")
+            raise SchemaError(f"room has {n} rope hitches (body, anchors, rope doors, npcs, objects with "
+                              f"hitch: true), more than max_hitches {cap}")
         rest = list(parts.items())
         parts.clear()
         for k, v in rest:
