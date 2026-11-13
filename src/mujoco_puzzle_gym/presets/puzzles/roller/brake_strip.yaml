@@ -1,0 +1,33 @@
+# Brake strip (R30): the detach station before the steps is a short pad (0.3 m)
+# laid on a brake strip (`trap/brake_strip`, wheel joint friction 0.01 N m). A
+# duck rolling in at 0.3-0.5 m/s stops on the strip 0.08-0.13 m past its edge,
+# on the pad, and the station takes the wheels off; then walk up the steps
+# (1 cm each) to the goal. Without the strip it coasts 0.24-0.44 m, past the pad.
+name: brake_strip
+cell: 0.1
+step_height: 0.01
+map: |
+  ######################################
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  #..........................1122333333#
+  ######################################
+spawn: {pos: [-1.65, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: wheels_on, preset: device/addon_roller, pos: [-1.25, 0.0], size: [0.3, 1.18]}
+  - {name: brake, preset: trap/brake_strip, pos: [0.5, 0.0], size: [0.4, 1.18]}
+  - {name: wheels_off, preset: device/addon_roller, mode: detach, pos: [0.5, 0.0], size: [0.3, 1.18]}
+  - {name: goal, type: goal, pos: [1.5, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - addon wheels_on
+  - addon wheels_off
+  - goto goal

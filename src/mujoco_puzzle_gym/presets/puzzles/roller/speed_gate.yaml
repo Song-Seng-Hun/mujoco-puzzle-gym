@@ -1,0 +1,20 @@
+# Speed gate (R30, R5 `min_speed`): the zone across the corridor turns on only
+# for a body crossing it at 0.28 m/s or faster (averaged over ~0.5 s); it opens
+# the one-shot door. Walking peaks at 0.20-0.25 m/s, rolling crosses at
+# 0.32-0.5 m/s: put the wheels on at the station and take a run-up.
+name: speed_gate
+size: [3.6, 0.8]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.9, -0.4], to: [0.9, -0.28]}
+  - {from: [0.9, 0.28], to: [0.9, 0.4]}
+spawn: {pos: [-1.6, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: station, preset: device/addon_roller, pos: [-1.2, 0.0]}
+  - {name: gate, preset: input/body_zone, pos: [0.0, 0.0], size: [0.3, 0.8], min_speed: 0.28}
+  - {name: door, preset: device/oneshot_door, pos: [0.9, 0.0], in: [gate]}
+  - {name: goal, type: goal, pos: [1.4, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - addon station
+  - press gate
+  - goto goal

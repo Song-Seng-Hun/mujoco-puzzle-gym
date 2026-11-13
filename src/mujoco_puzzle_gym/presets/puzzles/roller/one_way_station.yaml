@@ -1,0 +1,36 @@
+# One-way stations (R30): an attach-only station at the west end and a
+# detach-only station across the room, before the steps up to the goal (1 cm
+# each). The one-shot door opens only for a body crossing the speed zone
+# (`min_speed` 0.28 m/s) on wheels, and the steps take feet: fetch the wheels
+# in the west first (the detach pad does nothing to a walking body), roll east
+# through the zone and the door, then stop on the detach pad.
+name: one_way_station
+cell: 0.1
+step_height: 0.01
+map: |
+  ##########################################
+  #..........................#........12333#
+  #..........................#........12333#
+  #..........................#........12333#
+  #...................................12333#
+  #...................................12333#
+  #...................................12333#
+  #...................................12333#
+  #...................................12333#
+  #...................................12333#
+  #..........................#........12333#
+  #..........................#........12333#
+  #..........................#........12333#
+  ##########################################
+spawn: {pos: [-1.0, 0.0], yaw: 3.14, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: wheels_on, preset: device/addon_roller, pos: [-1.6, 0.0], size: [0.3, 0.6]}
+  - {name: gate, preset: input/body_zone, pos: [0.0, 0.0], size: [0.3, 1.18], min_speed: 0.28}
+  - {name: door, preset: device/oneshot_door, pos: [0.65, 0.0], width: 0.6, in: [gate]}
+  - {name: wheels_off, preset: device/addon_roller, mode: detach, pos: [1.1, 0.0], size: [0.6, 1.18]}
+  - {name: goal, type: goal, pos: [1.85, 0.0], radius: 0.12, random: [0.02, 0.1]}
+demo:
+  - addon wheels_on
+  - press gate
+  - addon wheels_off
+  - goto goal

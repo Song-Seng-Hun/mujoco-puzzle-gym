@@ -1,0 +1,23 @@
+# Crosswind (R30, R16): a timed corridor with a crosswind across the rolling
+# path. The button keeps the far door open for 7.5 s after the body leaves it
+# (walking needs about 10 s, rolling about 5.5 s); the wind pushes the rolling
+# duck sideways on the way. Default 0.5 N (20/20 seeds); 0.75 N is the hard
+# step (18/20), 1.0 N tips the rolling duck over (12/20).
+name: crosswind
+size: [4.2, 1.2]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [1.4, -0.6], to: [1.4, -0.28]}
+  - {from: [1.4, 0.28], to: [1.4, 0.6]}
+spawn: {pos: [-1.85, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: station, preset: device/addon_roller, pos: [-1.45, 0.0]}
+  - {name: button, preset: input/floor_momentary, pos: [-1.0, 0.0], size: [0.25, 0.6]}
+  - {name: timer, preset: logic/hold, in: [button], seconds: 7.5}
+  - {name: wind, preset: trap/crosswind, pos: [0.1, 0.0], size: [0.6, 1.2], power: 0.5}
+  - {name: door, preset: device/sliding_door, pos: [1.4, 0.0], in: [timer]}
+  - {name: goal, type: goal, pos: [1.8, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - addon station
+  - press button
+  - goto goal
