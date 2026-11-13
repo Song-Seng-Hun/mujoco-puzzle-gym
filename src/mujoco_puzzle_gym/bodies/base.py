@@ -155,6 +155,13 @@ class BodyAdapter(ABC):
         """DOF indices of the addon wheels' joints (brake strip, R30); empty without wheels."""
         return []
 
+    # ---- tow hitch (R31) ----------------------------------------------------
+    def tow_site(self, spec: mujoco.MjSpec | None = None) -> str | None:
+        """Name of the body's tow-rope hitch site in the compiled scene, or None when the
+        body has none. With `spec` (after `spawn`) the site is added to it first (once):
+        only rooms with a rope get it, so other rooms build as before."""
+        return None
+
     # ---- beak (R18, R19) ---------------------------------------------------
     def grab_site(self) -> str | None:
         """Name of the beak-tip site in the compiled scene (weld grab, wall buttons),
