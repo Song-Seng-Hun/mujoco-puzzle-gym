@@ -3,10 +3,12 @@
 - the tow presets are listed, load and pass the static stages with no warnings, and
   their `demo:` uses the rope (`tow`, `drag`, `untow` or a button that unties);
 - a box the `demo:` drags into a pit must be as tall as the pit is deep (top flush
-  with the floor within 1 cm), else the static stage `parts` fails;
+  with the floor within 1 cm) and fit its opening (0-4 cm wider), else the static stage
+  `parts` fails;
 - slow: without the rope steps (or walking straight at the goal) the presets are not
   solved; `cleat_hold` without its handoff station (lift the door, walk back) and
-  `npc_leash` by herding instead of towing are not solved either. Their 20-seed
+  `npc_leash` by herding instead of towing are not solved either; `pit_bridge` without
+  the drag or without untying is not solved. Their 20-seed
   `mpg check` runs in test_examples.py (room presets).
 """
 
@@ -23,7 +25,8 @@ from mujoco_puzzle_gym.floor import CATCH_DEPTH
 from mujoco_puzzle_gym.solver import ScriptedSolver, run_episode
 
 TOW = catalog.PRESET_ROOT / "puzzles/tow"
-NAMES = ["sled_delivery", "drop_and_go", "chain_dropoff", "tethered_start", "cleat_hold", "npc_leash"]
+NAMES = ["sled_delivery", "drop_and_go", "chain_dropoff", "tethered_start", "cleat_hold", "npc_leash",
+         "pit_bridge"]
 
 
 def test_tow_presets_listed():
@@ -115,7 +118,9 @@ def without(path, tmp_path, demo, drop=()):
                                         ("tethered_start", ["goto goal"]),
                                         ("cleat_hold", ["goto goal"]),
                                         ("npc_leash", ["goto goal"]),
-                                        ("npc_leash", ["herd bot zone", "goto goal"])])
+                                        ("npc_leash", ["herd bot zone", "goto goal"]),
+                                        ("pit_bridge", ["untow rope", "goto goal"]),        # no drag: the pit stays open
+                                        ("pit_bridge", ["drag rope pit", "goto goal"])])    # no untow: the rope holds
 def test_tow_presets_need_the_rope_steps(asset_dir, tmp_path, name, demo):
     env = without(TOW / f"{name}.yaml", tmp_path, demo)
     solver = ScriptedSolver(env)
