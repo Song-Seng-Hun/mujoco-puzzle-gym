@@ -87,6 +87,44 @@ parts:
 - 막히는 자리는 부리로 쪼는 데도 필요합니다. 걷기 정책은 명령 0에서도 앞으로 흐르고 뒤로 걷지 못해 빈 바닥에서는 멈춰 설 수 없습니다.
 - 크기는 `size`(바닥 [x, y])와 `height`로 정합니다.
 
+## 전선과 부수기
+
+`type: wire`는 채널 하나(`carries`)를 `to`에 적은 부품들에게 나르는 눈에 보이는 케이블입니다. 전선을 끊으면 **그 부품들만** 채널 대신 `broken_value`(기본 0)를 읽습니다. 같은 채널을 읽는 다른 부품은 그대로여서, 전선은 "두 번째 채널"이 아니라 방 안의 한 자리입니다.
+
+- `to` 항목은 `<부품>`(그 부품이 `carries`를 읽는 모든 자리)이나 `<부품>.<채널>`입니다. 전선 끝은 고정 부품에만 둡니다. 밀 수 있는 부품(`movable: true`)에 이으면 `mpg check`가 거절하고, 그런 연결은 트랜시버(R8)로 합니다.
+- 케이블은 `pos`에서 `path`의 점들을 따라 바닥에 깔리고 충돌하지 않습니다. 마커(R26)는 케이블이 아니라 꼬리표 판에 붙습니다.
+- `breakable: true`면 케이블 덮개가 생깁니다. 덮개는 탄과 물체만 충돌하고 오리와는 충돌하지 않습니다(오리 몸은 몸체마다 제외합니다).
+- 쪼아서 끊을 전선은 덮개를 벽(`mount: wall`, `pos`는 벽면의 한 점, `facing`은 오리가 오는 쪽)이나 오리를 막는 부품(`mount: part`, `on: <부품>`)에 붙입니다. 벽면에서 `depth` 0.04 m 나오고 `height` 0.18 m까지 올라가며, 쪼기 판정은 0.02 m입니다(측정값). 오리는 빈 바닥에서 멈춰 설 수 없어서 막히는 자리여야 합니다.
+- 프리셋: `logic/wire`(그림만), `logic/wire_cut`(벽에 붙은 쪼아 끊는 전선).
+
+`breakable: true`는 몸체가 있는 회로 부품(신호기, 몸체를 켠 게이트·카운터, 전선, 중계기)에 켤 수 있고, `by`에 적은 원인만 셉니다.
+
+| 원인 | 세는 조건 |
+|---|---|
+| `shell` | 대포알(R16)이 `min_speed` 이상으로 맞음. 한 대포알의 한 접촉은 한 번만 셉니다. |
+| `crush` | 물체(R17/R28)가 떨어지거나 눌러 접촉력이 `crush_force`(기본 0.5 N) 이상. 한 물체의 한 접촉은 한 번만 세므로, 얹혀 있는 물체가 매 스텝 체력을 깎지 않습니다. 대포알은 세지 않습니다. |
+| `peck` | 부리 끝이 `peck_dist`(기본 0.02 m) 안에 있는 채 잡기를 켰다 끔. |
+| `destroyer` | 파괴기가 때림. |
+
+- 체력 `hp`만큼 맞으면 부서져 출력이 `broken_value`로 굳고 `<이름>.broken`이 켜지며 모양이 바뀝니다(끊긴 덮개는 색이 어두워지고 충돌이 사라집니다). `<이름>.hp`로 남은 체력을 봅니다.
+- `on_break: fail`은 부수면 에피소드가 실패로 끝납니다(끊으면 안 되는 전선).
+- `repair` 채널이 켜지면 다시 멀쩡해지고 `hp`가 처음 값으로 돌아갑니다. 퓨즈로 고치는 길은 소켓(R5 `receptacle`)이 그 채널을 쓰게 두는 것입니다.
+- 부서짐과 남은 체력은 체크포인트 저장본에 들어가고, 복원·리셋 뒤에 모양을 다시 입힙니다.
+- 측정값(시드 20개씩): 30 g 큐브를 5 cm 떨어뜨리면 0.87 N, 오리가 밀어 누르면 2.6~12.2 N, 그냥 얹어 두면 0.30 N입니다. 그래서 기본값이 0.5 N입니다. 약 51 g보다 무거운 물체는 얹기만 해도 부수므로 `mpg check`가 그런 방을 경고합니다.
+
+`type: relay`는 받은 채널을 그대로 내보내는 상자입니다. 끊을 지점을 방 안에 두는 데 씁니다.
+
+- 기본으로 몸체가 있습니다. `movable: true`면 자유 관절 상자라 밀 수 있고, `hitch: true`면 끈(R31)을 걸어 끌 수 있습니다(프레스 아래로 끌어다 놓는 퍼즐).
+- 프리셋: `logic/relay`.
+
+`type: destroyer`는 `in`이 켜질 때마다 한 번 때리는 망치나 프레스입니다.
+
+- `targets`를 적으면 그 부품들만, 안 적으면 `size` 영역 안에 있는 부서질 수 있는 부품을 때립니다. `cooldown`은 때리는 간격, `charges`는 사용 횟수(안 적으면 무제한)이고 `<이름>.charges`로 남은 횟수를 봅니다.
+- 부서질 수 있는 부품에만 작용합니다. 망치는 모양일 뿐이어서 오리와 물체는 바로 아래에 있어도 힘을 받지 않습니다.
+- 프리셋: `device/destroyer`.
+
+관측 항목 `circuit`은 부서질 수 있는 부품마다 상대 위치와 부서짐 여부를 줍니다(부품당 3개).
+
 ## 움직이는 장치와 설정 변경기
 
 - 플랫폼(`platform`, 프리셋 `device/moving_platform`, `device/elevator`): `pos`에서 잰 `path: [[dx, dy, z], …]`(z는 윗면 높이)를 `speed`로 따라갑니다. `mode`는 `loop`, `pingpong`, `once`이고, `run`은 `always`, `while_signal`(신호가 켜진 동안), `on_signal`(켜지는 순간마다 한 번 운행)입니다. 미끄럼 관절과 위치 구동기로 움직여서 위에 놓인 물체를 함께 나릅니다.
@@ -559,6 +597,15 @@ def majority(inputs, state, dt):
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
 | `pos` | vec | m | `[0.0, 0.0]` |  |  | where the counter stands (`body: true`) or where guides draw it |
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
 | `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
 | `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
 | `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
@@ -593,6 +640,15 @@ def majority(inputs, state, dt):
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
 | `pos` | vec | m | `[0.0, 0.0]` |  |  | where the counter stands (`body: true`) or where guides draw it |
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
 | `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
 | `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
 | `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
@@ -621,6 +677,18 @@ def majority(inputs, state, dt):
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
 | `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
 | `rest_on` | str |  | — |  |  | start resting on this cube's top (pos relative to it; random must be 0) |
+
+### `destroyer`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | area it reaches, around `pos` (ignored when `targets` is given) |
+| `targets` | list |  | `[]` |  |  | parts it strikes (default: whatever is in its area) |
+| `height` | float | m | `0.3` | [0.1, 1] |  | how high the frame stands |
+| `cooldown` | float | s | `0.5` | [0, 60] | 예 | shortest time between two strikes |
+| `charges` | int |  | — | [1, 100] |  | strikes it has (none: unlimited) |
 
 ### `dial`
 
@@ -729,6 +797,15 @@ def majority(inputs, state, dt):
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
 | `pos` | vec | m | `[0.0, 0.0]` |  |  | where the gate stands (`body: true`) or where guides draw it |
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
 | `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
 | `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
 | `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
@@ -1016,6 +1093,29 @@ def majority(inputs, state, dt):
 | `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
 | `consume` | bool |  | `False` |  |  | an accepted object vanishes and stays counted (a dispenser copy goes back, R28) |
 
+### `relay`
+
+역할 `prop`, 갱신 단계 `logic`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
+| `body` | bool |  | `True` |  |  | a relay stands in the room (its whole point); `false` is a bare channel |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
+| `movable` | bool |  | `False` |  |  | free box: it can be pushed, and towed with `hitch: true` (R31) |
+| `mass` | float | kg | `0.5` | [0.05, 20] |  | `movable`: box mass |
+| `friction` | float |  | `1.0` | [0, 2] |  | `movable`: sliding friction |
+| `hitch` | bool |  | `False` |  |  | `movable`: a tow rope (R31) can tie to it |
+
 ### `rope`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -1075,6 +1175,15 @@ def majority(inputs, state, dt):
 
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
 | `body` | bool |  | `True` |  |  | put the source in the room as a box with a lamp (R33) |
 | `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
 | `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
@@ -1230,6 +1339,32 @@ def majority(inputs, state, dt):
 | `power` | float | N | `1.0` | [0, 20] | 예 | force on each body or object in the zone |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it pushes |
 
+### `wire`
+
+역할 `prop`, 갱신 단계 `logic`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
+| `carries` | str |  | — |  |  | the channel this wire carries |
+| `to` | list |  | `[]` |  |  | readers it feeds: `<part>` or `<part>.<channel>` |
+| `path` | any |  | — |  |  | further cable points [[x, y], ...] after `pos` |
+| `thickness` | float | m | `0.012` | [0.004, 0.05] |  | cable radius |
+| `mount` | enum |  | `wall` | `wall`, `part` |  | `breakable`: the cover is on a wall face or on a part's side |
+| `on` | str |  | — |  |  | `mount: part`: the part the cover is fixed to |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | `breakable`: direction the cover faces (0 = +x, the side the duck comes from) |
+| `depth` | float | m | `0.04` | [0.02, 0.2] |  | `breakable`: how far the cover stands off the face (measured, R34) |
+| `height` | float | m | `0.18` | [0.06, 0.5] |  | `breakable`: how high the cover reaches (measured, R34) |
+| `width` | float | m | `0.12` | [0.04, 0.6] |  | `breakable`: cover width along the face |
+
 ### `zone`
 
 역할 `switch`, 갱신 단계 `input`.
@@ -1268,6 +1403,7 @@ def majority(inputs, state, dt):
 | `beak/wall_button_beak_mid` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.2`, `size: [0.12, 0.06]` |
 | `device/addon_roller` | `addon_station` | `addon: roller`, `mode: attach`, `size: [0.3, 0.3]`, `max_speed: 0.1`, `cooldown: 1.0` |
 | `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
+| `device/destroyer` | `destroyer` | `size: [0.3, 0.3]`, `cooldown: 0.5` |
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
 | `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
@@ -1305,10 +1441,13 @@ def majority(inputs, state, dt):
 | `logic/or` | `gate` | `op: or` |
 | `logic/pulse` | `gate` | `op: pulse` |
 | `logic/receiver` | `receiver` | `band: radio`, `delay: 0.0` |
+| `logic/relay` | `relay` | `breakable: True`, `by: ['shell', 'destroyer']`, `hp: 1` |
 | `logic/source_clock` | `source` | `mode: clock`, `period: 4.0`, `duty: 0.5` |
 | `logic/source_const` | `source` | `mode: const`, `value: 1.0` |
 | `logic/source_pattern` | `source` | `mode: pattern`, `pattern: [1.0, 0.0, 1.0, 0.0, 0.0]`, `step: 1.0` |
 | `logic/transmitter` | `transmitter` | `band: radio`, `delay: 0.0` |
+| `logic/wire` | `wire` | `thickness: 0.012` |
+| `logic/wire_cut` | `wire` | `breakable: True`, `by: ['peck']`, `hp: 2`, `mount: wall`, `depth: 0.04`, `height: 0.18` |
 | `logic/xor` | `gate` | `op: xor` |
 | `npc/flee` | `npc` | `behavior: flee`, `speed: 0.08`, `sense: 0.4` |
 | `npc/follow` | `npc` | `behavior: follow`, `sense: 0.8`, `keep: 0.3` |

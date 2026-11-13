@@ -87,6 +87,44 @@ What expressions can use: channel names (a dotted name like `laps.count` is also
 - Being blocked is also what makes pecking possible: the walking body drifts forward at command 0 and cannot walk backwards, so it cannot hold a place on open floor.
 - `size` (footprint [x, y]) and `height` set how big it is.
 
+## Wires and breaking
+
+`type: wire` is a visible cable that carries one channel (`carries`) to the parts in `to`. Cutting it leaves `broken_value` (0 by default) on that channel **for those parts only**. Every other reader of the channel is untouched, which makes a wire a place in the room rather than a second channel.
+
+- `to` entries are `<part>` (every read of `carries` by that part) or `<part>.<channel>`. The ends sit on fixed parts: a wire to something that can be pushed around (`movable: true`) is refused by `mpg check`, and that link belongs to a transceiver (R8).
+- The cable runs from `pos` along `path` flat on the floor and never collides. A marker (R26) goes on the wire's tag plate, not on the cable.
+- `breakable: true` adds the cable cover. Only shells and objects collide with it; the duck is excluded from it body by body.
+- A wire that is cut by pecking has its cover on a wall (`mount: wall`, `pos` a point on the wall face, `facing` the side the duck comes from) or on a part that blocks the duck (`mount: part`, `on: <part>`). It stands `depth` 0.04 m off the face and reaches `height` 0.18 m, and a peck counts within 0.02 m (measured). The duck cannot hold a place on open floor, so the target has to be where something stops it.
+- Presets: `logic/wire` (a picture), `logic/wire_cut` (a wall-mounted wire the duck pecks through).
+
+`breakable: true` works on a circuit part that has a body (a source, a gate or counter with `body: true`, a wire, a relay), and only the causes listed in `by` count.
+
+| Cause | What counts |
+|---|---|
+| `shell` | A cannon shell (R16) hitting it at `min_speed` or faster. One contact of one shell counts once. |
+| `crush` | An object (R17/R28) falling onto it or pressed against it with a contact force of at least `crush_force` (0.5 N by default). One contact of one object counts once, so an object left lying on the part does not drain a hit every step. A shell never counts here. |
+| `peck` | The grab going on and off with the beak tip within `peck_dist` (0.02 m by default). |
+| `destroyer` | A destroyer striking it. |
+
+- At `hp` hits it breaks: its output freezes at `broken_value`, `<name>.broken` turns on and the shape changes (a cut cover turns dark and stops colliding). `<name>.hp` is what is left.
+- `on_break: fail` ends the episode as a failure (a wire that must not be cut).
+- While the `repair` channel is on the part is whole again with its `hp` back at the start value. The fuse route is a socket (R5 `receptacle`) writing that channel.
+- Broken state and hits left are in checkpoint snapshots, and the shape is applied again after a restore or a reset.
+- Measured (20 seeds a condition): a 30 g cube dropped 0.05 m peaks at 0.87 N, pushed by the duck at 2.6-12.2 N, and merely resting on the part at 0.30 N. Hence the 0.5 N default. An object over about 51 g crushes a part by sitting on it, so `mpg check` warns about such a room.
+
+`type: relay` is a box that passes its input channel through, so a circuit has a place to cut.
+
+- It has a body by default. `movable: true` makes it a free box that can be pushed, and `hitch: true` lets a tow rope (R31) drag it (a puzzle that asks for the relay under the press).
+- Preset: `logic/relay`.
+
+`type: destroyer` is a hammer or press that strikes once on every turn-on of `in`.
+
+- With `targets` it strikes those parts, without it whatever breakable part stands in its `size` area. `cooldown` is the shortest time between strikes and `charges` the number it has (none: unlimited); `<name>.charges` is what is left.
+- It acts on breakable parts only. The hammer is a shape, so the duck and objects feel no force from it even standing right under it.
+- Preset: `device/destroyer`.
+
+The `circuit` observation gives each breakable part's position relative to the body and whether it is broken (3 per part).
+
 ## Moving devices and setters
 
 - Platform (`platform`, presets `device/moving_platform`, `device/elevator`): follows `path: [[dx, dy, z], ...]`, measured from `pos` (z is the top face height), at `speed`. `mode` is `loop`, `pingpong` or `once`; `run` is `always`, `while_signal` (while the signal is on) or `on_signal` (one trip per turn-on). It moves on slide joints with position actuators, so objects on it ride along.
@@ -559,6 +597,17 @@ Role `prop`, update stage `logic`.
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
 | `pos` | vec | m | `[0.0, 0.0]` |  |  | where the counter stands (`body: true`) or where guides draw it |
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
 | `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
 | `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
 | `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
@@ -593,10 +642,19 @@ Role `prop`, update stage `logic`.
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
 | `pos` | vec | m | `[0.0, 0.0]` |  |  | where the counter stands (`body: true`) or where guides draw it |
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
 | `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
 | `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
 | `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
-| `up` | str |  | required |  |  | channel whose turn-ons add 1 |
+| `up` | str |  | 필수 |  |  | channel whose turn-ons add 1 |
 | `down` | str |  | — |  |  | channel whose turn-ons subtract 1 |
 | `reset` | str |  | — |  |  | channel whose turn-on sets the count to start |
 | `start` | int |  | `0` | [-1e+06, 1e+06] |  |  |
@@ -621,6 +679,19 @@ Role `prop`, update stage `device`.
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
 | `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
 | `rest_on` | str |  | — |  |  | start resting on this cube's top (pos relative to it; random must be 0) |
+
+### `destroyer`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | area it reaches, around `pos` (ignored when `targets` is given) |
+| `targets` | list |  | `[]` |  |  | parts it strikes (default: whatever is in its area) |
+| `height` | float | m | `0.3` | [0.1, 1] |  | how high the frame stands |
+| `cooldown` | float | s | `0.5` | [0, 60] | 예 | shortest time between two strikes |
+| `cooldown` | float | s | `0.5` | [0, 60] | yes | shortest time between two strikes |
+| `charges` | int |  | — | [1, 100] |  | strikes it has (none: unlimited) |
 
 ### `dial`
 
@@ -731,6 +802,15 @@ Role `prop`, update stage `logic`.
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
 | `pos` | vec | m | `[0.0, 0.0]` |  |  | where the gate stands (`body: true`) or where guides draw it |
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
 | `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
 | `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
 | `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
@@ -1018,6 +1098,29 @@ Role `sensor`, update stage `input`.
 | `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
 | `consume` | bool |  | `False` |  |  | an accepted object vanishes and stays counted (a dispenser copy goes back, R28) |
 
+### `relay`
+
+Role `prop`, update stage `logic`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
+| `body` | bool |  | `True` |  |  | a relay stands in the room (its whole point); `false` is a bare channel |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
+| `movable` | bool |  | `False` |  |  | free box: it can be pushed, and towed with `hitch: true` (R31) |
+| `mass` | float | kg | `0.5` | [0.05, 20] |  | `movable`: box mass |
+| `friction` | float |  | `1.0` | [0, 2] |  | `movable`: sliding friction |
+| `hitch` | bool |  | `False` |  |  | `movable`: a tow rope (R31) can tie to it |
+
 ### `rope`
 
 Role `prop`, update stage `device`.
@@ -1077,17 +1180,26 @@ Role `prop`, update stage `input`.
 
 | Value | Kind | Unit | Default | Range | Runtime change | Description |
 |---|---|---|---|---|---|---|
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
 | `body` | bool |  | `True` |  |  | put the source in the room as a box with a lamp (R33) |
 | `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
 | `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
 | `mode` | enum |  | `const` | `const`, `clock`, `pattern`, `random` |  | const \| clock \| pattern \| random |
-| `value` | float |  | `1.0` | [-1000, 1000] | Yes | `const`: the value it sends |
-| `period` | float | s | `2.0` | [0.02, 3600] | Yes | `clock`: length of one cycle |
-| `duty` | float |  | `0.5` | [0, 1] | Yes | `clock`: share of the cycle that is on |
+| `value` | float |  | `1.0` | [-1000, 1000] | yes | `const`: the value it sends |
+| `period` | float | s | `2.0` | [0.02, 3600] | yes | `clock`: length of one cycle |
+| `duty` | float |  | `0.5` | [0, 1] | yes | `clock`: share of the cycle that is on |
 | `phase` | float | s | `0.0` | [0, 3600] |  | `clock` / `pattern`: shift of the cycle at the episode start |
 | `pattern` | vec |  | — | [-1000, 1000] |  | `pattern`: the values, in order |
 | `step` | float | s | `1.0` | [0.02, 3600] |  | `pattern`: seconds per value |
-| `hold` | float | s | `1.0` | [0.02, 3600] | Yes | `random`: seconds a drawn value is held |
+| `hold` | float | s | `1.0` | [0.02, 3600] | yes | `random`: seconds a drawn value is held |
 | `low` | float |  | `0.0` | [-1000, 1000] |  | `random`: lowest value |
 | `high` | float |  | `1.0` | [-1000, 1000] |  | `random`: highest value |
 | `off_value` | float |  | `0.0` | [-1000, 1000] |  | what it writes while `enable` is off |
@@ -1231,6 +1343,32 @@ Role `prop`, update stage `device`.
 | `power` | float | N | `1.0` | [0, 20] | yes | force on each body or object in the zone |
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it pushes |
 
+### `wire`
+
+Role `prop`, update stage `logic`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
+| `carries` | str |  | — |  |  | the channel this wire carries |
+| `to` | list |  | `[]` |  |  | readers it feeds: `<part>` or `<part>.<channel>` |
+| `path` | any |  | — |  |  | further cable points [[x, y], ...] after `pos` |
+| `thickness` | float | m | `0.012` | [0.004, 0.05] |  | cable radius |
+| `mount` | enum |  | `wall` | `wall`, `part` |  | `breakable`: the cover is on a wall face or on a part's side |
+| `on` | str |  | — |  |  | `mount: part`: the part the cover is fixed to |
+| `facing` | float | deg | `0.0` | [-180, 180] |  | `breakable`: direction the cover faces (0 = +x, the side the duck comes from) |
+| `depth` | float | m | `0.04` | [0.02, 0.2] |  | `breakable`: how far the cover stands off the face (measured, R34) |
+| `height` | float | m | `0.18` | [0.06, 0.5] |  | `breakable`: how high the cover reaches (measured, R34) |
+| `width` | float | m | `0.12` | [0.04, 0.6] |  | `breakable`: cover width along the face |
+
 ### `zone`
 
 Role `switch`, update stage `input`.
@@ -1271,6 +1409,7 @@ Role `switch`, update stage `input`.
 | `beak/wall_button_beak_mid` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.2`, `size: [0.12, 0.06]` |
 | `device/addon_roller` | `addon_station` | `addon: roller`, `mode: attach`, `size: [0.3, 0.3]`, `max_speed: 0.1`, `cooldown: 1.0` |
 | `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
+| `device/destroyer` | `destroyer` | `size: [0.3, 0.3]`, `cooldown: 0.5` |
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
 | `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
@@ -1308,10 +1447,13 @@ Role `switch`, update stage `input`.
 | `logic/or` | `gate` | `op: or` |
 | `logic/pulse` | `gate` | `op: pulse` |
 | `logic/receiver` | `receiver` | `band: radio`, `delay: 0.0` |
+| `logic/relay` | `relay` | `breakable: True`, `by: ['shell', 'destroyer']`, `hp: 1` |
 | `logic/source_clock` | `source` | `mode: clock`, `period: 4.0`, `duty: 0.5` |
 | `logic/source_const` | `source` | `mode: const`, `value: 1.0` |
 | `logic/source_pattern` | `source` | `mode: pattern`, `pattern: [1.0, 0.0, 1.0, 0.0, 0.0]`, `step: 1.0` |
 | `logic/transmitter` | `transmitter` | `band: radio`, `delay: 0.0` |
+| `logic/wire` | `wire` | `thickness: 0.012` |
+| `logic/wire_cut` | `wire` | `breakable: True`, `by: ['peck']`, `hp: 2`, `mount: wall`, `depth: 0.04`, `height: 0.18` |
 | `logic/xor` | `gate` | `op: xor` |
 | `npc/flee` | `npc` | `behavior: flee`, `speed: 0.08`, `sense: 0.4` |
 | `npc/follow` | `npc` | `behavior: follow`, `sense: 0.8`, `keep: 0.3` |
