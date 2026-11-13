@@ -3,7 +3,8 @@
 A room with a `roller` station builds the body with its wheels from the start
 (`BodyAdapter.use_addons`, before the body spawns); the station only switches
 modes. It switches when the body's trunk is inside the pad, its horizontal
-speed is below `max_speed` and the signal comes:
+speed is below `max_speed`, no crouch is running (it waits for the crouch
+to end, still armed) and the signal comes:
 - with `in` channels: when they turn on (`require` all / any), or later while
   they stay on, once the body is on the pad and slow (one switch per turn-on);
 - without `in`: on entering the pad (one switch per visit; leave and come back
@@ -134,6 +135,8 @@ class AddonStation(Part):
         if not (self.armed and inside and self.enabled()) or self.world is None:
             return
         if data.time < self.until or float(np.hypot(*body.lin_vel[:2])) >= self.max_speed:
+            return
+        if getattr(self.world.body, "crouching", False):   # a crouch runs: switch once it ends
             return
         target = self._target(now)
         self.armed = False

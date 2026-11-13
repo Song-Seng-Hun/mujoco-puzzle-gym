@@ -242,6 +242,25 @@ def test_crouch_ignored_unless_rolling_fast(make):
     assert env.body.session is env.body._sessions["crouch"]
 
 
+def test_station_waits_for_a_crouch_to_end(make):
+    env = make([{"name": "src", "type": "t_src", "pos": [0.8, 0.8]},
+                {**STATION, "mode": "detach", "in": ["src"]}])
+    settle(env, 0.0, 0.0)                       # on the detach pad
+    b = env.body
+    b.set_addon(env.data, "roller")
+    env.data.qvel[b._root_qvel] = 0.3
+    assert b.crouch(env.data)
+    env.data.qvel[:] = 0.0                      # crouching on the pad, slow
+    env.parts["src"].value = 1.0                # the detach signal comes mid-crouch
+    switched_mid = []
+    fell = body_steps(env, 3.0, every=lambda e: switched_mid.append(e.body.crouching and e.body.addon != "roller"))
+    assert not any(switched_mid) and b.crouching and b.addon == "roller"
+    fell |= body_steps(env, 1.0)                # the crouch ends: the armed station detaches
+    assert not b.crouching and b.addon == "none"
+    fell |= body_steps(env, 1.0)
+    assert not fell
+
+
 def test_crouch_action_order_and_speed_key():
     room = ROOT / "examples/rooms/roller_rink.yaml"
     assert load_task({"actions": ["move", "grab", "crouch"]}, room=room)
