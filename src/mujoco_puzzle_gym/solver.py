@@ -366,21 +366,16 @@ class ScriptedSolver:
         ends = [rope.tied_hitch(e) for e in range(2)]
         if rope.on_body:
             return ends[1 - rope.tied.index(rope._body_h)]
-        reach = {int(m.body_rootid[env.body.root_body_id(m)])}
-        grew = True
-        while grew:                        # everything tied to the body through other ropes
-            grew = False
-            for r in env.world.ropes:
-                if r is rope:
-                    continue
-                hs = [r.tied_hitch(e) for e in range(2)]
-                if all(h is not None for h in hs) and (hs[0].rid in reach) != (hs[1].rid in reach):
-                    reach |= {hs[0].rid, hs[1].rid}
-                    grew = True
-        for e in range(2):
-            if ends[e] is not None and ends[e].rid in reach:
-                return ends[1 - e]
-        return None
+        from .parts.device.rope import far_end
+
+        others = []
+        for r in env.world.ropes:                 # the other ropes tied at both ends (a chain)
+            hs = [r.tied_hitch(e) for e in range(2)]
+            if r is not rope and None not in hs:
+                others.append((hs[0].rid, hs[1].rid))
+        e = far_end([h.rid if h is not None else None for h in ends], others,
+                    int(m.body_rootid[env.body.root_body_id(m)]))
+        return None if e is None else ends[e]
 
     def drag_act(self, rope, target) -> np.ndarray | None:
         """Walk on so that `rope`'s towed hitch follows into `target`'s floor area (R31);

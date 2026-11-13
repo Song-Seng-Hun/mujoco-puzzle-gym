@@ -105,3 +105,44 @@ def test_walking_straight_does_not_solve(asset_dir, name):
     wins = [walk_straight(env, s)["success"] for s in range(3)]
     env.close()
     assert not any(wins)
+
+
+# ---- review: demo legs and the towed end down a chain --------------------------------------
+def legs_of(env, rope):
+    from mujoco_puzzle_gym.parts.device.rope import reset_towed, tow_legs
+
+    r = env.parts[rope]
+    return [(np.round(a, 2).tolist(), np.round(b, 2).tolist(), t) for a, b, t in tow_legs(env, r, reset_towed(env, r))]
+
+
+def test_chain_dropoff_legs(asset_dir):
+    env = PuzzleEnv(room=TOW / "chain_dropoff.yaml")
+    env.reset(seed=0)
+    try:
+        front, rear = legs_of(env, "front"), legs_of(env, "rear")
+    finally:
+        env.close()
+    # front tows cart_a past drop_b (the rear rope's drag moves the body too) and on to drop_a,
+    # where drop_a unties it: no towing to the goal
+    assert front == [([-2.1, 0.0], [-0.6, 0.35], "cart_a"), ([-0.6, 0.35], [0.6, -0.35], "cart_a")]
+    assert rear == [([-2.1, 0.0], [-0.6, 0.35], "cart_b")]      # untied at drop_b
+
+
+def test_reversed_chain_order_picks_the_far_cart(asset_dir, tmp_path):
+    from mujoco_puzzle_gym.parts.device.rope import demo_far_end, reset_towed
+
+    raw = yaml.safe_load((TOW / "chain_dropoff.yaml").read_text())
+    for p in raw["parts"]:
+        if p["name"] == "rear":                     # written cart_b -> cart_a, untied at end a
+            p.update({"a": "cart_b", "b": "cart_a", "detach_a": "drop_b"})
+            p.pop("detach_b")
+    path = tmp_path / "chain_reversed.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(room=path)
+    env.reset(seed=0)
+    try:
+        rear = env.parts["rear"]
+        assert reset_towed(env, rear) == "cart_b" and demo_far_end(env, rear) == "cart_b"
+        assert legs_of(env, "rear") == [([-2.1, 0.0], [-0.6, 0.35], "cart_b")]
+    finally:
+        env.close()
