@@ -20,7 +20,13 @@
   the part, done once the hitch is inside or comes loose; a short run drags the sled
   into a zone; a drag target needs no `grab` action; a drag leg gets the path warnings;
 - pulleys (`via`): the tendon runs through them, ties and the static checks measure the
-  path through them, a body warp lets go of a pulley rope and leaves it.
+  path through them, a body warp lets go of a pulley rope and leaves it;
+- rope door: gravity shuts it, it blocks until lifted clear (live planning), a rope can
+  lift it (static planning), its hitch is fixed for warps;
+- handoff station: the end moves from the body to the `to:` hitch in one step (never
+  loose; snapshots before and after), holds the door up, a too-far hitch fails;
+- NPC leash area: recomputed on restore and channel unties (not saved), untied outside it
+  walks back; NPC sensors count as switches once a rope can tow the NPC.
 """
 
 import mujoco
@@ -797,3 +803,36 @@ def test_handoff_too_far_fails_and_bad_values(make):
         with pytest.raises(RoomError, match=why):
             make([SLED, CLEAT_POST, ROPE, {**HANDOFF, **bad}])
 
+
+# ---- NPC leash area (R29, R31 npc_leash) ----------------------------------------------------------
+BOT = {"name": "bot", "preset": "npc/flee", "pos": [-1.3, 0.0], "leash": [-1.5, -0.3, -1.1, 0.3]}
+
+
+def test_npc_leash_follows_the_rope_on_restore_and_channels(make):
+    from mujoco_puzzle_gym.parts.npc.rover import Npc
+
+    assert not {"towed", "returning"} & set(Npc.state_keys)          # recomputed, never saved
+    env = make([{"name": "off", "type": "t_rsrc", "pos": [0, 0]}, BOT, {**ROPE, "b": "bot", "detach_b": "off"}])
+    rope, bot, m = rope_of(env), env.parts["bot"], env.model
+    walk(env, 3.0)                                    # dragged out of its leash box
+    assert bot.towed and bot.pos(env.data)[0] > -1.1
+    tied = env.save_snapshot()
+    env.parts["off"].value = 1.0                      # the channel unties the robot's end outside its box
+    body_steps(env, 0.1)
+    assert rope.tied == [0, None] and not bot.towed and bot.returning
+    assert m.jnt_range[bot._j[0], 1] > 100 and m.actuator_gainprm[bot._act, 0].all()
+    loose = env.save_snapshot()
+    env.restore_snapshot(tied)                        # tied again: zero gains, no limits
+    assert bot.towed and not bot.returning and not m.actuator_gainprm[bot._act, 0].any()
+    assert m.jnt_range[bot._j[0], 1] > 100
+    env.restore_snapshot(loose)                       # untied outside: heading back, limits off
+    assert not bot.towed and bot.returning and m.jnt_range[bot._j[0], 1] > 100
+    env.parts["off"].value = 0.0
+    body_steps(env, 8.0)
+    assert -1.5 <= bot.pos(env.data)[0] <= -1.1 and not bot.returning and m.jnt_range[bot._j[0], 1] < 1.0
+
+
+def test_npc_sensor_is_a_switch_when_a_rope_can_tow_the_npc(make):
+    zone = {"name": "zone", "preset": "input/object_zone", "pos": [0.2, 0.0], "trigger": "npc", "objects": None}
+    assert make([BOT, zone]).parts["zone"].role == "sensor"          # outside the leash: no herding there
+    assert make([BOT, zone, {**ROPE, "a": None, "b": None, "tied": []}]).parts["zone"].role == "switch"

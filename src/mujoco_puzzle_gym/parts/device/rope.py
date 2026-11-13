@@ -63,7 +63,10 @@ object, a spring kick of an object, a dispenser recycle (park), a receptacle eje
 NPC leash (R29): while a rope is tied to an NPC robot its velocity actuators get zero
 gains (it is dragged only; `ctrl = 0` would brake) and its `leash` limits are off. Both
 follow the rope state on every reset, restore and tie change; they are not saved.
-Untied outside its leash, the robot walks back in first.
+Untied outside its leash, the robot walks back in first. Planning: when a rope can tie
+to an NPC (it names the NPC or has a free end), input sensors that NPCs set off (trigger
+`npc` or `any`, no `objects` list) count as switches, wherever the leash is: the body
+tows the robot there (`drag`), as it carries an object onto an object sensor.
 
 Signals: `<rope>.attached_a`, `.attached_b`, `.tension` (0..1 of `max_tension`, mean of
 the body step), `.snapped`, `.attach_failed` (pulse), and `body.towing` (1 while any
@@ -330,6 +333,15 @@ class Rope(Part):
                     parts[kn.name] = kn
         ropes[0].writes_body = True
         ropes[0].outputs.append(BODY_TOWING)
+        from ..base import TRIGGERS
+
+        towable = any(getattr(p, "kind", None) == "npc" and any(p.name in r.ends_cfg or None in r.ends_cfg
+                                                                 for r in ropes) for p in parts.values())
+        for p in parts.values():                   # an NPC the body can tow sets these off (planning)
+            trig = getattr(p, "trigger", None)
+            if towable and p.stage == "input" and p.role == "sensor" and p.plan_driver is None \
+                    and trig in TRIGGERS and "npc" in TRIGGERS[trig] and not getattr(p, "names", None):
+                p.role = "switch"
         from ...grab import add_beak
 
         add_beak(parts)                    # knots are grabbable (their rings)
