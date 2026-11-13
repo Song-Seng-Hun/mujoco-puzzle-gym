@@ -1,0 +1,28 @@
+# Chain drop-off (R31): two carts tied in a chain behind the duck (rope `front`:
+# duck to cart_a, rope `rear`: cart_a to cart_b). Zone `drop_b` counts only
+# cart_b and unties the rear rope from it (channel `detach_b`); zone `drop_a`
+# counts only cart_a and unties the front rope from it. The door to the goal
+# opens while both zones hold their carts. The zones lie off the straight way
+# (north, then south), so walking straight on drags the carts past both: steer
+# the chain until cart_b is in the first zone, then on until cart_a is in the
+# second, and go through.
+name: chain_dropoff
+size: [6.0, 1.5]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [1.7, -0.75], to: [1.7, -0.28]}     # divider, opening at y = 0
+  - {from: [1.7, 0.28], to: [1.7, 0.75]}
+spawn: {pos: [-2.1, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: cart_a, type: cube, pos: [-2.4, 0.0], size: 0.1, mass: 0.1, friction: 0.1, hitch: true}
+  - {name: cart_b, type: cube, pos: [-2.7, 0.0], size: 0.1, mass: 0.1, friction: 0.1, hitch: true}
+  - {name: front, type: rope, pos: [-2.1, 0.5], a: body, b: cart_a, length: 0.4, detach_b: drop_a}
+  - {name: rear, type: rope, pos: [-2.6, 0.5], a: cart_a, b: cart_b, length: 0.4, detach_b: drop_b}
+  - {name: drop_b, preset: input/object_zone, pos: [-0.6, 0.35], size: [0.4, 0.4], objects: [cart_b]}
+  - {name: drop_a, preset: input/object_zone, pos: [0.6, -0.35], size: [0.4, 0.4], objects: [cart_a]}
+  - {name: door, preset: device/sliding_door, pos: [1.7, 0.0], in: [drop_a, drop_b]}
+  - {name: goal, type: goal, pos: [2.4, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - drag rear drop_b
+  - drag front drop_a
+  - goto goal

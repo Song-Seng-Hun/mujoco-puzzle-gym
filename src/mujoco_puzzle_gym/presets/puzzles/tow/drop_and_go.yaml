@@ -1,0 +1,23 @@
+# Drop and go (R31): the duck starts tied to the cart. The door to the goal is
+# open only while the cart stands in the drop zone. Drag the cart into the zone,
+# stop on the hitch station at the zone's far edge (it unties the rope) and go
+# through the door alone: walking on with the cart in tow drags it out of the
+# zone and the door shuts.
+name: drop_and_go
+size: [5.0, 1.5]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [1.2, -0.75], to: [1.2, -0.28]}     # divider, opening at y = 0
+  - {from: [1.2, 0.28], to: [1.2, 0.75]}
+spawn: {pos: [-1.9, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: cart, type: cube, pos: [-2.2, 0.0], size: 0.12, mass: 0.15, friction: 0.1, hitch: true}
+  - {name: rope, type: rope, pos: [-1.9, 0.5], a: body, b: cart, length: 0.4}
+  - {name: zone, preset: input/object_zone, pos: [0.0, 0.0], size: [0.5, 0.5], objects: [cart]}
+  - {name: station, type: hitch_station, pos: [0.35, 0.0], mode: detach}
+  - {name: door, preset: device/sliding_door, pos: [1.2, 0.0], in: [zone]}
+  - {name: goal, type: goal, pos: [1.9, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - drag rope zone
+  - untow rope
+  - goto goal

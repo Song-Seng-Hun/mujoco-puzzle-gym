@@ -62,7 +62,9 @@ the body step), `.snapped`, `.attach_failed` (pulse), and `body.towing` (1 while
 rope is tied to the body; written by the room's first rope). Observation item `tow`.
 
 Static check (`mpg check` stage `parts`): `hitch_radius` and `clip_radius` at most
-`length`; the default ends (with their random ranges) within `length`. Warnings: a hitch
+`length`; the default ends (with their random ranges) within `length`; a box the
+`demo:` drags into a pit (`drag <rope> <pit>`) as tall as the pit is deep (rim to the
+catch plane, `floor.CATCH_DEPTH`) within 1 cm, so its top is flush with the floor. Warnings: a hitch
 object whose sliding friction x weight is above DRAG_WARN (OQ9: walking keeps 0.8 of its
 speed up to about 0.4 N), and on the `demo:` way while towing (from `tow <rope> ...` to
 `untow <rope>`, from the start for a rope tying the body to an object or NPC at reset,
@@ -95,6 +97,7 @@ PAIR_FRICTION = [1.0, 1.0, 0.005, 0.0001, 0.0001]
 HITCH_PRIORITY = 2        # hitch objects' own friction wins over the floor's (priority 1)
 DRAG_WARN = 0.4           # [N] OQ9: walking keeps >= 0.8 of its speed up to a steady ~0.4 N
 G = 9.81
+FLUSH_TOL = 0.01          # [m] a box dragged into a pit: its top this close to the floor
 LOOSE_BOX = 1.0e3         # [m] leash limits while a rope holds an NPC (none in effect)
 
 
@@ -627,7 +630,7 @@ class Rope(Part):
         if worst > L + 1e-6:
             out.append(f"rope {self.name!r}: its ends at reset can be {worst:.2f} m apart (random ranges "
                        f"included), longer than its length {L:g} m")
-        return out
+        return out + pit_fill_problems(env, self)
 
     def check_warnings(self, env) -> list[str]:
         out = []
@@ -743,16 +746,10 @@ def tow_path_warnings(env, rope: Rope) -> list[str]:
     and on every `drag <rope> <part>` leg (towing the rope's configured end that is not
     the body when no `tow` named one)."""
     demo = list(getattr(env.room, "demo", []) or [])
-    ends = rope.ends_cfg
-    start = None
-    if BODY_HITCH in ends:
-        e = ends.index(BODY_HITCH)
-        other = ends[1 - e]
-        if rope.tied0[e] and rope.tied0[1 - e] and not getattr(env.parts.get(other), "is_anchor", False):
-            start = other
+    start = _start_towed(env, rope)
     if start is None and not any(e[0] in ("tow", "drag") and e[1] == rope.name for e in demo):
         return []
-    plain = [h for h in ends if h and h != BODY_HITCH]
+    plain = [h for h in rope.ends_cfg if h and h != BODY_HITCH]
     from ...logic import free_mask
 
     grid, parts = env.grid, env.parts
@@ -803,6 +800,65 @@ def tow_path_warnings(env, rope: Rope) -> list[str]:
             out.append(f"rope {rope.name!r}: the demo way bends more than 90 deg within the rope length "
                        f"{L:g} m near ({sharp[0]:.2f}, {sharp[1]:.2f}); the towed {towed!r} catches on the corner")
     return out
+
+
+def _start_towed(env, rope: Rope) -> str | None:
+    """The part the rope tows from the start: its other end when it ties the body to an
+    object or NPC at reset (not an anchor), else None."""
+    ends = rope.ends_cfg
+    if BODY_HITCH not in ends:
+        return None
+    e = ends.index(BODY_HITCH)
+    other = ends[1 - e]
+    if rope.tied0[e] and rope.tied0[1 - e] and not getattr(env.parts.get(other), "is_anchor", False):
+        return other
+    return None
+
+
+def pit_fill_problems(env, rope: Rope) -> list[str]:
+    """A box the `demo:` drags into a pit (`drag <rope> <pit>`) must fill it flush: its
+    height equal to the pit's depth (rim to the catch plane) within FLUSH_TOL, else the
+    walk across it steps down or up (R31 `pit_bridge`). The towed box is the last `tow`
+    hitch, else the rope's configured end that is not the body."""
+    from ...floor import CATCH_DEPTH
+    from ..trap.pit import Pit
+
+    demo = list(getattr(env.room, "demo", []) or [])
+    plain = [h for h in rope.ends_cfg if h and h != BODY_HITCH]
+    towing = _start_towed(env, rope)
+    out = []
+    for e in demo:
+        if e[1:2] != (rope.name,):
+            continue
+        if e[0] == "tow":
+            towing = e[2]
+        elif e[0] == "untow":
+            towing = None
+        elif e[0] == "drag" and isinstance(env.parts.get(e[2]), Pit):
+            towed = towing or (plain[-1] if plain else None)
+            box = env.parts.get(towed) if towed is not None else None
+            if box is None or not box.has_body:
+                continue
+            pit = env.parts[e[2]]
+            depth = float(pit.height_at(pit.xy)[1]) + CATCH_DEPTH
+            h = _height(env, box)
+            if abs(h - depth) > FLUSH_TOL:
+                out.append(f"rope {rope.name!r}: {towed!r} ({h:.2f} m high) dragged into pit {pit.name!r} "
+                           f"({depth:.2f} m deep) leaves its top {abs(depth - h):.2f} m "
+                           f"{'below' if h < depth else 'above'} the floor; a box filling a pit must be "
+                           f"flush within {FLUSH_TOL * 100:.0f} cm")
+    return out
+
+
+def _height(env, part) -> float:
+    """Height [m] of `part`'s colliding geoms (body frame z extent, 0 if none)."""
+    m = env.model
+    lo, hi = math.inf, -math.inf
+    for g in np.nonzero(m.geom_bodyid == part._bid)[0]:
+        if m.geom_contype[g] or m.geom_conaffinity[g]:
+            c = float(m.geom_pos[g][2] + m.geom_aabb[g][2])
+            lo, hi = min(lo, c - float(m.geom_aabb[g][5])), max(hi, c + float(m.geom_aabb[g][5]))
+    return hi - lo if hi > lo else 0.0
 
 
 def _station_for(parts, rope: Rope, hitch: str):

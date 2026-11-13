@@ -1,0 +1,23 @@
+# Sled delivery (R31): the sled (0.2 kg, sliding friction 0.1) is too heavy for
+# the beak (`max_lift_mass` 0.05 kg). Stand on the hitch station next to it: the
+# rope ties the body's hitch to the sled. Walk on: the sled follows behind into
+# the delivery zone, and the one-shot door to the goal opens. Then walk through
+# with the sled in tow (the door is wider than the sled).
+name: sled_delivery
+size: [5.0, 1.5]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [1.2, -0.75], to: [1.2, -0.28]}     # divider, opening at y = 0
+  - {from: [1.2, 0.28], to: [1.2, 0.75]}
+spawn: {pos: [-2.2, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: sled, type: cube, pos: [-1.6, -0.24], size: 0.1, mass: 0.2, friction: 0.1, hitch: true}
+  - {name: rope, type: rope, pos: [-1.6, 0.5], length: 0.4, hitch_radius: 0.35}
+  - {name: station, type: hitch_station, pos: [-1.6, 0.0], mode: attach}
+  - {name: zone, preset: input/object_zone, pos: [0.2, 0.0], size: [0.4, 0.4], objects: [sled]}
+  - {name: door, preset: device/oneshot_door, pos: [1.2, 0.0], in: [zone]}
+  - {name: goal, type: goal, pos: [1.9, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - tow rope sled
+  - drag rope zone
+  - goto goal
