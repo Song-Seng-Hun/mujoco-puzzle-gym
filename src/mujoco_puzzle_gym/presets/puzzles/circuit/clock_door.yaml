@@ -1,0 +1,17 @@
+# Clock door (R33 `source` mode clock): nothing to break here, this is the plain
+# circuit room. The clock source is on for 3 s of every 5 and drives the door in
+# the divider, so the duck has to arrive while the door is up and walk through
+# before it comes down again. The scripted answer just walks: at a closed door the
+# planner has no way through and the duck waits in front of it.
+name: clock_door
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.8]}
+parts:
+  - {name: tick, preset: logic/source_clock, pos: [-1.3, 0.8], period: 5.0, duty: 0.6}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [tick]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}
+demo: [goto goal]

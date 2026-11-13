@@ -1,0 +1,8 @@
+# Task for the preset puzzles/circuit/wrong_wire (R34): the beak does the work
+# (pecking a cover, or carrying the fuse), so the actions add `head` and `grab`.
+# Without them `mpg check` fails the stage `actions`. Missing keys take task.DEFAULTS.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/circuit/wrong_wire.yaml
+env:
+  episode_seconds: 60
+actions: [move, head, grab]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, target_pos, beak, circuit]

@@ -1,0 +1,27 @@
+# Cut the lock (R33, R34): a signal source feeds a wire, the wire feeds a relay,
+# and the relay locks the door while its signal is on (a `not` gate between them,
+# so the door opens once the relay goes dark). The relay stands across the room
+# where only the turret reaches it: push the aim lever to the middle cell, step on
+# the fire button, and the shell breaks the relay. Then the door is open.
+# `mpg check`'s circuit stage reads the graph: breaking `link` reaches `open` and
+# `door`, which is what the demo claims.
+name: cut_the_lock
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, -0.6], yaw: 0.0, random: [0.08, 0.1, 0.8]}
+parts:
+  - {name: sig, preset: logic/source_const, pos: [-1.35, -0.95], body: false}
+  - {name: link, preset: logic/relay, pos: [-0.25, 0.75], in: [sig], by: [shell],
+     size: [0.1, 0.1], height: 0.3}
+  - {name: cable, preset: logic/wire, pos: [-1.3, -0.9], carries: sig, to: [link]}
+  - {name: open, preset: logic/not, in: [link]}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [open]}
+  - {name: aim, preset: beak/lever, pos: [-0.5, -0.45], facing: 180}
+  - {name: fire, preset: input/floor_momentary, pos: [-1.0, 0.25]}
+  - {name: turret, preset: trap/cannon_turret, pos: [-1.05, 0.75], yaw: 0.0, in: [fire],
+     aim_pitch: 8.0, bind: {aim_yaw: {from: aim.angle, map: [-1, 1, -30, 30]}}}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}
+demo: [break link via shell, goto goal]

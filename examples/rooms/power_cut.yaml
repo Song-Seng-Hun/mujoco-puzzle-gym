@@ -1,0 +1,44 @@
+# Example room (R24 `power_cut.yaml`, R33 + R34): three circuit rooms in a row.
+# 1. The clock source drives the first door: it is up for 6 s of every 10, so walk
+#    through while it is open. A door that shuts in the gateway is where the duck
+#    swerves and falls, so the open stretch is long enough to clear it.
+# 2. The lock relay carries the always-on signal to the `not` gate that holds the
+#    second door shut. Push the aim lever to the middle cell, step on the fire
+#    button, and the shell breaks the relay: the door opens.
+# 3. In the last room the press has one charge and the signal spends it in the
+#    first body step, so the feed relay is already broken and the last door is
+#    dead. Take the fuse marked 3 from the dispenser, set it against the relay,
+#    and the circuit lives again.
+# Task: examples/task_power_cut.yaml (`head` and `grab`, 120 s episodes).
+name: power_cut
+size: [5.2, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [-1.4, -1.0], to: [-1.4, -0.28]}     # clock door
+  - {from: [-1.4, 0.28], to: [-1.4, 1.0]}
+  - {from: [0.2, -1.0], to: [0.2, -0.28]}       # lock door
+  - {from: [0.2, 0.28], to: [0.2, 1.0]}
+  - {from: [1.8, -1.0], to: [1.8, -0.28]}       # feed door
+  - {from: [1.8, 0.28], to: [1.8, 1.0]}
+spawn: {pos: [-2.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+parts:
+  - {name: tick, preset: logic/source_clock, pos: [-2.4, 0.8], period: 10.0, duty: 0.6}
+  - {name: clock_door, preset: device/sliding_door, pos: [-1.4, 0.0], in: [tick]}
+  - {name: sig, preset: logic/source_const, pos: [-2.4, -0.8], body: false}
+  - {name: lock_relay, preset: logic/relay, pos: [-0.15, 0.75], in: [sig], by: [shell],
+     size: [0.1, 0.1], height: 0.3}
+  - {name: cable, preset: logic/wire, pos: [-2.35, -0.75], carries: sig, to: [lock_relay]}
+  - {name: open, preset: logic/not, in: [lock_relay]}
+  - {name: lock_door, preset: device/sliding_door, pos: [0.2, 0.0], in: [open]}
+  - {name: aim, preset: beak/lever, pos: [-0.6, -0.45], facing: 180}
+  - {name: fire, preset: input/floor_momentary, pos: [-1.1, 0.3]}
+  - {name: turret, preset: trap/cannon_turret, pos: [-0.95, 0.75], yaw: 0.0, in: [fire],
+     aim_pitch: 8.0, bind: {aim_yaw: {from: aim.angle, map: [-1, 1, -30, 30]}}}
+  - {name: feed, preset: logic/relay, pos: [1.1, 0.6], in: [sig], by: [destroyer],
+     repair_with: 3, size: [0.1, 0.1], height: 0.12}
+  - {name: press, type: destroyer, pos: [1.1, 0.6], in: [sig], targets: [feed], charges: 1}
+  - {name: disp, preset: beak/dispenser, pos: [0.6, -0.8], facing: 90,
+     item: {preset: beak/cube_weight, marker: {id: 3}}}
+  - {name: feed_door, preset: device/sliding_door, pos: [1.8, 0.0], in: [feed]}
+  - {name: goal, type: goal, pos: [2.4, 0.0], radius: 0.15, random: [0.08, 0.3]}
+demo: [break lock_relay via shell, take disp, repair feed, goto goal]

@@ -1,0 +1,8 @@
+# Task for examples/rooms/power_cut.yaml (R34): the fuse must be carried, so the
+# actions add `head` and `grab`. Three rooms, a cannon shot and a repair take the
+# scripted solver about 60 s, so episodes are 120 s. Missing keys take task.DEFAULTS.
+room: rooms/power_cut.yaml
+env:
+  episode_seconds: 120
+actions: [move, head, grab]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, target_pos, beak, circuit]

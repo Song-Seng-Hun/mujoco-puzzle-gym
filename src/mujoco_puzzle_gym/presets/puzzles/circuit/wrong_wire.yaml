@@ -1,0 +1,27 @@
+# The wrong wire (R34 `on_break: fail`): two cable covers on two wall stubs. The
+# one marked 1 carries the lock signal, and cutting it opens the door. The one
+# marked 9 is the alarm line: `on_break: fail` ends the episode as a failure, so
+# the duck has to read the marker (R26 `look`, or the obs `circuit` item) before it
+# starts pecking. The `circuit` stage refuses a `demo:` that breaks the alarm line.
+# Task: examples/task_wrong_wire.yaml (`head` and `grab`).
+name: wrong_wire
+size: [3.0, 2.2]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [-0.45, -1.1], to: [-0.45, -0.35]}   # stub for the lock line
+  - {from: [-0.45, 0.35], to: [-0.45, 1.1]}     # stub for the alarm line
+  - {from: [0.5, -1.1], to: [0.5, -0.28]}       # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.1]}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+parts:
+  - {name: sig, preset: logic/source_const, pos: [-1.35, -1.0], body: false}
+  - {name: alarm, preset: logic/source_const, pos: [-1.35, 1.0], body: false}
+  - {name: good, preset: logic/wire_cut, pos: [-0.42, -0.7], facing: 0.0,
+     carries: sig, to: [open], hp: 1, marker: {id: 1}}
+  - {name: bad, preset: logic/wire_cut, pos: [-0.42, 0.7], facing: 0.0,
+     carries: alarm, to: [siren], hp: 1, on_break: fail, marker: {id: 9}}
+  - {name: open, preset: logic/not, in: [sig]}
+  - {name: siren, preset: logic/not, in: [alarm]}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [open]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}
+demo: [break good via peck, goto goal]
