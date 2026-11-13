@@ -60,7 +60,10 @@ def test_preset_folders_follow_the_spec():
     assert {"input/floor_oneshot", "input/floor_momentary", "input/floor_toggle",
             "logic/and", "device/oneshot_door", "trap/slippery_floor"} <= set(names)
     assert {"puzzles/coins/coin_lock", "puzzles/ball/bowling", "puzzles/ball/ball_ramp",
-            "puzzles/ball/color_sort", "puzzles/ball/mini_soccer"} <= set(catalog.puzzle_preset_names())
+            "puzzles/ball/color_sort", "puzzles/ball/mini_soccer",
+            "puzzles/circuit/cut_the_lock", "puzzles/circuit/peck_cable",
+            "puzzles/circuit/fuse_repair", "puzzles/circuit/sabotage_order",
+            } <= set(catalog.puzzle_preset_names())
 
 
 @pytest.mark.parametrize("preset", catalog.part_preset_names())
