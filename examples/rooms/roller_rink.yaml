@@ -1,0 +1,13 @@
+# Example room (R30, R24 "addon station"): the roller station next to the start
+# puts the wheels on (stand on the pad); the duck then rolls down the rink to
+# the goal at the far end. `demo:` tells the scripted solver to use the station.
+name: roller_rink
+size: [3.0, 1.2]
+wall: {thickness: 0.06, height: 0.25}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.05, 0.1, 0.3]}
+parts:
+  - {name: station, preset: device/addon_roller, pos: [-0.75, 0.0]}
+  - {name: goal, type: goal, pos: [1.15, 0.0], radius: 0.15, random: [0.05, 0.3]}
+demo:
+  - addon station
+  - goto goal

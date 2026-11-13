@@ -145,6 +145,7 @@ parts:
 | [`examples/rooms/cube_socket.yaml`](../examples/rooms/cube_socket.yaml) | 台の上の鍵(マーカー7)を同じ番号のソケットに入れると、ドアが開きます。`--task examples/task_cube_socket.yaml` | `beak/key`, `input/socket`, `device/sliding_door` |
 | [`examples/rooms/wall_button.yaml`](../examples/rooms/wall_button.yaml) | 壁のボタンをくちばしで押すと、ドアが開きます | `beak/wall_button_beak_mid`, `device/sliding_door` |
 | [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | 二つの台の洗濯物をかごに入れる(2枚)と、ドアが開きます。`--task examples/task_laundry.yaml`(60秒のエピソード) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
+| [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | ステーションで車輪を付け、リンクの端のゴールへ転がっていきます | `device/addon_roller` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 文字マップで描いた二つの部屋、階段と坂 | `button`, `door` |
 
 ボールの組み立てプリセットは部屋一つ全体なので、そのまま`mpg check`に渡してもよく、`preset: puzzles/ball/bowling`で敷いて値を変えて使ってもかまいません。
@@ -173,7 +174,7 @@ parts:
 | 段階 | 見るもの |
 |---|---|
 | `stability` | 指令0で10秒間、転んだり計算が発散したりしないか |
-| `solver` | 答えを知っているスクリプトが、ランダム配置20個のうち18個以上を解けるか。部屋に`demo:`(`goto`、`press`、`wait`、`push <ボール> to <ゴールネット>`、`herd <ロボット> <部品>`、`turn <レバーかダイヤル> <値>`、`pull <ひもか引き出し>`、`look <部品>`、`take <ディスペンサー>`)があればその順序に先に従い、残りは格子の解答が引き継ぎます |
+| `solver` | 答えを知っているスクリプトが、ランダム配置20個のうち18個以上を解けるか。部屋に`demo:`(`goto`、`press`、`wait`、`push <ボール> to <ゴールネット>`、`herd <ロボット> <部品>`、`turn <レバーかダイヤル> <値>`、`pull <ひもか引き出し>`、`look <部品>`、`take <ディスペンサー>`、`addon <ステーション>`)があればその順序に先に従い、残りは格子の解答が引き継ぎます |
 
 解答段階は、通った旗ごとにスナップショットを`runs/check/<部屋>/checkpoints/<旗>.pkl`に残します。
 
@@ -297,6 +298,21 @@ curriculum: {mode: forward, order: difficulty_first}
 - 測定値(2026-11-12、シード10個、ディスペンサー`[-0.2, 0.33]` `facing: -90`、かご`[0.25, -0.1]` `consume: true`): `demo: [take d, grab d, place d bk]`が床プレート9/10(9.9–13.3 s)、壁プレート10/10(12.7–25.8 s)。かごが扉を開ける部屋では、格子の解答がかごを床プレート10/10、壁プレート9/10でオンにし、目標まで40 s以内に着くのは床プレート40/40、壁プレート35/40です(標準の0.56 mの扉の隙間、シード40個)。`take`を続けると、プレートから降りてディスペンサーの準備ができたら(`cooldown`)もう一度押します。
 - 既知の限界: かごに入れる成功率はかごの位置によって10回中4–10回です(縁に引っかかる、かごの壁にもたれて転ぶ、かごと部屋の壁の間の隅に閉じこもる)。かごに放したあとは物が止まるまで(消費されれば1.5秒)立ってから、かごの中心から0.28 m(かごの幅の半分 + 体の半径 + 2 cm)まで離れます。置きに行く途中でかごの壁がすぐ前にあり、物がかごの内側の上にあれば、立ったまま放します。格子の解答の計画はかごの壁を障害物と見ます。壁の実際の隙間が体の半径 × 2 + 0.1 m(Microduckは0.32 m)より狭いと計画の格子で塞がり、解答が扉の前で回り続けることがあります。標準の隙間(壁の端の間0.56 m、実際の隙間0.50 m)を使ってください。解答は`button: none`のディスペンサーの入力条件や`max_active`がふさぐ場合を見ません(`mpg check`の動的段階が見つけます)。ロボットを出すディスペンサーはスクリプト解答が使いません。
 
+## アドオンステーション
+
+`addon_station`(プリセット`device/addon_roller`)は、体にアドオン(今は車輪`roller`の一つ)を付け外しする床パッドです。MuJoCoは実行中に体を足せないので、ステーションが一つでもある部屋では、足モデルの両足首の下に公式車輪モデルの車輪4個をあらかじめ付けた合成モデルを作ります(最初は外した状態: 車輪の衝突オフ、非表示)。ステーションのない部屋は今までとまったく同じに作られます。
+
+- 切り替えるとき: 胴体がパッドの中にあり、水平速度が`max_speed`(既定0.1 m/s)より遅く、信号が来たとき。`in`チャンネルがあればそれがオンになったとき(オンのままなら、あとからパッドに来て止まっても切り替える。オンになるたびに一回)、なければパッドに乗ったとき(乗るたびに一回)です。`mode`は`attach`(付ける)、`detach`(外す)、`toggle`(切り替え)。`enable`がオフなら切り替えず、切り替えたあと`cooldown`秒は再び切り替えません。
+- 切り替えでやること(体アダプターの`set_addon`): 車輪か足のメッシュ最低点で胴体の高さを合わせ(付けるとき+23.6 mm、外すとき−15〜−23 mm)、体の速度を0にしてから、衝突リスト・車輪の表示・下層ポリシー(`velstand` ↔ `roller.onnx`、関節は名前で対応)とポリシー履歴を切り替えます。付けた状態の衝突リストは公式車輪モデルのもの(車輪を含む13個)です。
+- 車輪状態の行動: 前の値は押す強さ(−0.6未満は押さず、1秒ほどで止まる。それ以上は0.25〜0.6)、回転の値は目標方向の回る速さ(±1 rad/s。アダプターが目標方向との差を±0.5で切ってポリシーに入れる)です。横の値と`head`は車輪状態では使いません。最大で押すと約0.32 m/s(歩きは最大約0.22 m/s)、回転1で転がりながら1.00 rad/s、立ったまま0.78 rad/s回ります。
+- 信号と観測: `<ステーション>.attached`(車輪を付けている間1)、`body.addon`(0なし、1 roller。部屋の最初のステーションが書く)、観測項目`addon`(現在のモードのワンホット、2個)。
+- リセットはいつも足の状態(`velstand`)から始まります。チェックポイントの保存はモードを含み、車輪状態の保存に戻ると車輪状態になります。ワープは車輪を付けたまま運びます。
+- `crouch`行動: taskの`actions`に`crouch`を入れると(順序は`head`、`grab`、`crouch`)行動が一つ増え、0.5を超えると`roller_crouch.onnx`を3.5秒動かします。車輪状態でないか、速度が`env.crouch_min_speed`(既定0.2 m/s)未満なら無視します。かがんでいる間の転倒判定は傾きだけを見ます。測定値: 胴体の最低0.067 m、かがむ3.5秒の間に0.41〜0.54 m滑走、かがみ28回で転倒0。
+- 解答の`demo:`: `addon <ステーション>`(パッドの中央へ歩いて行き、モードが変わるまで立つ)。格子の解答はステーションを使いません。
+- 測定値(2026-11-13、シード20個): 立ったまま付けて指令0/0.3/0.4で2秒、止まってから外して指令0で2秒、そのあと3秒歩いて転倒0、最大傾き9.3°/13.8°/14.1°(付けたあと)、10.6°以下(外したあと)。1 cmの段差タイルの上でも転びません(テスト、シード10個)。
+- 例[`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): スタート横のステーションで車輪を付け、長いリンクの端のゴールへ転がっていきます。
+- 既知の限界: パッド上のブレーキはありません(車輪関節の摩擦0.0015で、指令0なら自然に止まる)。動きながらの切り替えと、車輪で坂や段を上ることは測っておらず、車輪状態で段に当たる経路を静的点検はまだ警告しません。車輪パズルの組み立てプリセット(`puzzles/roller/`)と`roller_route`の例は次の作業です。
+
 ## Pythonプラグイン
 
 新しい部品は`Part`を継承し、`register_part`で登録します。値を`fields`に`Field`として書けば、範囲の検査と`mpg parts`の表が自動でついてきます。ゲートの関数は`register_logic`で登録し、部屋では`logic: <名前>`で呼びます。
@@ -340,6 +356,18 @@ def majority(inputs, state, dt):
 | `enable` | str |  | — |  |  | power channel; off (<= 0.5) freezes the part's output |
 | `marker` | any |  | — |  |  | ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one |
 | `bind` | any |  | — |  |  | R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, applied every body step, clipped to the value's range |
+
+### `addon_station`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.3, 0.3]` | [0.2, 2] |  | pad size [x, y] |
+| `addon` | enum |  | `roller` | `roller` |  | the addon it puts on or takes off |
+| `mode` | enum |  | `attach` | `attach`, `detach`, `toggle` |  | attach, detach or toggle |
+| `cooldown` | float | s | `1.0` | [0, 60] |  | time after a switch before the station switches again |
+| `max_speed` | float | m/s | `0.1` | [0.01, 1] |  | the body must be slower than this (horizontal) to switch |
 
 ### `ball`
 
@@ -1031,6 +1059,7 @@ def majority(inputs, state, dt):
 | `beak/stick` | `stick` | `length: 0.2`, `mass: 0.02` |
 | `beak/wall_button_beak_low` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.15`, `size: [0.12, 0.06]` |
 | `beak/wall_button_beak_mid` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.2`, `size: [0.12, 0.06]` |
+| `device/addon_roller` | `addon_station` | `addon: roller`, `mode: attach`, `size: [0.3, 0.3]`, `max_speed: 0.1`, `cooldown: 1.0` |
 | `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |

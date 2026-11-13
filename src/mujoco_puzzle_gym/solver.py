@@ -31,7 +31,9 @@ is passable, an opening trapdoor as a hole):
 - `take <dispenser>`: step on its floor plate, press its wall plate with the beak
   tip, or (no plate) stand, until it hands out a copy, then stand until the copy
   rests (at most SETTLE s); later `grab` / `place` / `drop` with the dispenser's
-  name work on that copy (R28).
+  name work on that copy (R28);
+- `addon <station>`: walk onto the station's pad and stand until it switches the
+  body's addon (R30; a station with `in` channels waits for them).
 `press` on a wall button (and a wall button in the grid answer) walks up to
 the plate with the beak tip at its height, or with a held stick's far end
 (R28). Head and grab values are kept between steps (a held object stays held
@@ -60,6 +62,7 @@ STAND = np.array([-1.0, 0.0, 0.0], dtype=np.float32)
 TAKE_SETTLE = 1.5      # [s] take: wait at most this long for a new copy to rest
 WALL_WAIT = 0.35        # [m] off a dispenser's wall plate while it cannot hand out (take)
 REST_SPEED = 0.02      # [m/s] a copy this slow rests
+ADDON_MARGIN = 0.06    # [m] addon: stand this far inside the station's pad edge
 
 
 def plan_free(env, free: np.ndarray, inflate: float) -> np.ndarray:
@@ -98,6 +101,7 @@ class ScriptedSolver:
         self.taken: dict[str, object] = {}     # dispenser -> copy its last `take` handed out
         self._take_from: int | None = None     # take: the dispenser's count when it began
         self._step: tuple | None = None        # grid-answer delivery: ("take" | "grab" | "place", part)
+        self._addon_from: str | None = None    # addon: the body's mode when the sub-goal began
 
     @property
     def in_demo(self) -> bool:
@@ -265,6 +269,22 @@ class ScriptedSolver:
             return STAND.copy() if act is None else act
         return self._walk_to(b)
 
+    def addon_act(self, station) -> np.ndarray | None:
+        """Walk onto addon station `station` and stand until the body's addon mode
+        changes (R30); None once it has."""
+        from .parts.input._sense import in_rect
+
+        env = self.env
+        if self._addon_from is None:
+            self._addon_from = env.body.addon
+        if env.body.addon != self._addon_from:
+            self._addon_from = None
+            return None
+        s = env.body_state
+        if in_rect(s.pos[:2], station.xy, np.maximum(station.half - ADDON_MARGIN, 0.02)):
+            return STAND.copy()
+        return self._walk_to(station)
+
     def _steer(self, field: np.ndarray, target_xy) -> np.ndarray:
         env = self.env
         s = env.body_state
@@ -344,6 +364,8 @@ class ScriptedSolver:
             return self.carrier.pull_act(env.parts[entry[1]])
         if cmd == "look":
             return self.carrier.look_act(env.parts[entry[1]])
+        if cmd == "addon":
+            return self.addon_act(env.parts[entry[1]])
         part = env.parts[entry[1]]
         if part.satisfied():
             return None

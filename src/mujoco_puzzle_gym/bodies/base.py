@@ -16,6 +16,8 @@ import mujoco
 import numpy as np
 
 Pose = tuple[float, float, float]  # x [m], y [m], yaw [rad] on the floor
+#: Addon modes (R30), in the order of signal `body.addon` (0 none, 1 roller) and obs `addon`.
+ADDON_MODES = ("none", "roller")
 #: Called after every physics step inside `BodyAdapter.step` (R5 `substep` hook).
 SubstepFn = Callable[[mujoco.MjModel, mujoco.MjData], None]
 
@@ -125,6 +127,29 @@ class BodyAdapter(ABC):
     @abstractmethod
     def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
         """Restore `history_state` output; call after the MjData state is restored."""
+
+    # ---- addons (R30) ------------------------------------------------------
+    #: Addons the scene was built with (`use_addons`); the current mode is `addon`.
+    addons: frozenset[str] = frozenset()
+    addon: str = "none"
+    #: True while a one-shot crouch runs (the fall check then reads the tilt only).
+    crouching: bool = False
+
+    def use_addons(self, names: Iterable[str]) -> None:
+        """Build the addons `names` into the body (call before `spawn`): a room with an
+        addon station needs its body parts in the model from the start (R30)."""
+        if frozenset(names):
+            raise ValueError(f"{type(self).__name__} has no addons, asked for {sorted(names)}")
+
+    def set_addon(self, data: mujoco.MjData, mode: str, keep_pose: bool = False) -> float:
+        """Switch to addon `mode` ("none" = on its own feet); see the body's docs."""
+        if mode != "none":
+            raise ValueError(f"{type(self).__name__} has no addon {mode!r}")
+        return 0.0
+
+    def crouch(self, data: mujoco.MjData) -> bool:
+        """Start the addon's one-shot crouch if allowed now (R30); False when ignored."""
+        return False
 
     # ---- beak (R18, R19) ---------------------------------------------------
     def grab_site(self) -> str | None:

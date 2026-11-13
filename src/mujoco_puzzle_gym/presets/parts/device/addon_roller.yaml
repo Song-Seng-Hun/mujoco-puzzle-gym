@@ -1,0 +1,11 @@
+# Roller addon station (R30): a floor pad that puts the wheels on the walking
+# body when it stands on the pad (slower than max_speed) and the signal comes;
+# without `in`, on stepping onto the pad. mode: attach | detach | toggle.
+# The body then rolls (roller.onnx); a room with one builds the wheels in.
+# Set: pos, mode, in: [channel, ...] (optional).
+type: addon_station
+addon: roller
+mode: attach
+size: [0.3, 0.3]
+max_speed: 0.1
+cooldown: 1.0

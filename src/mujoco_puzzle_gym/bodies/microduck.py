@@ -41,6 +41,10 @@ from .base import BodyAdapter, BodyState, Capabilities, Pose, SubstepFn, rotate_
 # Files in the asset cache (keys of upstream.lock.json).
 ROBOT_XML = "robot/robot_allcollisions_backlash.xml"
 POLICY_ONNX = "policies/velstand.onnx"
+# Roller addon (R30, OQ7): the official roller model's wheel bodies, its policies.
+ROLLER_XML = "robot/robot_groundcontact_rollers_backlash.xml"
+ROLLER_ONNX = "policies/roller.onnx"
+CROUCH_ONNX = "policies/roller_crouch.onnx"
 
 # Names in the compiled scene carry PREFIX (MjSpec.attach namespace).
 PREFIX = "body/"
@@ -112,6 +116,33 @@ STOP_BELOW = -0.6
 WALK_VX = (0.25, 0.4)
 TURN_IN_PLACE_MIN = 0.5     # |a2| needed to turn in place; mapped to |wz| = 1.0
 
+# Roller addon (R30). The combined model (built only when a room has a `roller`
+# station) hangs the official roller model's wheel bodies tire, tire_2 under
+# ankle_left and tire_3, tire_4 under ankle_right (OQ7). Mounted, exactly the
+# official roller model's colliding geoms collide (13 with the 4 tires, matched
+# by body and mesh name); dismounted, the foot model's set, wheels off and hidden.
+ROLLER_WHEELS = {"ankle_left": ("tire", "tire_2"), "ankle_right": ("tire_3", "tire_4")}
+WHEEL_PREFIX = "w_"
+ADDON_NONE, ADDON_ROLLER = "none", "roller"
+ROLLER_ACTION_SCALE = 0.8   # manifest.json: roller.onnx and roller_crouch.onnx
+# Wheel joint friction [N m]. Upstream's MJCF has 0; OQ7 ran 0.0005-0.003 per seed
+# (with friction > 0 a zero command stops the rolling duck within 1 s). Mid value.
+WHEEL_FRICTIONLOSS = 0.0015
+WHEEL_RGBA = {"tire": (0.12, 0.12, 0.12), "rim": (0.85, 0.85, 0.8)}
+# roller.onnx command (OQ7): vx is a push strength in -0.5..0.6 (|vx| <= 0.15
+# does not move, 0.6 rolls about 0.33 m/s), vy stays 0, and the third slot is the
+# heading error to a target yaw clipped to +-0.5, fed every step (a fixed value
+# spins at 1.5-4.4 rad/s). The adapter keeps that target: the command's third
+# value is a target-yaw rate [rad/s] it integrates.
+ROLLER_CMD_LIMITS = ((-0.5, 0.6), (0.0, 0.0), (-1.0, 1.0))
+ROLLER_VX = (0.25, 0.6)     # action[0] in [STOP_BELOW, 1] -> push; below -> 0 (coast to a stop)
+HEADING_CLIP = 0.5          # [rad] heading-error slot limit (OQ7)
+# roller_crouch.onnx (manifest): episodic 3.5 s, phase command [cos, sin] of
+# phase += dt / 5.0 up to 0.7, action_scale 0.8. Only from speed >= crouch_min_speed.
+CROUCH_PERIOD = 5.0
+CROUCH_END_PHASE = 0.7
+CROUCH_MIN_SPEED = 0.2      # [m/s] spec R30 default
+
 
 class MicroduckAdapter(BodyAdapter):
     cmd_limits = ((-0.4, 0.4), (-0.3, 0.3), (-1.0, 1.0))   # velstand twist ranges
@@ -126,7 +157,7 @@ class MicroduckAdapter(BodyAdapter):
     # without a fall; 5 deg slopes up 10/10 (6 deg 9/10, 7 deg 2/10). beak_height
     # [m]: the beak tip above the floor with the head level (OQ2; `mpg check`
     # asks for the `head` action below it, R19).
-    capabilities = Capabilities(names=frozenset({"walk", "beak_grab"}),
+    capabilities = Capabilities(names=frozenset({"walk", "beak_grab", "roller"}),
                                 values={"max_lift_mass": 0.05, "max_step": 0.01, "max_slope": 5.0,
                                         "beak_height": 0.21})
 
@@ -146,10 +177,21 @@ class MicroduckAdapter(BodyAdapter):
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = 1
         opts.inter_op_num_threads = 1
+        self._ort_opts = opts
         self.session = ort.InferenceSession(str(self.policy_path), opts,
                                             providers=["CPUExecutionProvider"])
         self.input_name = self.session.get_inputs()[0].name
         self.output_name = self.session.get_outputs()[0].name
+        self._asset_root = root
+        self._sessions = {"velstand": self.session}
+        self.addons: frozenset[str] = frozenset()   # addons the model is built with (R30)
+        self.addon = ADDON_NONE
+        self.action_scale = ACTION_SCALE
+        self.cmd_limits = type(self).cmd_limits
+        self.crouch_min_speed = CROUCH_MIN_SPEED
+        self.crouch_left = 0          # body steps of crouch left (0: not crouching)
+        self._phase = 0.0
+        self._yaw_target = 0.0
 
         self.bam_model = load_model(motor_name=BAM_MOTOR_NAME, model=BAM_MODEL)
         self.bam_model.actuator.kp = BAM_KP_FW
@@ -167,6 +209,14 @@ class MicroduckAdapter(BodyAdapter):
 
     def command_from_action(self, action: Sequence[float]) -> np.ndarray:
         a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        if self.addon == ADDON_ROLLER:
+            # Roller: below STOP_BELOW no push (the wheels coast to a stop), else a
+            # push in ROLLER_VX; action[2] -> target-yaw rate (+-1 rad/s), lateral unused.
+            wz = a[2] * self.cmd_limits[2][1]
+            if a[0] < STOP_BELOW:
+                return np.array([0.0, 0.0, wz])
+            frac = (a[0] - STOP_BELOW) / (1.0 - STOP_BELOW)
+            return np.array([ROLLER_VX[0] + frac * (ROLLER_VX[1] - ROLLER_VX[0]), 0.0, wz])
         vy = a[1] * self.cmd_limits[1][1]
         if a[0] < STOP_BELOW:
             wz = np.copysign(self.cmd_limits[2][1], a[2]) if abs(a[2]) >= TURN_IN_PLACE_MIN else 0.0
@@ -201,7 +251,67 @@ class MicroduckAdapter(BodyAdapter):
             joint.frictionloss = 0.0
             joint.solref_friction = BAM_STIFF_SOLREF_FRICTION
             joint.solimp_friction = BAM_STIFF_SOLIMP_FRICTION
+        if ADDON_ROLLER in self.addons:
+            self._add_wheels(spec)
         return spec
+
+    # ---- addons (R30) --------------------------------------------------------
+    def use_addons(self, names) -> None:
+        names = frozenset(names)
+        unknown = sorted(names - {ADDON_ROLLER})
+        if unknown:
+            raise ValueError(f"the microduck has no addon {unknown}; it has {[ADDON_ROLLER]}")
+        self.addons = names
+        for n, rel in (("roller", ROLLER_ONNX), ("crouch", CROUCH_ONNX)):
+            if ADDON_ROLLER in names and n not in self._sessions:
+                import onnxruntime as ort
+
+                path = self._asset_root / rel
+                if not path.exists():
+                    raise FileNotFoundError(f"{path} missing; run `mpg fetch-assets` first")
+                self._sessions[n] = ort.InferenceSession(str(path), self._ort_opts,
+                                                         providers=["CPUExecutionProvider"])
+
+    def _roller_spec(self) -> mujoco.MjSpec:
+        path = self._asset_root / ROLLER_XML
+        if not path.exists():
+            raise FileNotFoundError(f"{path} missing; run `mpg fetch-assets` first")
+        rs = mujoco.MjSpec.from_file(str(path))
+        mesh_dir = path.parent / (rs.meshdir or "")
+        for mesh in rs.meshes:
+            if mesh.file:
+                mesh.file = str((mesh_dir / mesh.file).resolve())
+        rs.meshdir = ""
+        return rs
+
+    def _add_wheels(self, spec: mujoco.MjSpec) -> None:
+        """Hang the official wheel bodies under the ankles, dismounted: wheel collisions
+        off, wheel geoms drawn with their own colour (no material) at alpha 0."""
+        self._roller_collide = self._official_collision_set(self._roller_spec())
+        rs = self._roller_spec()
+        for ankle, tires in ROLLER_WHEELS.items():
+            dst = spec.body(ankle)
+            for t in tires:
+                dst.add_frame().attach_body(rs.body(t), WHEEL_PREFIX, "")
+        for ankle, tires in ROLLER_WHEELS.items():
+            for t in tires:
+                b = spec.body(WHEEL_PREFIX + t)
+                for j in b.joints:
+                    j.frictionloss = WHEEL_FRICTIONLOSS
+                for g in b.geoms:
+                    key = "tire" if g.meshname.endswith("tire") else "rim"
+                    g.material = ""
+                    g.rgba = [*WHEEL_RGBA[key], 0.0]
+                    g.contype = 0
+                    g.conaffinity = 0
+
+    @staticmethod
+    def _official_collision_set(rs: mujoco.MjSpec) -> set[tuple[str, str]]:
+        """(body, mesh) names of the official roller model's colliding geoms."""
+        m = rs.compile()
+        return {(m.body(int(m.geom_bodyid[g])).name,
+                 m.mesh(int(m.geom_dataid[g])).name if m.geom_dataid[g] >= 0 else "")
+                for g in range(m.ngeom) if m.geom_contype[g] or m.geom_conaffinity[g]}
 
     @staticmethod
     def _fix_head_camera(spec: mujoco.MjSpec) -> None:
@@ -316,6 +426,127 @@ class MicroduckAdapter(BodyAdapter):
         # the BAM controller's own resistance-based drop stays off.
         self._ctrl = MujocoController(self.bam_model, self._act_names, model, data,
                                       vin_drop_resistance=None, vin_min=None)
+        if ADDON_ROLLER in self.addons:
+            self._bind_wheels(model)
+
+    def _bind_wheels(self, model: mujoco.MjModel) -> None:
+        """Geom sets of the two modes (R30): `_foot_on` (the foot model's colliding geoms,
+        with their compiled contype / conaffinity), `_roller_on` (the official roller set),
+        the ground-contact geoms of each (ankles, tires) and the wheel geoms to hide."""
+        P, W = PREFIX, WHEEL_PREFIX
+        tires = {model.body(P + W + t).id for ts in ROLLER_WHEELS.values() for t in ts}
+        ankles = {model.body(P + a).id for a in ROLLER_WHEELS}
+
+        def bare(name: str) -> str:
+            name = name[len(P):] if name.startswith(P) else name
+            return name[len(W):] if name.startswith(W) else name
+
+        body_root = model.body_rootid[model.body(P + TRUNK_BODY).id]
+        foot, roller, wheel_geoms, wheel_contact, ankle_contact = {}, {}, [], [], []
+        for g in range(model.ngeom):
+            b = int(model.geom_bodyid[g])
+            if model.body_rootid[b] != body_root:
+                continue
+            mesh = bare(model.mesh(int(model.geom_dataid[g])).name) if model.geom_dataid[g] >= 0 else ""
+            key = (bare(model.body(b).name), mesh)
+            if b in tires:
+                wheel_geoms.append(g)
+                if model.geom_group[g] == 3:          # collision class (visual geoms are group 2)
+                    wheel_contact.append(g)
+                    roller[g] = (1, 1)
+                continue
+            ct = (int(model.geom_contype[g]), int(model.geom_conaffinity[g]))
+            if ct == (0, 0):
+                continue
+            foot[g] = ct
+            if b in ankles:
+                ankle_contact.append(g)
+            if key in self._roller_collide:
+                roller[g] = ct
+        # The compiler ORs geom contype / conaffinity into a per-body filter; the wheels
+        # compile with collisions off, so open their bodies' filter once here.
+        for b in tires:
+            model.body_contype[b], model.body_conaffinity[b] = 1, 1
+        self._foot_on, self._roller_on = foot, roller
+        self._wheel_geoms = np.array(wheel_geoms, dtype=int)
+        self._contact = {ADDON_NONE: ankle_contact, ADDON_ROLLER: wheel_contact}
+        self._wheel_rgba = model.geom_rgba[self._wheel_geoms, :3].copy()
+
+    def _apply_addon(self, model: mujoco.MjModel, mode: str) -> None:
+        """Collision groups, wheel visibility, lower policy and command ranges of `mode`."""
+        if self.addons:
+            on = self._roller_on if mode == ADDON_ROLLER else self._foot_on
+            for g in set(self._foot_on) | set(self._roller_on):
+                model.geom_contype[g], model.geom_conaffinity[g] = on.get(g, (0, 0))
+            model.geom_rgba[self._wheel_geoms, 3] = 1.0 if mode == ADDON_ROLLER else 0.0
+        name = "velstand" if mode == ADDON_NONE else ("crouch" if self.crouch_left > 0 else "roller")
+        self.session = self._sessions[name]
+        self.input_name = self.session.get_inputs()[0].name
+        self.output_name = self.session.get_outputs()[0].name
+        self.action_scale = ACTION_SCALE if mode == ADDON_NONE else ROLLER_ACTION_SCALE
+        self.cmd_limits = type(self).cmd_limits if mode == ADDON_NONE else ROLLER_CMD_LIMITS
+        self.addon = mode
+
+    def _low_z(self, data: mujoco.MjData, geoms) -> float:
+        """Lowest world z of the mesh vertices of `geoms` in the pose now."""
+        m = data.model
+        zs = []
+        for g in geoms:
+            mid = int(m.geom_dataid[g])
+            if mid < 0:
+                zs.append(float(data.geom_xpos[g][2]))
+                continue
+            a, n = m.mesh_vertadr[mid], m.mesh_vertnum[mid]
+            rot = data.geom_xmat[g].reshape(3, 3)
+            zs.append(float((m.mesh_vert[a:a + n] @ rot[2]).min() + data.geom_xpos[g][2]))
+        return min(zs)
+
+    def set_addon(self, data: mujoco.MjData, mode: str, keep_pose: bool = False) -> float:
+        """Switch the body to addon `mode` ("none" or "roller", R30), in this order: trunk
+        height (the new contact geoms' lowest point onto the old ones', from the pose
+        now), zero trunk velocity, collision groups and wheel visibility, lower policy
+        (velstand <-> roller; joints are matched by name, the action order is the same)
+        with its action history cleared, then `mj_forward`. Returns the height change.
+
+        `keep_pose` (reset, snapshot restore): the pose in `data` already belongs to
+        `mode`; only the model values and the policy are set, nothing moves."""
+        if mode not in (ADDON_NONE, *self.addons):
+            raise ValueError(f"addon {mode!r} not built into this model (built: {sorted(self.addons)})")
+        if self._data is not data:
+            self._bind(data)
+        m = data.model
+        dz = 0.0
+        if not keep_pose:
+            if mode != self.addon:
+                mujoco.mj_forward(m, data)
+                dz = self._low_z(data, self._contact[self.addon]) - self._low_z(data, self._contact[mode])
+                q, v = self._root_qpos, self._root_qvel
+                data.qpos[q + 2] += dz
+                data.qvel[v:v + 6] = 0.0
+            self.crouch_left = 0
+            self.last_action[:] = 0.0
+            self._yaw_target = yaw_from_quat(data.qpos[self._root_qpos + 3:self._root_qpos + 7])
+        self._apply_addon(m, mode)
+        mujoco.mj_forward(m, data)
+        return dz
+
+    def crouch(self, data: mujoco.MjData) -> bool:
+        """Start `roller_crouch` (R30): only on wheels, not crouching yet, and at a
+        horizontal speed of at least `crouch_min_speed`. Returns whether it started."""
+        if self.addon != ADDON_ROLLER or self.crouch_left > 0:
+            return False
+        v = self._root_qvel
+        if float(np.hypot(data.qvel[v], data.qvel[v + 1])) < self.crouch_min_speed:
+            return False
+        self.crouch_left = int(round(CROUCH_PERIOD * CROUCH_END_PHASE / self.control_dt))
+        self._phase = 0.0
+        self.last_action[:] = 0.0
+        self._apply_addon(data.model, ADDON_ROLLER)
+        return True
+
+    @property
+    def crouching(self) -> bool:
+        return self.crouch_left > 0
 
     def reset(self, data: mujoco.MjData, pose: Pose = (0.0, 0.0, 0.0)) -> None:
         if self._data is not data:
@@ -336,7 +567,9 @@ class MicroduckAdapter(BodyAdapter):
         self.last_action[:] = 0.0
         self.head = np.zeros(4, dtype=np.float32)
         self._targets = [DEFAULT_POSE.astype(np.float64)] * (self.action_lag + 1)
-        mujoco.mj_forward(data.model, data)
+        self.crouch_left = 0
+        self._yaw_target = yaw
+        self.set_addon(data, ADDON_NONE, keep_pose=True)   # R30: back on feet, velstand
 
     def encoder_pos(self, data: mujoco.MjData) -> np.ndarray:
         q = data.qpos[self._qpos_idx]
@@ -350,7 +583,8 @@ class MicroduckAdapter(BodyAdapter):
         quat = data.xquat[self._trunk]
         command = np.zeros(CMD_DIM, dtype=np.float32)
         command[:3] = cmd
-        command[3:7] = self.head
+        if self.addon == ADDON_NONE:               # the roller policies run with the head at home
+            command[3:7] = self.head
         return np.concatenate([
             data.sensordata[self._gyro],                                 # base_ang_vel (IMU gyro)
             rotate_inverse(quat, np.array([0.0, 0.0, -1.0])),            # projected_gravity
@@ -361,7 +595,10 @@ class MicroduckAdapter(BodyAdapter):
         ]).astype(np.float32)
 
     def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:
+        mode = self.addon
         self.reset(data, pose)
+        if mode != ADDON_NONE:                     # a warp keeps the wheels on (R30)
+            self.set_addon(data, mode)
         if z:
             data.qpos[self._root_qpos + 2] += z
             mujoco.mj_forward(data.model, data)
@@ -388,12 +625,20 @@ class MicroduckAdapter(BodyAdapter):
             "control": copy.deepcopy(c.control),
             "last_ts": c.last_ts,
             "head": self.head.copy(),
+            "addon": self.addon,
+            "crouch_left": self.crouch_left,
+            "phase": self._phase,
+            "yaw_target": self._yaw_target,
         }
 
     def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
         if self._data is not data:
             self._bind(data)
         c = self._ctrl
+        self.crouch_left = int(state.get("crouch_left", 0))
+        self._phase = float(state.get("phase", 0.0))
+        self._yaw_target = float(state.get("yaw_target", 0.0))
+        self.set_addon(data, state.get("addon", ADDON_NONE), keep_pose=True)   # R30
         self.last_action = state["last_action"].copy()
         self._prev_torque = state["prev_torque"].copy()
         self._targets = [t.copy() for t in state["targets"]]
@@ -407,10 +652,13 @@ class MicroduckAdapter(BodyAdapter):
              on_substep: SubstepFn | None = None) -> None:
         if self._data is not data:
             raise RuntimeError("call reset(data) before step(data)")
-        obs = self.observation(data, self.clip_cmd(cmd))
+        cmd = self.clip_cmd(cmd)
+        if self.addon != ADDON_NONE:
+            cmd = self._addon_cmd(data, cmd)
+        obs = self.observation(data, cmd)
         action = self.session.run([self.output_name], {self.input_name: obs[None, :]})[0][0]
         self.last_action = action.astype(np.float32)
-        target = DEFAULT_POSE + self.last_action.astype(np.float64) * ACTION_SCALE
+        target = DEFAULT_POSE + self.last_action.astype(np.float64) * self.action_scale
         model, act = data.model, self.bam_model.actuator
         for _ in range(DECIMATION):
             self._targets = self._targets[1:] + [target]
@@ -428,6 +676,26 @@ class MicroduckAdapter(BodyAdapter):
             mujoco.mj_step(model, data)
             if on_substep is not None:
                 on_substep(model, data)
+        if self.crouch_left > 0:
+            self.crouch_left -= 1
+            if self.crouch_left == 0:              # crouch over: back to roller.onnx
+                self.last_action[:] = 0.0
+                self._yaw_target = yaw_from_quat(data.qpos[self._root_qpos + 3:self._root_qpos + 7])
+                self._apply_addon(model, ADDON_ROLLER)
+
+    def _addon_cmd(self, data: mujoco.MjData, cmd: np.ndarray) -> np.ndarray:
+        """The policy command on wheels: crouch phase [cos, sin, 0], or roller
+        (vx, 0, heading error to the target yaw, which moves at cmd[2] rad/s)."""
+        if self.crouch_left > 0:
+            out = np.array([np.cos(2 * np.pi * self._phase), np.sin(2 * np.pi * self._phase), 0.0])
+            self._phase += self.control_dt / CROUCH_PERIOD
+            return out
+        yaw = yaw_from_quat(data.qpos[self._root_qpos + 3:self._root_qpos + 7])
+        target = self._yaw_target + float(cmd[2]) * self.control_dt
+        err = (target - yaw + np.pi) % (2 * np.pi) - np.pi
+        err = float(np.clip(err, -HEADING_CLIP, HEADING_CLIP))
+        self._yaw_target = yaw + err               # no wind-up past the slot limit
+        return np.array([float(cmd[0]), 0.0, err])
 
     def state(self, data: mujoco.MjData, floor_z: float = 0.0) -> BodyState:
         q, v = self._root_qpos, self._root_qvel
@@ -443,5 +711,7 @@ class MicroduckAdapter(BodyAdapter):
             lin_vel=np.array([c * vw[0] + s * vw[1], -s * vw[0] + c * vw[1], vw[2]]),
             ang_vel=data.qvel[v + 3:v + 6].copy(),
             gravity=gravity,
-            fallen=bool(gravity[2] > FALL_GRAVITY_Z or pos[2] - floor_z < FALL_HEIGHT),
+            # R30: crouching lowers the trunk to about 0.075 m, so only the tilt counts then
+            fallen=bool(gravity[2] > FALL_GRAVITY_Z
+                        or (self.crouch_left == 0 and pos[2] - floor_z < FALL_HEIGHT)),
         )

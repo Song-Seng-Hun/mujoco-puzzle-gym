@@ -5,8 +5,13 @@
   dead zones). One env step = `1 / hz` seconds = several body steps.
   Task `actions: [move, head, grab]` (R19) adds one value each, in that order:
   `head` lowers the head (-1 level .. 1 lowest, `BodyAdapter.set_head`), `grab`
-  closes the beak above 0.5 (grab.py). Without them the head stays level and the
+  closes the beak above 0.5 (grab.py), `crouch` above 0.5 starts the wheels'
+  one-shot crouch (R30; ignored unless on wheels at `env.crouch_min_speed` or
+  faster). Without them the head stays level and the
   beak open; the scripted solver sets them anyway (`scripted_action`).
+- Addons (R30): an addon station asks for a switch (`World.requests` "addon");
+  `advance` runs `BodyAdapter.set_addon` after the body step. Reset puts the body
+  back on its feet; snapshots keep the mode (body history).
 - Observation: concatenation of the task's `obs` items (registry.OBS), a Box as
   in M1. With a `camera` item or task `critic_obs` it is a Dict (R39):
   `vector` (the non-image items), `image` (uint8 C x H x W, camera only) and
@@ -160,6 +165,8 @@ class PuzzleEnv(gym.Env):
             self.body.clip_commands = False
 
         self.actions = list(self.task["actions"])
+        if "crouch_min_speed" in self.task["env"]:                # R30 (default: the body's)
+            self.body.crouch_min_speed = float(self.task["env"]["crouch_min_speed"])
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(2 + len(self.actions),), dtype=np.float32)
         self._renderer = None
         self._reset_sim(np.random.default_rng(0))
@@ -211,6 +218,9 @@ class PuzzleEnv(gym.Env):
             if req[0] in ("move", "kick"):
                 self.push(req[0], req[2], req[3])
                 moved = True
+                continue
+            if req[0] == "addon":                  # R30 station: height, velocity, collisions, policy
+                self.body.set_addon(self.data, req[2])
                 continue
             if req[0] != "warp":
                 continue
@@ -482,18 +492,24 @@ class PuzzleEnv(gym.Env):
         return self._obs(), self._info()
 
     def _apply_extras(self, action) -> None:
-        """Task actions beyond `move` (R19): head level and grab command."""
+        """Task actions beyond `move` (R19): head level, grab command and crouch (R30:
+        above 0.5 starts the addon's crouch; the body ignores it unless on wheels and
+        fast enough)."""
         for name, v in zip(self.actions[1:], np.asarray(action, dtype=np.float64)[3:]):
             if name == "head":
                 self.body.set_head((float(np.clip(v, -1.0, 1.0)) + 1.0) / 2.0)
+            elif name == "crouch":
+                if v > 0.5:
+                    self.body.crouch(self.data)
             else:
                 self.world.grab = float(v)
 
-    def scripted_action(self, move, head: float = -1.0, grab: float = -1.0) -> np.ndarray:
-        """The env action for a scripted move (3 values) with head / grab values in
+    def scripted_action(self, move, head: float = -1.0, grab: float = -1.0,
+                        crouch: float = -1.0) -> np.ndarray:
+        """The env action for a scripted move (3 values) with head / grab / crouch values in
         action units; those the task has no action for are dropped, so the solver
         can do only what a policy can (`mpg check` stage `actions`)."""
-        extra = {"head": head, "grab": grab}
+        extra = {"head": head, "grab": grab, "crouch": crouch}
         return np.array([*np.asarray(move, dtype=np.float32)[:3],
                          *[extra[n] for n in self.actions[1:]]], dtype=np.float32)
 

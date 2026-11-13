@@ -145,6 +145,7 @@ parts:
 | [`examples/rooms/cube_socket.yaml`](../examples/rooms/cube_socket.yaml) | 받침대의 열쇠(마커 7)를 같은 번호의 소켓에 넣으면 문이 열립니다. `--task examples/task_cube_socket.yaml` | `beak/key`, `input/socket`, `device/sliding_door` |
 | [`examples/rooms/wall_button.yaml`](../examples/rooms/wall_button.yaml) | 벽 버튼을 부리로 누르면 문이 열립니다 | `beak/wall_button_beak_mid`, `device/sliding_door` |
 | [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | 받침대 두 곳의 빨래를 바구니에 넣으면(2장) 문이 열립니다. `--task examples/task_laundry.yaml`(60초 판) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
+| [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | 장착대에서 바퀴를 달고 링크 끝의 골로 굴러갑니다 | `device/addon_roller` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 글자 지도로 그린 두 방, 계단과 경사로 | `button`, `door` |
 
 공 조립 프리셋은 방 하나 전체라서 그대로 `mpg check`에 넣어도 되고, `preset: puzzles/ball/bowling`으로 깔고 값을 바꿔 써도 됩니다.
@@ -173,7 +174,7 @@ parts:
 | 단계 | 보는 것 |
 |---|---|
 | `stability` | 명령 0으로 10초 동안 넘어지거나 계산이 터지지 않는지 |
-| `solver` | 정답을 아는 스크립트가 무작위 배치 20개 중 18개 이상을 푸는지. 방에 `demo:`(`goto`, `press`, `wait`, `push <공> to <골대>`, `herd <로봇> <부품>`, `turn <레버 또는 다이얼> <값>`, `pull <줄 또는 서랍>`, `look <부품>`, `take <디스펜서>`)가 있으면 그 순서를 먼저 따르고, 나머지는 격자 해답이 이어 갑니다 |
+| `solver` | 정답을 아는 스크립트가 무작위 배치 20개 중 18개 이상을 푸는지. 방에 `demo:`(`goto`, `press`, `wait`, `push <공> to <골대>`, `herd <로봇> <부품>`, `turn <레버 또는 다이얼> <값>`, `pull <줄 또는 서랍>`, `look <부품>`, `take <디스펜서>`, `addon <장착대>`)가 있으면 그 순서를 먼저 따르고, 나머지는 격자 해답이 이어 갑니다 |
 
 해답 단계는 지나간 깃발마다 저장본을 `runs/check/<방>/checkpoints/<깃발>.pkl`에 남깁니다.
 
@@ -297,6 +298,21 @@ curriculum: {mode: forward, order: difficulty_first}
 - 잰 값(2026-11-12, 시드 10개, 디스펜서 `[-0.2, 0.33]` `facing: -90`, 바구니 `[0.25, -0.1]` `consume: true`): `demo: [take d, grab d, place d bk]`가 발판 9/10(9.9–13.3 s), 벽 판 10/10(12.7–25.8 s). 바구니가 문을 여는 방에서 격자 해답은 바구니를 발판 10/10, 벽 판 9/10 켜고, 목표까지는 40 s 안에 발판 40/40, 벽 판 35/40입니다(표준 0.56 m 문틈, 시드 40개). `take`를 거푸 하면 판에서 내려섰다가 디스펜서가 준비되면(`cooldown`) 다시 누릅니다.
 - 알려진 한계: 바구니에 넣는 성공률은 바구니 자리에 따라 4–10/10입니다(가장자리에 걸리거나 바구니 벽에 기대 넘어짐, 바구니와 방 벽 사이 구석에 갇힘). 바구니에 놓은 뒤에는 물체가 멈출 때까지(소비되면 1.5초) 서 있다가 바구니 가운데에서 0.28 m(바구니 반 폭 + 몸 반지름 + 2 cm)까지 물러납니다. 놓으러 가다 바구니 벽이 바로 앞이면 물체가 바구니 안쪽 위에 있을 때 서서 놓습니다. 격자 해답의 계획은 바구니 벽을 장애물로 봅니다. 벽 사이 실제 틈이 몸 반지름 × 2 + 0.1 m(Microduck 0.32 m)보다 좁으면 계획 격자에서 막혀, 해답이 문 앞에서 맴돌 수 있습니다. 표준 틈(벽 끝 사이 0.56 m, 실제 틈 0.50 m)을 쓰세요. 해답은 `button: none` 디스펜서의 입력 조건과 `max_active`가 막는 경우를 보지 않습니다(`mpg check` 동적 단계가 잡습니다). 로봇을 내보내는 디스펜서는 스크립트 해답이 쓰지 않습니다.
 
+## 애드온 장착대
+
+`addon_station`(프리셋 `device/addon_roller`)은 몸에 애드온(지금은 바퀴 `roller` 하나)을 달거나 떼는 바닥 패드입니다. MuJoCo는 실행 중에 몸체를 더할 수 없어서, 방에 장착대가 하나라도 있으면 발 모델의 양 발목 아래에 공식 바퀴 모델의 바퀴 4개를 미리 붙인 합친 모델을 만듭니다(처음에는 뗀 상태: 바퀴 충돌 꺼짐, 보이지 않음). 장착대가 없는 방은 예전과 똑같이 만들어집니다.
+
+- 바꾸는 때: 몸통이 패드 안에 있고, 수평 속도가 `max_speed`(기본 0.1 m/s)보다 느리고, 신호가 올 때. `in` 채널이 있으면 그것이 켜질 때(켜진 채로 있으면 나중에 패드에 올라와 멈춰도 바꿈, 켜질 때마다 한 번), 없으면 패드에 올라설 때(올라설 때마다 한 번)입니다. `mode`는 `attach`(달기), `detach`(떼기), `toggle`(바꾸기)이고, `enable`이 꺼지면 바꾸지 않으며, 바꾼 뒤 `cooldown` 초 동안은 다시 바꾸지 않습니다.
+- 바꾸는 일(몸 어댑터 `set_addon`): 바퀴 또는 발의 메시 최저점으로 몸통 높이를 맞추고(달 때 +23.6 mm, 뗄 때 −15 ~ −23 mm), 몸 속도를 0으로 한 뒤, 충돌 목록·바퀴 보임·아래층 정책(`velstand` ↔ `roller.onnx`, 관절은 이름으로 맞춤)과 정책 이력을 바꿉니다. 단 상태의 충돌 목록은 공식 바퀴 모델의 것(바퀴 포함 13개)입니다.
+- 바퀴 상태의 행동: 앞 값은 미는 세기(−0.6 아래는 밀지 않고 1초쯤 안에 멈춤, 그 위는 0.25–0.6), 회전 값은 목표 방향을 도는 빠르기(±1 rad/s, 어댑터가 목표 방향과의 차이를 ±0.5로 잘라 정책에 넣음)입니다. 옆 값과 `head`는 바퀴 상태에서 쓰지 않습니다. 끝까지 밀면 약 0.32 m/s(걷기 최고 약 0.22 m/s)이고, 회전 값 1이면 굴러가며 1.00 rad/s, 선 채로 0.78 rad/s 돕니다.
+- 신호와 관측: `<장착대>.attached`(바퀴를 단 동안 1), `body.addon`(0 없음, 1 roller; 방의 첫 장착대가 씀), 관측 항목 `addon`(현재 모드 원-핫 2칸).
+- 리셋은 언제나 발 상태(`velstand`)로 시작합니다. 체크포인트 저장본은 모드를 담아 바퀴 상태 저장본으로 돌아가면 바퀴 상태가 됩니다. 워프는 바퀴를 단 채로 옮깁니다.
+- `crouch` 행동: task `actions`에 `crouch`를 넣으면(순서 `head`, `grab`, `crouch`) 행동 칸이 하나 늘고, 0.5를 넘으면 `roller_crouch.onnx`를 3.5초 돌립니다. 바퀴 상태가 아니거나 속도가 `env.crouch_min_speed`(기본 0.2 m/s) 미만이면 무시합니다. 숙이는 동안 넘어짐 판정은 기울기만 봅니다. 잰 값: 몸통 최저 0.067 m, 숙이는 3.5초 동안 0.41–0.54 m 미끄러짐, 숙이기 28번에서 넘어짐 0.
+- 해답의 `demo:`: `addon <장착대>`(패드 가운데로 걸어가 서서 모드가 바뀔 때까지 기다림). 격자 해답은 장착대를 쓰지 않습니다.
+- 잰 값(2026-11-13, 시드 20개): 선 채로 달고 명령 0/0.3/0.4로 2초, 멈춘 뒤 떼고 명령 0으로 2초, 그 뒤 3초 걷기에서 넘어짐 0, 최대 기울기 9.3°/13.8°/14.1°(달기), 10.6° 이하(떼기). 1 cm 계단 타일 위에서도 넘어지지 않습니다(시험 시드 10개).
+- 예제 [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): 출발점 옆 장착대에서 바퀴를 달고 긴 링크 끝의 골로 굴러갑니다.
+- 알려진 한계: 패드 위 제동은 없습니다(바퀴 관절 마찰 0.0015로 명령 0이면 저절로 멈춤). 움직이는 중 바꾸기, 바퀴로 경사·계단 오르기는 재지 않았고, 바퀴 상태로 계단에 닿는 경로를 정적 점검이 아직 경고하지 않습니다. 바퀴 퍼즐 조립 프리셋(`puzzles/roller/`)과 `roller_route` 예제는 다음 작업입니다.
+
 ## 파이썬 플러그인
 
 새 부품은 `Part`를 상속해 `register_part`로 등록합니다. 값은 `fields`에 `Field`로 적으면 범위 검사와 `mpg parts` 표가 저절로 따라옵니다. 게이트 함수는 `register_logic`으로 등록하고 방에서는 `logic: <이름>`으로 부릅니다.
@@ -340,6 +356,18 @@ def majority(inputs, state, dt):
 | `enable` | str |  | — |  |  | power channel; off (<= 0.5) freezes the part's output |
 | `marker` | any |  | — |  |  | ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one |
 | `bind` | any |  | — |  |  | R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, applied every body step, clipped to the value's range |
+
+### `addon_station`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.3, 0.3]` | [0.2, 2] |  | pad size [x, y] |
+| `addon` | enum |  | `roller` | `roller` |  | the addon it puts on or takes off |
+| `mode` | enum |  | `attach` | `attach`, `detach`, `toggle` |  | attach, detach or toggle |
+| `cooldown` | float | s | `1.0` | [0, 60] |  | time after a switch before the station switches again |
+| `max_speed` | float | m/s | `0.1` | [0.01, 1] |  | the body must be slower than this (horizontal) to switch |
 
 ### `ball`
 
@@ -1027,6 +1055,7 @@ def majority(inputs, state, dt):
 | `beak/stick` | `stick` | `length: 0.2`, `mass: 0.02` |
 | `beak/wall_button_beak_low` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.15`, `size: [0.12, 0.06]` |
 | `beak/wall_button_beak_mid` | `button` | `mount: wall`, `kind: oneshot`, `height: 0.2`, `size: [0.12, 0.06]` |
+| `device/addon_roller` | `addon_station` | `addon: roller`, `mode: attach`, `size: [0.3, 0.3]`, `max_speed: 0.1`, `cooldown: 1.0` |
 | `device/conveyor` | `conveyor` | `size: [0.8, 0.3]`, `axis: x`, `speed: 0.1` |
 | `device/elevator` | `platform` | `size: [0.4, 0.4]`, `path: [[0.0, 0.0, 0.02], [0.0, 0.0, 0.3]]`, `speed: 0.1`, `mode: pingpong`, `run: on_signal` |
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |

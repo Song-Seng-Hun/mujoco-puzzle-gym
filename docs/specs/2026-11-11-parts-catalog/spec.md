@@ -1,5 +1,5 @@
 # Spec: mujoco-puzzle-gym 마일스톤 2 (부품 카탈로그, 신호, 체크포인트, 단계별 학습)
-Status: approved 2026-11-13 (E3b-4: R28 laundry on 0.18 m stands, Open question 8 partly decided: "승인"); approved 2026-11-12 (E3b-3 plan: R28 dispenser parks copies off-stage like the cannon pool, receptacle `consume` and pit return for `recycle`: "승인"; E3b-2 drawer strap about 10 cm: "승인"; E3b-2 measurements: R28 `dial` pushed by spokes, `drawer` opened by a strap and in-place turn: "승인"; E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
+Status: approved 2026-11-13 (16c OQ7: R30 mounted collision set = official roller model's, trunk height from geometry, roller command range, station `max_speed` 0.1 m/s, `crouch_min_speed` 0.2 m/s, pad braking optional, Open question 7 closed: "승인"); approved 2026-11-13 (E3b-4: R28 laundry on 0.18 m stands, Open question 8 partly decided: "승인"); approved 2026-11-12 (E3b-3 plan: R28 dispenser parks copies off-stage like the cannon pool, receptacle `consume` and pit return for `recycle`: "승인"; E3b-2 drawer strap about 10 cm: "승인"; E3b-2 measurements: R28 `dial` pushed by spokes, `drawer` opened by a strap and in-place turn: "승인"; E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
 View (read-only copy): (아직 없음)
 
 근거
@@ -345,15 +345,16 @@ View (read-only copy): (아직 없음)
     - 선 키는 발 모델 0.115 m, 바퀴 모델 0.138 m다. 관측은 같은 61차원이다.
   - 모델: 방에 `roller` 애드온이 하나라도 있으면 build가 발 모델에 바퀴 몸을 미리 붙인 합친 모델을 만든다. 실행 중에 몸을 만들 수 없기 때문이다.
     - 뗀 상태: 바퀴 충돌을 끄고(`geom_contype`/`conaffinity` 0) 보이지 않게 하며, 발 충돌을 켠다.
-    - 단 상태: 바퀴 충돌을 켜고 발 충돌을 끈다. 몸통을 키 차이(약 2.3 cm)만큼 올린다.
+    - 단 상태: 공식 바퀴 모델의 충돌 목록(바퀴 포함 13개)만 켜고 나머지 몸 충돌은 끈다. 발 충돌만 끄면 바퀴로 밀 때 몸통 베어링이 엉덩이 부품에 닿아 속도가 절반으로 떨어진다(Open question 7 측정).
+    - 몸통 높이는 바꾸는 순간의 자세에서 메시 최저점으로 계산한다. 잰 값: 달 때 +23.6 mm, 뗄 때 −17.7 ~ −19.3 mm.
     - 바꾸는 일은 몸 어댑터의 `set_addon(mode)` 하나가 모두 맡는다: 몸통 높이를 먼저 맞추고 몸 속도를 0으로 한 뒤, 충돌 그룹·보임·아래층 정책·정책 이력을 함께 바꾸고 `mj_forward`를 한다. 순서가 바뀌면 바퀴가 바닥에 박히거나 발이 떨어진다.
     - `reset()`과 체크포인트 복원은 항상 `set_addon`을 부른다. 충돌 그룹은 모델 값이라 `mj_resetData`나 `mj_getState`로는 되돌아가지 않기 때문이다.
-  - 장착대: 바닥 패드. 오리가 패드 안에 있고 거의 멈춰 있을 때(`max_speed`) 신호를 받으면 바꾼다. 바퀴는 명령 0에서도 미끄러질 수 있어, `max_speed` 기본값은 Open question 7에서 잰 미끄러짐으로 정하고 패드 위에서는 바퀴 관절의 `frictionloss`/`damping`을 높여 멈추게 한다(`brake_strip`과 같은 방식). 바퀴는 감쇠 0의 수동 관절이라 바닥 마찰만 높여서는 계속 굴러간다.
+  - 장착대: 바닥 패드. 오리가 패드 안에 있고 거의 멈춰 있을 때(`max_speed`) 신호를 받으면 바꾼다. `max_speed` 기본값은 0.1 m/s다(Open question 7: 명령 0에서 저절로 움직이는 속도 최대 0.083 m/s, 걷기 0.12 m/s 이상). 바퀴 관절 마찰이 0보다 크면 명령 0으로 1초 안에 멈추므로, 패드 위 제동(`frictionloss`/`damping` 올리기, `brake_strip`과 같은 방식)은 선택이다.
     - 방식: `attach` / `detach` / `toggle`. `enable` 입력과 `cooldown`을 둔다.
     - 바꾸는 순간 몸 어댑터가 아래층 정책을 `velstand` ↔ `roller`로 바꾼다. 관절은 이름으로 맞춘다.
-    - 모드마다 위층 명령 범위를 따로 둔다. `roller` 범위는 E3에서 재서 정한다(Open question 7).
+    - 모드마다 위층 명령 범위를 따로 둔다. `roller`(Open question 7 측정): vx는 미는 세기 −0.5 ~ 0.6(|vx| ≤ 0.15는 움직이지 않음, 0.6에서 약 0.33 m/s, −0.5는 후진 약 −0.28 m/s), vy는 0 고정(0.2에서 공식 모델도 넘어지거나 멈춤), 세 번째 칸은 목표 방향과의 각도 차이를 ±0.5로 잘라 매 스텝 넣는다(고정값은 1.5–4.4 rad/s로 계속 돈다). 행동에서 목표 방향으로 바꾸는 매핑은 구현 때 잰다.
   - 선택 동작: `roller` 상태에서만 `crouch`(`roller_crouch.onnx`)를 행동으로 열 수 있다. 낮은 통로 아래로 미끄러져 지나가는 퍼즐에 쓴다.
-    - task.yaml이 `crouch`를 켜면 행동 칸은 항상 있고, `roller` 상태가 아니거나 속도가 `crouch_min_speed` 미만이면 무시한다. 숙이기는 이미 가진 속도로 미끄러지는 동작이라 멈춘 상태에서는 나아가지 않기 때문이다.
+    - task.yaml이 `crouch`를 켜면 행동 칸은 항상 있고, `roller` 상태가 아니거나 속도가 `crouch_min_speed`(기본 0.2 m/s) 미만이면 무시한다. 숙이기는 이미 가진 속도로 미끄러지는 동작이라 멈춘 상태에서는 나아가지 않기 때문이다.
     - 숙이는 3.5초 동안 넘어짐 판정은 기울기만 본다. 목표 몸통 높이(약 0.075 m)가 높이 기준(0.07 m)과 거의 같기 때문이다.
   - 바퀴 퍼즐 조립 프리셋 `puzzles/roller/` (사용자 2026-11-11: "스케이트 기믹을 고려한 퍼즐 프리셋도 생각해줘"). 속도 기준, 시간, 세기 숫자는 Open question 7의 측정값으로 정한다.
     - `speed_gate`: 구역 센서(R5)에 `min_speed`를 더해 빠르게 지날 때만 켜진다. 걷기 속도로는 못 넘는다.
@@ -741,7 +742,7 @@ flowchart LR
 
 - [x] 6. 마커 텍스처 생성: (a) 사전 50개를 미리 PNG로 만들어 패키지에 넣는다. 의존성은 없다. (b) OpenCV를 개발용 의존성으로 두고 build 때 만든다. 제안은 (a)이고, 검출 시험(R26)에만 OpenCV를 개발용으로 쓴다. (사용자) → 결정: (a).
 
-- [ ] 7. 합친 모델(발 모델 + 바퀴 몸)에서 `roller.onnx`가 공식 바퀴 모델과 같은 동작을 내는지, 그리고 `roller`의 명령 범위. E3 첫 단계에서 공식 바퀴 모델과 합친 모델을 나란히 돌려 비교한다. 다르면 애드온을 에피소드 시작 때만 정하는 방식(공식 바퀴 모델을 통째로 씀)으로 물러난다. (Claude)
+- [x] 7. 합친 모델(발 모델 + 바퀴 몸)에서 `roller.onnx`가 공식 바퀴 모델과 같은 동작을 내는지, 그리고 `roller`의 명령 범위. E3 첫 단계에서 공식 바퀴 모델과 합친 모델을 나란히 돌려 비교한다. 다르면 애드온을 에피소드 시작 때만 정하는 방식(공식 바퀴 모델을 통째로 씀)으로 물러난다. (Claude) → 결정(2026-11-13, 사용자 "승인"): 합친 모델을 쓴다. 단 상태는 공식 바퀴 모델의 충돌 목록을 쓰면 모든 명령에서 공식 모델과 맞는다(속도 10%, 회전 0.1 rad/s 이내, 넘어짐 증가 없음; 예 vx 0.4: 0.30 → 0.29 m/s). 모드 바꾸기는 시드 20개 × 명령 3가지에서 처음 2초 넘어짐 0회, 최대 기울기 15°. `crouch`는 넘어짐 0회, 미끄러짐 최대 0.38 m. 명령 범위와 기본값은 R30에 적었다.
 - [ ] 8. 공식 정책 목록에 `alpha_ground_pick.onnx`(바닥 집기, 2.8초 한 번 동작)가 있다. R18의 용접 잡기 앞에 이 동작을 실제 집는 자세로 쓸 수 있는지 E3에서 확인한다. 같은 단계에서 머리 숙이기(R19 `head`)만으로 `mouth_tip`이 바닥 높이 물체(빨래, 바닥 다이얼)에 닿는지 잰다. 닿지 않으면 `laundry.yaml`과 바닥 다이얼은 ground_pick 동작이나 받침대 높이로 바꾼다. 확인 전에는 R18을 바꾸지 않는다. (Claude) 같은 측정으로 끈 매듭 고리 손잡이 높이(R31)와 부술 수 있는 전선의 맞는 부피 높이(R34)도 정한다. → 부분 결정(2026-11-13, 사용자 "승인"): 머리 숙이기만으로 부리 끝은 0.135 m까지 내려간다(Open question 2 측정). 그래서 `laundry.yaml`은 빨래를 0.18 m 받침대에 둔다(E3b-4 `mpg check` 18/20). `alpha_ground_pick.onnx` 사용 여부와 R31·R34 높이는 아직 열려 있다.
 - [ ] 9. 걷기 정책(`velstand`)이 오리 걸이로 짐을 끌 때 넘어지지 않고 속도를 유지하는 한도: 끌 수 있는 최대 질량과 바닥 마찰 조합, 그때의 장력(`max_tension` 기본값), 출발 순간 장력 튐의 길이(`snap_time`), 매듭 질량별 끈 늘어남, 걸이 높이, 명령 0으로 서 있을 때 뒤로 당기는 고정 짐을 얼마까지 버티는지(`cleat_hold`의 `rope_door` 무게와 연결 패드 `max_speed`를 이 값으로 정함). E3에서 질량을 올려 가며 잰다. 한도가 작으면 `sled_delivery`, `overload`, `pit_bridge`의 짐을 가볍게 다시 정한다. (Claude)
 - [x] 10. 걷기 정책(`velstand`)으로 공을 밀 때 넘어지지 않는 공 질량·반지름 한도와 밀리는 속도. E1 5d 첫 단계에서 빈 방에서 질량을 올려 가며 잰다(R38). → 측정: 반지름 0.05 m 이상이면 0.3 kg까지, 0.08 m 이상이면 1 kg까지 넘어짐 없음. 작고 무거운 공은 넘어진다. 밀리는 속도 0.18–0.24 m/s. 결정: 공 기본값 반지름 0.05 m, 질량 0.05 kg, 탄성 0.5, 미끄럼 마찰 0.8, 구름 마찰 0.005. `goal_net` 입구 0.36 × 0.2 × 0.12 m.

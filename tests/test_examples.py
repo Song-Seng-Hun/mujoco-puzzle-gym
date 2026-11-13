@@ -23,7 +23,8 @@ KINDS = {"logic_lock": "buttons and logic", "doors": "doors and trapdoors",
          "lift_spring": "platforms, springs and setters", "trap_run": "traps", "herd": "npc",
          "warp_hop": "warps", "cube_plate": "cube and grab",
          "turret": "cannon turret and lever", "cube_socket": "key and socket",
-         "wall_button": "beak wall button", "laundry": "laundry and basket"}
+         "wall_button": "beak wall button", "laundry": "laundry and basket",
+         "roller_rink": "addon station"}
 #: Example rooms whose task adds actions beyond `move` (R19).
 TASKS = {r: ROOT / f"examples/task_{r}.yaml" for r in ("cube_plate", "cube_socket", "laundry")}
 ROOM_PRESETS = [n for n in catalog.puzzle_preset_names()
