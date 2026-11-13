@@ -26,10 +26,16 @@ SOLO = {
     "device/elevator": {"in": ["a"]}, "trap/cannon_turret": {"in": ["a"]},
     "device/setter": {"in": ["a"], "target": "sp.velocity", "value": [0.0, 0.0, 1.0]},
     "npc/lure": {"bait": "b"}, "npc/seek_button": {"button": "a"},
+    "logic/wire": {"carries": "a", "to": ["d"]},
+    "logic/wire_cut": {"carries": "a", "to": ["d"], "facing": 180.0},
+    "logic/relay": {"in": ["a"]}, "device/destroyer": {"in": ["a"], "targets": ["r"]},
 }
 EXTRA = {   # a partner part some presets need
     "logic/receiver": {"name": "tx", "preset": "logic/transmitter", "in": ["a"]},
     "device/setter": {"name": "sp", "preset": "device/spring_pad"},
+    "logic/wire": {"name": "d", "type": "door", "width": 0.5, "in": ["a"]},
+    "logic/wire_cut": {"name": "d", "type": "door", "width": 0.5, "in": ["a"]},
+    "device/destroyer": {"name": "r", "preset": "logic/relay", "in": ["a"]},
 }
 
 

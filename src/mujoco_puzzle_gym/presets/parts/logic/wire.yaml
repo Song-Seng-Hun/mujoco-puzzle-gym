@@ -1,0 +1,4 @@
+# Cable (R33): carries one channel to the parts in `to`; cutting it stops those
+# readers only. Set: pos, carries (channel), to; optional path (further [x, y] points).
+type: wire
+thickness: 0.012

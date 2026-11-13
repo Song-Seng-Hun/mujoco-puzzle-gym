@@ -189,6 +189,10 @@ class Part:
         self.enable: str | None = cfg["enable"]
         self.bus: SignalBus | None = None      # set by signals.wire
         self.world: World | None = None        # set by the env
+        #: Channels a broken wire replaces for this part only (R34): channel -> value.
+        #: `read`, `inputs_on` and `enabled` take these instead of the bus value, so a
+        #: cut wire stops this reader while other readers of the channel are untouched.
+        self.cut: dict[str, float] = {}
         self.pending_snapshot = False          # checkpoint asks the env for a snapshot
         self._bid = -1
         self._schema = schema = self.full_schema()
@@ -356,6 +360,9 @@ class Part:
 
     # ---- signals (R1) --------------------------------------------------------
     def read(self, channel: str) -> float:
+        """Channel value, or what a broken wire leaves on it (R34 `cut`)."""
+        if self.cut and channel in self.cut:
+            return self.cut[channel]
         return self.bus.get(channel)
 
     def write(self, value: float, channel: str | None = None) -> None:
@@ -363,13 +370,13 @@ class Part:
         self.bus.set(channel if channel is not None else self.outputs[0], value)
 
     def enabled(self) -> bool:
-        return self.enable is None or self.bus.on(self.enable)
+        return self.enable is None or is_on(self.read(self.enable))
 
     def inputs_on(self) -> bool:
         """Whether `all` / `any` (per `require`) of the `in` channels are on now."""
         if not self.inputs:
             return False
-        flags = [is_on(self.bus.get(ch)) for ch in self.inputs]
+        flags = [is_on(self.read(ch)) for ch in self.inputs]
         return all(flags) if self.require == "all" else any(flags)
 
     def plan_values(self, on: set[str], get) -> dict[str, float]:

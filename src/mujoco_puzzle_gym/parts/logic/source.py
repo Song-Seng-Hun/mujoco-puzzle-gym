@@ -28,6 +28,7 @@ import zlib
 import numpy as np
 
 from ...schema import Field, SchemaError
+from ..breakable import BREAK_KEYS
 from .base import BodiedLogic
 
 MODES = ("const", "clock", "pattern", "random")
@@ -38,7 +39,7 @@ class Source(BodiedLogic):
     stage = "input"
     stateful = True
     emits = True
-    state_keys = ("t", "value", "held", "until", "rng")
+    state_keys = ("t", "value", "held", "until", "rng") + BREAK_KEYS
     fields = (
         Field("body", "bool", True,
               doc="put the source in the room as a box with a lamp (R33)"),
@@ -92,6 +93,7 @@ class Source(BodiedLogic):
     # ---- runtime ------------------------------------------------------------------
     def reset(self, model, data):
         self._reset_state()
+        self.break_reset(model)
         self.value = self._value_now()
         if self.bus is not None:
             self.write(self.value)
@@ -115,6 +117,10 @@ class Source(BodiedLogic):
         return self.held
 
     def update(self, model, data, body):
+        if self.break_step(model, data, body):          # broken: the output is frozen (R34)
+            self.value = self.broken_value
+            self.paint(model)
+            return
         if not self.enabled():
             self.value = self.off_value
             self.write(self.value)
@@ -144,4 +150,5 @@ class Source(BodiedLogic):
 
     def load_state(self, model, data, st):
         super().load_state(model, data, st)
+        self.break_load(model)
         self.paint(model)

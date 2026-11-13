@@ -27,6 +27,7 @@ from ...expr import OPS, ExprError, compile_expr, op_expr
 from ...registry import get_logic
 from ...schema import Field, SchemaError
 from ...signals import is_on
+from ..breakable import BREAK_KEYS
 from .base import BodiedLogic
 
 MODES = ("expr", "op", "sequence", "logic")
@@ -96,6 +97,7 @@ class Gate(BodiedLogic):
     # ---- runtime -------------------------------------------------------------------
     def reset(self, model, data):
         self._reset_state()
+        self.break_reset(model)
         self.paint(model)
 
     def _sequence(self) -> tuple[float, float]:
@@ -122,6 +124,10 @@ class Gate(BodiedLogic):
         return out, wrong
 
     def update(self, model, data, body):
+        if self.break_step(model, data, body):          # broken: the output is frozen (R34)
+            self.value = self.broken_value
+            self.paint(model)
+            return
         if not self.enabled():
             return
         if self.mode == "sequence":
@@ -156,7 +162,8 @@ class Gate(BodiedLogic):
     def save_state(self):
         return {"value": self.value, "index": self.index, "prev": dict(self.prev), "done": self.done,
                 "expr": copy.deepcopy(self.expr.get_state()) if self.expr is not None else None,
-                "plugin": copy.deepcopy(self.plugin_state)}
+                "plugin": copy.deepcopy(self.plugin_state),
+                **{k: getattr(self, k) for k in BREAK_KEYS}}
 
     def load_state(self, model, data, st):
         self.value, self.index, self.done = st["value"], st["index"], st["done"]
@@ -164,4 +171,8 @@ class Gate(BodiedLogic):
         if self.expr is not None:
             self.expr.set_state(copy.deepcopy(st["expr"]))
         self.plugin_state = copy.deepcopy(st["plugin"])
+        for k in BREAK_KEYS:
+            if k in st:
+                setattr(self, k, st[k])
+        self.break_load(model)
         self.paint(model)

@@ -146,6 +146,22 @@ def coins(env, k: int = COIN_OBS_K):
     return np.concatenate([[g.picked_ratio() for g in groups], slots.ravel()])
 
 
+@register_obs("circuit", replace=True)
+def circuit(env):
+    """Breakable circuit parts (R34), room order: each one's position relative to the
+    body (heading frame) and whether it is broken (3 per part). A room without a
+    breakable part gives an empty array."""
+    from .parts.breakable import Breakable
+
+    rows = []
+    for p in env.parts.values():
+        if not (isinstance(p, Breakable) and p.breakable) or p.parked:
+            continue
+        xy = p.pos(env.data)[:2] if hasattr(p, "pos") else p.xy
+        rows.append(np.concatenate([_to_body_frame(env, xy), [float(p.broken)]]))
+    return np.concatenate(rows) if rows else np.zeros(0)
+
+
 BALLS_K = 3   # nearest balls in the `balls` term
 
 

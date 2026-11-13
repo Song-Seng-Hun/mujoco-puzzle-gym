@@ -3,13 +3,13 @@
 from ..registry import register_part
 from .base import Part
 from .beak import Dial, Dispenser, Drawer, Egg, HandleBall, Key, Laundry, Lever, PullCord, Stick
-from .device import (AddonStation, Anchor, Conveyor, Door, GoalNet, HitchStation, LowBar, Pillar, Platform,
+from .device import (AddonStation, Anchor, Conveyor, Destroyer, Door, GoalNet, HitchStation, LowBar, Pillar, Platform,
                      Rope, RopeDoor, Setter, Spring, SwingDoor, Trapdoor, Turntable, Warp)
 from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
 from .input import Button, Checkpoint, Laser, PressurePlate, Receptacle, Target, Zone
-from .logic import Counter, Gate, Receiver, Source, Transmitter
+from .logic import Counter, Gate, Receiver, Relay, Source, Transmitter, Wire
 from .npc import Npc
 from .object import Ball, Cube, Pin
 from .switch import Switch
@@ -23,6 +23,9 @@ register_part("counter", Counter, replace=True)
 register_part("transmitter", Transmitter, replace=True)
 register_part("receiver", Receiver, replace=True)
 register_part("source", Source, replace=True)
+register_part("wire", Wire, replace=True)
+register_part("relay", Relay, replace=True)
+register_part("destroyer", Destroyer, replace=True)
 register_part("button", Button, replace=True)
 register_part("zone", Zone, replace=True)
 register_part("laser", Laser, replace=True)

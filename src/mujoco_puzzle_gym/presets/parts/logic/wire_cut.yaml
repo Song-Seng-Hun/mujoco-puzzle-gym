@@ -1,0 +1,11 @@
+# Cable the duck can cut (R34): a cover on a wall face, pecked `hp` times. The duck
+# can only hold a place where something stops it, so the cover goes on a wall (or on a
+# part that blocks it) and reaches 0.18 m, 0.04 m out of the face (measured, OQ8).
+# Set: pos (a point on the wall face), facing, carries, to; optional hp.
+type: wire
+breakable: true
+by: [peck]
+hp: 2
+mount: wall
+depth: 0.04
+height: 0.18
