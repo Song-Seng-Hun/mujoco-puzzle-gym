@@ -21,7 +21,11 @@ Each counted cause costs one hit; at `hp` hits the part is broken: its outputs
 freeze at `broken_value`, `<name>.broken` turns on, `<name>.hp` falls to 0 and
 the shape changes (colour, and a cable cover stops colliding). `on_break: fail`
 ends the episode as a failure (a wire that must not be cut). While the `repair`
-channel is on the part is whole again with its `hp` back at the start value.
+channel is on the part is whole again with its `hp` back at the start value, and
+so it is while the `repair_with: <marker id>` fuse object (R26) sits in its
+socket, i.e. within `socket_dist` of the part (the beak sets the fuse down
+against it; there is no reachable top on a 0.2 m box). `has_repair()` says
+whether the room has either way, which the circuit check (3c) reads.
 
 Measured (16f step 0, 20 seeds a condition, default 0.03 kg cube on a 0.08 x
 0.08 x 0.12 m logic box): dropped 0.05 m it peaks at 0.87 N, pushed by the duck
@@ -47,6 +51,7 @@ from typing import Any
 import mujoco
 import numpy as np
 
+from .. import markers
 from ..schema import Field, SchemaError
 from ..signals import is_on
 from .base import Part
@@ -55,6 +60,7 @@ from .pool import Impacts
 CAUSES = ("shell", "crush", "peck", "destroyer")
 BREAK_KEYS = ("broken", "hp_left")          # state_keys every breakable part adds (R6)
 BROKEN_RGBA = (0.35, 0.18, 0.18, 1.0)       # a broken part's colour
+PLACE_TOL = 0.03                            # [m] scripted `place` default (carry.py)
 
 
 class Breakable(Part):
@@ -71,6 +77,10 @@ class Breakable(Part):
         Field("on_break", "enum", "none", choices=("none", "fail"),
               doc="fail: breaking it ends the episode as a failure"),
         Field("repair", "str", None, doc="channel: while on, the part is whole again"),
+        Field("repair_with", "int", None, min=0, max=markers.N_IDS - 1,
+              doc="marker id of the fuse object that repairs it in its socket (R34)"),
+        Field("socket_dist", "float", 0.06, unit="m", min=0.02, max=0.3,
+              doc="`repair_with`: how close to the socket the fuse counts"),
         Field("crush_force", "float", 0.5, unit="N", min=0.05, max=200.0, runtime=True,
               doc="`crush`: contact force of an object that counts (measured, R34)"),
         Field("min_speed", "float", 1.0, unit="m/s", min=0.0, max=30.0, runtime=True,
@@ -88,6 +98,7 @@ class Breakable(Part):
         self.broken_value = float(c["broken_value"])
         self.on_break = c["on_break"]
         self.repair_channel: str | None = c["repair"]
+        self.repair_with: int | None = None if c["repair_with"] is None else int(c["repair_with"])
         bad = [b for b in self.by if b not in CAUSES]
         if bad:
             raise SchemaError(f"part {name!r}: `by` causes {bad} are not among {list(CAUSES)}")
@@ -100,7 +111,7 @@ class Breakable(Part):
             raise SchemaError(f"part {name!r}: only a part with a body can be breakable "
                               f"(R34); set `body: true`")
         if not self.breakable:
-            for key in ("by", "hp", "on_break", "repair", "broken_value"):
+            for key in ("by", "hp", "on_break", "repair", "repair_with", "broken_value"):
                 if c[key] != self._schema[key].default:
                     raise SchemaError(f"part {name!r}: {key!r} only means something with "
                                       f"`breakable: true`")
@@ -115,6 +126,7 @@ class Breakable(Part):
         self._bodies: set[int] = set()
         self._impacts: Impacts | None = None
         self._painted: bool | None = None
+        self._geom_half = 0.0           # `repair_with`: the measured geom's widest half side
 
     def _break_reset_transients(self) -> None:
         self._touch: dict[int, dict[str, Any]] = {}     # object root -> this contact's peak
@@ -140,6 +152,7 @@ class Breakable(Part):
             return
         self._bodies = {int(b) for b in self.break_bodies(model)}
         self._geom = int(self.break_geom(model))
+        self._geom_half = (float(np.max(model.geom_size[self._geom][:2])) if self._geom >= 0 else 0.0)
         self._impacts = Impacts() if "shell" in self.by else None
         self._painted = None
 
@@ -210,7 +223,7 @@ class Breakable(Part):
         (this method has already written it to every value output)."""
         if not self.breakable:
             return False
-        if self.repair_channel and is_on(self.read(self.repair_channel)):
+        if self._repaired(model, data):
             if self.broken or self.hp_left != self.hp:
                 self.broken = False
                 self.hp_left = self.hp
@@ -238,6 +251,42 @@ class Breakable(Part):
                 self.write(self.broken_value, ch)
             return True
         return False
+
+    # ---- repair --------------------------------------------------------------------
+    def has_repair(self) -> bool:
+        """Whether the room gives any way to make this part whole again (R34; the
+        circuit check reads it)."""
+        return bool(self.breakable and (self.repair_channel or self.repair_with is not None))
+
+    def _repaired(self, model: mujoco.MjModel, data: mujoco.MjData) -> bool:
+        if self.repair_channel and is_on(self.read(self.repair_channel)):
+            return True
+        return self.fuse_in(model, data)
+
+    def fuse_in(self, model: mujoco.MjModel, data: mujoco.MjData) -> bool:
+        """`repair_with`: a free object with that marker id (R26) is in the socket, i.e.
+        within `socket_dist` of the part's measured geom (the beak sets it down against
+        the part: on a 0.2 m box there is no top the duck can reach)."""
+        w = self.world
+        if self.repair_with is None or self._geom < 0 or w is None:
+            return False
+        for rid, obj in w.objects.items():
+            if w.kinds.get(rid) != "object" or rid in w.held or obj.parked:
+                continue
+            mark = getattr(obj, "marker", None)
+            if mark is None or int(mark.id) != self.repair_with:
+                continue
+            if geom_distance(model, data, self._geom, data.xpos[rid]) <= float(self.cfg["socket_dist"]):
+                return True
+        return False
+
+    def place_tolerance(self, obj=None) -> float:
+        """Scripted `place` / `drop` (carry.py): let the beak set the fuse (or the object
+        that crushes the part) down anywhere against it, its own width plus the socket
+        reach, since there is no reachable top on a part the duck runs into."""
+        if not self.breakable:
+            return PLACE_TOL
+        return self._geom_half + float(self.cfg["socket_dist"])
 
     def value_outputs(self) -> list[str]:
         """Outputs that carry the part's value (not `.broken` / `.hp`)."""
@@ -286,6 +335,66 @@ class Breakable(Part):
     def failed(self) -> bool:
         return bool(self.breakable and self.broken and self.on_break == "fail")
 
+    def break_xy(self, data: mujoco.MjData) -> np.ndarray:
+        """Where the measured geom is (x, y): a wire's cover stands off the wall, so this
+        is what the duck walks at to peck it."""
+        if self._geom < 0:
+            return np.asarray(self.xy, dtype=float)
+        return np.asarray(data.geom_xpos[self._geom][:2], dtype=float)
+
+    def peck_normal(self):
+        """Unit (x, y) the part must be pecked from, or None when any side will do: a
+        wire's cover is on a wall face, so the duck has to come round to its front."""
+        return None
+
+    def break_top(self) -> float:
+        """How high the part reaches [m] (a wire's `height` is its cover's): `mpg check`
+        asks for the `head` action when the beak must come down to peck it."""
+        return float(self.cfg.get("height", 0.0) or 0.0)
+
+    # ---- aiming a cannon at it (R16 + R34) -----------------------------------------
+    def break_board(self, model: mujoco.MjModel, data: mujoco.MjData, toward) -> "ShellBoard | None":
+        """The measured geom's face that looks toward `toward` (x, y), as a board the
+        cannon's ballistics can aim at (`Cannon.hits_board` / `can_hit`)."""
+        if self._geom < 0:
+            return None
+        p = np.asarray(data.geom_xpos[self._geom], dtype=float)
+        rot = np.asarray(data.geom_xmat[self._geom], dtype=float).reshape(3, 3)
+        size = np.asarray(model.geom_size[self._geom][:3], dtype=float)
+        d = np.asarray(toward, dtype=float)[:2] - p[:2]
+        best, sign, axis = -2.0, 1.0, 0
+        for i in (0, 1):
+            for s in (1.0, -1.0):
+                score = float(s * rot[:2, i] @ d)
+                if score > best:
+                    best, sign, axis = score, s, i
+        n = sign * rot[:, axis]
+        other = 1 - axis
+        u = rot[:, other]
+        return ShellBoard(self, p + n * size[axis], n, u, (float(size[other]), float(size[2])))
+
+    # ---- static checks (R34) --------------------------------------------------------
+    def check_warnings(self, env) -> list[str]:
+        """Causes in `by` the room cannot deliver, and objects heavy enough to crush the
+        part by resting on it (R34 static checks; `mpg check` prints them without failing)."""
+        out = list(super().check_warnings(env))
+        if not self.breakable:
+            return out
+        if "shell" in self.by and not any(hasattr(p, "hits_board") for p in env.parts.values()):
+            out.append(f"part {self.name!r} can be broken `by: [shell]` but the room has no cannon")
+        if "peck" in self.by and not self.blockers(True) and getattr(self, "mount", None) not in ("wall", "part"):
+            out.append(f"part {self.name!r} can be broken `by: [peck]` but it does not stop the duck "
+                       f"(put it on a wall or give it a body the duck runs into: the walking policy "
+                       f"drifts forward and cannot hold a place on open floor)")
+        if "crush" in self.by:
+            force = float(self.cfg["crush_force"])
+            heavy = sorted(p.name for p in env.parts.values()
+                           if hasattr(p, "handle_points") and float(getattr(p, "mass", 0.0) or 0.0) * 9.81 > force)
+            if heavy:
+                out.append(f"part {self.name!r} has crush_force {force:g} N, so merely setting "
+                           f"{heavy} on it breaks it (their weight is more than that)")
+        return out
+
     # ---- planning ------------------------------------------------------------------
     def break_plan_values(self, values: dict[str, float]) -> dict[str, float]:
         """Planning (R6a): a breakable part is taken as whole, and reports hp and
@@ -297,6 +406,31 @@ class Breakable(Part):
         out[self.name + ".broken"] = 0.0
         out[self.name + ".hp"] = float(self.hp)
         return out
+
+    def plan_broken_values(self, get) -> dict[str, float]:
+        """Planning (R6a) for a part the room's `demo:` breaks: its value outputs read
+        `broken_value` and `<name>.broken` is on, so the planner sees what the break
+        opens (logic.py `plan_channels`, circuit.py `demo_breaks`)."""
+        out = {ch: self.broken_value for ch in self.value_outputs()}
+        out[self.name + ".broken"] = 1.0
+        out[self.name + ".hp"] = 0.0
+        return out
+
+
+class ShellBoard:
+    """One face of a breakable part, shaped like an R16 target board: the cannon's
+    `hits_board` / `can_hit` read `face()` and `live["min_speed"]`, nothing else."""
+
+    def __init__(self, part: Breakable, centre, normal, u, half: tuple[float, float]):
+        self.part = part
+        self.centre = np.asarray(centre, dtype=float)
+        self.normal = np.asarray(normal, dtype=float)
+        self.u = np.asarray(u, dtype=float)
+        self.half = half
+        self.live = part.live
+
+    def face(self):
+        return self.centre, self.normal, self.u, self.half
 
 
 def geom_distance(model: mujoco.MjModel, data: mujoco.MjData, gid: int, point) -> float:

@@ -1,0 +1,25 @@
+# Fuse repair (R34 `repair_with`): the press has one charge and the always-on
+# source spends it in the first body step, so the relay is already broken when the
+# episode starts and the door it feeds stays shut. The dispenser hands out a 40 g
+# cube marked 3 at stand height; set it against the relay (its socket) and the
+# relay is whole again, with its hits back at the start value.
+# A cube on the floor is out of the beak's reach (0.135-0.21 m), which is why the
+# fuse comes from a dispenser rather than lying about.
+# Task: examples/task_fuse_repair.yaml (`head` and `grab`).
+name: fuse_repair
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, -0.5], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+parts:
+  - {name: sig, preset: logic/source_const, pos: [-1.35, 0.95], body: false}
+  - {name: link, preset: logic/relay, pos: [-0.3, 0.55], in: [sig], by: [destroyer],
+     repair_with: 3, size: [0.1, 0.1], height: 0.12}
+  - {name: press, type: destroyer, pos: [-0.3, 0.55], in: [sig], targets: [link], charges: 1}
+  - {name: disp, preset: beak/dispenser, pos: [-1.0, -0.8], facing: 90,
+     item: {preset: beak/cube_weight, marker: {id: 3}}}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [link]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}
+demo: [take disp, repair link, goto goal]

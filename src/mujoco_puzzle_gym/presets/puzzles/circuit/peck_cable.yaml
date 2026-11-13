@@ -1,0 +1,24 @@
+# Peck the cable (R34 `peck`): the cable cover sits on a wall stub, 0.18 m high
+# and 0.04 m out of the face (3a measurement). The duck leans on the wall, lowers
+# its head and works the beak: each closing and opening within `peck_dist` of the
+# cover costs the cable one of its two hits. The cover carries the source's signal
+# to the `not` gate, so cutting it opens the door.
+# The duck cannot hold a place on open floor (it drifts forward and cannot walk
+# backwards, Open question 8), hence the wall behind the cover.
+# Task: examples/task_peck_cable.yaml (`head` and `grab`).
+name: peck_cable
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [-0.5, -1.0], to: [-0.5, -0.2]}    # the stub the duck leans on
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.5], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+parts:
+  - {name: sig, preset: logic/source_const, pos: [-1.35, 0.95], body: false}
+  - {name: cable, preset: logic/wire_cut, pos: [-0.47, -0.6], facing: 0.0,
+     carries: sig, to: [open], hp: 2, marker: {id: 2}}
+  - {name: open, preset: logic/not, in: [sig]}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [open]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}
+demo: [break cable via peck, goto goal]

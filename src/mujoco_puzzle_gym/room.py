@@ -109,7 +109,7 @@ class RoomError(ValueError):
 
 
 DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop", "turn", "pull", "look",
-                 "take", "addon", "glide", "tow", "untow", "drag")
+                 "take", "addon", "glide", "tow", "untow", "drag", "break", "repair")
 MAX_WAIT = 60.0                        # [s] longest `wait`
 
 
@@ -118,7 +118,8 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
     ("push", ball, target), ("herd", npc, part or (x, y)), ("grab", object),
     ("place" | "drop", object, part), ("turn", lever, value), ("pull", cord), ("look", part),
     ("take", dispenser), ("addon", station), ("glide", low bar), ("tow", rope, hitch),
-    ("untow", rope), ("drag", rope, part). `grab` / `place` / `drop`
+    ("untow", rope), ("drag", rope, part), ("break", part, cause), ("repair", part).
+    `grab` / `place` / `drop`
     take a dispenser's name after a `take` of it (its copy handed out last). Raises RoomError
     (stage `demo`) naming the bad entry."""
     if raw is None:
@@ -195,6 +196,8 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
                 out.append(("untow", rope))
         elif cmd == "drag":
             out.append(_parse_drag(i, entry, args, parts, part))
+        elif cmd in ("break", "repair"):
+            out.append(_parse_break(i, entry, cmd, args, parts, part))
         elif cmd == "take":
             if len(args) != 1:
                 raise RoomError(f"demo[{i}]: write `take <dispenser>`, got {entry!r}", "demo")
@@ -232,6 +235,35 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
                 raise RoomError(f"demo[{i}]: {target!r} does not accept {ball!r}", "demo")
             out.append(("push", ball, target))
     return out
+
+
+def _parse_break(i: int, entry: str, cmd: str, args: list[str], parts: dict[str, Any], part) -> tuple:
+    """("break", part, cause) / ("repair", part) (R34)."""
+    from .parts.breakable import CAUSES
+
+    if cmd == "repair":
+        if len(args) != 1:
+            raise RoomError(f"demo[{i}]: write `repair <part>`, got {entry!r}", "demo")
+        name = part(i, args[0])
+        p = parts[name]
+        if not getattr(p, "breakable", False):
+            raise RoomError(f"demo[{i}]: {name!r} is not breakable, so it cannot be repaired", "demo")
+        if not p.has_repair():
+            raise RoomError(f"demo[{i}]: {name!r} has no way to be repaired; give it "
+                            f"`repair: <channel>` or `repair_with: <marker id>`", "demo")
+        return ("repair", name)
+    if len(args) != 3 or args[1] != "via":
+        raise RoomError(f"demo[{i}]: write `break <part> via <{'|'.join(CAUSES)}>`, "
+                        f"got {entry!r}", "demo")
+    name, cause = part(i, args[0]), args[2]
+    p = parts[name]
+    if not getattr(p, "breakable", False):
+        raise RoomError(f"demo[{i}]: {name!r} cannot be broken; set `breakable: true` on it", "demo")
+    if cause not in CAUSES:
+        raise RoomError(f"demo[{i}]: {cause!r} is not a cause; use one of {list(CAUSES)}", "demo")
+    if cause not in p.by:
+        raise RoomError(f"demo[{i}]: {name!r} is not broken by {cause!r} (its `by` is {p.by})", "demo")
+    return ("break", name, cause)
 
 
 def _parse_device(i: int, entry: str, cmd: str, args: list[str], parts: dict[str, Any], part) -> tuple:

@@ -1,0 +1,23 @@
+# Press the relay (R34 `destroyer`): the relay stands in the press frame and
+# carries the signal that locks the door. Step on the knob and the press strikes
+# once per rising edge; one strike is enough, and the press has two charges, so a
+# missed edge is not the end of the room.
+# The press is a shape with no collision, so the duck and any object may stand
+# under it and feel nothing: only breakable parts take a strike.
+name: press_relay
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+parts:
+  - {name: sig, preset: logic/source_const, pos: [-1.35, 0.95], body: false}
+  - {name: link, preset: logic/relay, pos: [-0.35, 0.6], in: [sig], by: [destroyer],
+     size: [0.1, 0.1], height: 0.12}
+  - {name: press, type: destroyer, pos: [-0.35, 0.6], in: [knob], targets: [link], charges: 2}
+  - {name: knob, preset: input/floor_momentary, pos: [-0.9, -0.5]}
+  - {name: open, preset: logic/not, in: [link]}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [open]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}
+demo: [break link via destroyer, goto goal]

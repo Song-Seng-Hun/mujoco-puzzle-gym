@@ -24,12 +24,18 @@ KINDS = {"logic_lock": "buttons and logic", "doors": "doors and trapdoors",
          "warp_hop": "warps", "cube_plate": "cube and grab",
          "turret": "cannon turret and lever", "cube_socket": "key and socket",
          "wall_button": "beak wall button", "laundry": "laundry and basket",
-         "roller_rink": "addon station", "roller_route": "roller mechanics", "tow_yard": "tow rope"}
+         "roller_rink": "addon station", "roller_route": "roller mechanics", "tow_yard": "tow rope",
+         "power_cut": "circuit, breaking and repair"}
 #: Example rooms whose task adds actions beyond `move` (R19).
-TASKS = {r: ROOT / f"examples/task_{r}.yaml" for r in ("cube_plate", "cube_socket", "laundry")}
+TASKS = {r: ROOT / f"examples/task_{r}.yaml"
+         for r in ("cube_plate", "cube_socket", "laundry", "power_cut")}
 #: Room presets whose `demo:` needs task actions beyond `move` (R30).
 PRESET_TASKS = {f"puzzles/roller/{n}": ROOT / f"examples/task_{n}.yaml" for n in ("glide_under", "roll_delivery")}
 PRESET_TASKS["puzzles/tow/overload"] = ROOT / "examples/task_overload.yaml"
+#: R34 circuit presets whose `demo:` pecks a cover or carries a fuse (`head`, `grab`).
+PRESET_TASKS.update({f"puzzles/circuit/{n}": ROOT / f"examples/task_{n}.yaml"
+                     for n in ("peck_cable", "wrong_wire", "fuse_repair", "jam_the_turret",
+                               "sabotage_order")})
 ROOM_PRESETS = [n for n in catalog.puzzle_preset_names()
                 if "map" in (r := yaml.safe_load((catalog.PRESET_ROOT / f"{n}.yaml").read_text()))
                 or "size" in r]

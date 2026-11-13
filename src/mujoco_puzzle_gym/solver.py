@@ -82,6 +82,12 @@ TAKE_SETTLE = 1.5      # [s] take: wait at most this long for a new copy to rest
 WALL_WAIT = 0.35        # [m] off a dispenser's wall plate while it cannot hand out (take)
 REST_SPEED = 0.02      # [m/s] a copy this slow rests
 ADDON_MARGIN = 0.06    # [m] addon: stand this far inside the station's pad edge
+PECK_CLOSE = 0.5       # [m] break via peck: steer straight at the part this close (R34)
+PECK_STAND = 0.3       # [m] break via peck: walk to this point in front of a cover first
+LEVER_NEAR = 0.7       # [m] break via shell: plan the way to the aim lever until this close
+BACK_OFF = 0.35        # [m] break / repair: walk this far off the part before the next sub-goal
+BACK_SECONDS = 3.0     # [s] longest try at that (against a wall there may be no room)
+PECK_SPEED = -0.5      # action[0] while leaning on the part to peck it
 # glide (R30, measured 2026-11-13 at a 0.228 m bar, 20 seeds, crouch at distance d before
 # the bar's centre line): entering at 0.32-0.48 m/s, d 0.2 / 0.25 / 0.3 / 0.35 / 0.4 / 0.5
 # glides under 6 / 14 / 20 / 20 / 20 / 7 of 20; at 0.35-0.41 m/s 19 / 20 / 20 / 20 / 0 / 0.
@@ -139,6 +145,9 @@ class ScriptedSolver:
         self._crouch = False                   # glide: send `crouch` this step
         self._tow_off = False                  # tow / untow: stepping off a used station pad
         self._drag: dict | None = None         # drag: the aim point
+        self._aim: tuple | None = None         # break via shell: (part, plan) worked out once
+        self._peck_on = False                  # break via peck: the beak closed last step
+        self._back = 0                         # break / repair: env steps spent walking off
 
     @property
     def in_demo(self) -> bool:
@@ -515,10 +524,233 @@ class ScriptedSolver:
             return STAND.copy()        # behind a closed door or a hole: wait for it to change
         return self._steer(field, part.xy)
 
+    def _walk_point(self, xy) -> np.ndarray:
+        """Walk to a point (not a part) on the live grid: the stand point in front of a
+        wire's cover."""
+        from .env import GATE_PASSABLE
+        from .logic import live_free
+
+        env = self.env
+        xy = np.asarray(xy, dtype=float)
+        key = ("point", round(float(xy[0]), 3), round(float(xy[1]), 3))
+        if key not in self._fields:
+            inflate = env.body.footprint_radius + CLEARANCE
+            free = plan_free(env, live_free(env.grid, env.walls, env.parts, GATE_PASSABLE,
+                                            inflate=inflate), inflate)
+            cell = env.grid.nearest_free(free, xy)
+            mask = np.zeros(free.shape, dtype=bool)
+            if cell is not None:
+                mask[cell] = True
+            self._fields[key] = env.grid.distance(free, mask)
+        return self._steer(self._fields[key], xy)
+
     def _object(self, name: str):
         """Part `name`, or for a dispenser the copy its last `take` handed out."""
         part = self.env.parts[name]
         return self.taken[name] if hasattr(part, "copies") else part
+
+    # ---- break / repair sub-goals (R34) ----------------------------------------------
+    def break_act(self, part, cause: str) -> np.ndarray | None:
+        """Break `part` through `cause`, written out with the moves already there:
+        `peck` stands at it and works the beak, `crush` drops an object on it, `shell`
+        aims the cannon's lever and presses its button, `destroyer` presses the switch
+        that drives the press. None only once the part is broken; while a cause has run
+        its course and the part is still whole it starts again (the episode's step
+        budget ends it)."""
+        if part.broken:
+            act = self._clear_of(part)
+            if act is None:
+                self._aim = None
+            return act
+        act = {"peck": self.peck_act, "crush": self.crush_act,
+               "destroyer": self.destroyer_act}.get(cause, self.shell_act)(part)
+        if act is None:
+            self.carrier.reset()
+            self.carrier.grab = self.carrier.head = -1.0
+            return STAND.copy()
+        return act
+
+    def peck_act(self, part) -> np.ndarray | None:
+        """Head down at the part, then the grab on and off once per env step: each
+        falling edge within `peck_dist` costs the part one hit."""
+        env = self.env
+        c = self.carrier
+        c.head = 1.0
+        if part.beak_distance(env.model, env.data) > float(part.cfg["peck_dist"]):
+            c.grab = -1.0
+            self._peck_on = False
+            at = part.break_xy(env.data)
+            here = env.body_state.pos[:2]
+            n = part.peck_normal()
+            if n is not None and (float((here - at) @ n) <= 0.0
+                                  or np.hypot(*(at - here)) > PECK_CLOSE):
+                return self._walk_point(at + n * PECK_STAND)   # round to the cover's front
+            if np.hypot(*(at - here)) < PECK_CLOSE:
+                return c.steer(at, PECK_SPEED)           # lean on it: the body needs the stop
+            return self._walk_to(part)
+        self._peck_on = not self._peck_on
+        c.grab = 1.0 if self._peck_on else -1.0
+        return STAND.copy()
+
+    def crush_act(self, part) -> np.ndarray | None:
+        """Drop a carried object on the part: from beak height a 30 g cube peaks at
+        0.87 N, while setting it down gently is only its 0.30 N weight (16f step 0)."""
+        obj = self._loose_object()
+        if obj is None:
+            return None
+        if self.carrier.held() is not obj:
+            return self.carrier.grab_act(obj)
+        return self.carrier.place_act(obj, part, drop=True)
+
+    def destroyer_act(self, part) -> np.ndarray | None:
+        """Press the switch that drives the press whose reach holds `part`."""
+        press = next((p for p in self.env.parts.values()
+                      if hasattr(p, "target_names") and hasattr(p, "reach")
+                      and (part.name in p.target_names or part in p.reach())), None)
+        return self._press_act(self._switch_for(press))
+
+    def shell_act(self, part) -> np.ndarray | None:
+        """Turn the cannon's aim levers to a cell whose shot hits the part, then press
+        its fire button (R16)."""
+        plan = self._aim_plan(part)
+        if plan is None:
+            return None
+        _, cells, button = plan
+        for lever, goal in cells:
+            if (not np.isclose(lever.value, goal)
+                    and np.hypot(*(np.asarray(lever.xy) - self.env.body_state.pos[:2])) > LEVER_NEAR):
+                return self._walk_to(lever)      # the lever may be behind a door: plan the way
+            act = self.carrier.turn_act(lever, goal)
+            if act is not None:
+                return act
+            self.carrier.reset()
+        return self._press_act(button)
+
+    def repair_act(self, part) -> np.ndarray | None:
+        """Put the `repair_with` fuse in the part's socket, or press the switch that
+        turns its `repair` channel on (R34)."""
+        if not getattr(part, "broken", False):
+            return self._clear_of(part)
+        if part.repair_with is not None:
+            fuse = self._fuse(part)
+            if fuse is None:
+                return None
+            if self.carrier.held() is not fuse:
+                return self.carrier.grab_act(fuse)
+            act = self.carrier.place_act(fuse, part)
+        else:
+            act = self._press_act(self._writer(part.repair_channel))
+        if act is None:
+            self.carrier.reset()
+            self.carrier.grab = self.carrier.head = -1.0
+            return STAND.copy()
+        return act
+
+    # ---- helpers for the break sub-goals ---------------------------------------------
+    def _clear_of(self, part) -> np.ndarray | None:
+        """Walk off the part once it is broken or whole again: a body left standing
+        against a breakable box sits in a cell the planner calls blocked, and the next
+        sub-goal would wait there for ever."""
+        self._back += 1
+        act = self.carrier._walk_off(np.asarray(part.xy, dtype=float), BACK_OFF)
+        if act is not None and self._back <= BACK_SECONDS * self.env.hz:
+            return act
+        self._back = 0
+        self.carrier.reset()
+        self.carrier.grab = self.carrier.head = -1.0
+        return None
+
+    def _writer(self, channel: str | None):
+        """The part writing `channel`, or None."""
+        bus = self.env.signals
+        if not channel or bus is None:
+            return None
+        return self.env.parts.get(bus.writers.get(channel))
+
+    def _switch_for(self, device):
+        """A part the duck can press that writes one of `device`'s input channels."""
+        if device is None:
+            return None
+        for ch in device.inputs:
+            src = self._writer(ch)
+            if src is not None and src.role in ("switch", "checkpoint", "goal"):
+                return src
+        return None
+
+    def _press_act(self, part) -> np.ndarray | None:
+        if part is None or part.satisfied():
+            return None
+        if getattr(part, "mount", None) == "wall":
+            return self.carrier.press_wall_act(part)
+        return self._walk_to(part)
+
+    def _loose_object(self):
+        """The grabbable object nearest the body that is free to pick up."""
+        env = self.env
+        here = env.body_state.pos[:2]
+        objs = [o for rid, o in env.world.objects.items()
+                if env.world.kinds.get(rid) == "object" and not o.parked
+                and hasattr(o, "handle_points")]
+        held = self.carrier.held()
+        objs = [o for o in objs if o is held or int(o._bid) not in env.world.held]
+        return min(objs, key=lambda o: float(np.hypot(*(o.pos(env.data)[:2] - here))), default=None)
+
+    def _fuse(self, part):
+        """A free object whose marker id is the part's `repair_with` (a dispenser copy
+        counts once it has been taken)."""
+        env = self.env
+        for rid, o in env.world.objects.items():
+            mark = getattr(o, "marker", None)
+            if env.world.kinds.get(rid) != "object" or o.parked or mark is None:
+                continue
+            if int(mark.id) != part.repair_with:
+                continue
+            if o is not self.carrier.held() and rid in env.world.held:
+                continue
+            return o
+        return None
+
+    def _aim_plan(self, part):
+        """(cannon, [(lever, cell value), ...], fire button) that hits `part`, or None."""
+        if self._aim is not None and self._aim[0] is part:
+            return self._aim[1]
+        env = self.env
+        plan = None
+        for cannon in [p for p in env.parts.values() if hasattr(p, "can_hit")]:
+            board = part.break_board(env.model, env.data, cannon.xy)
+            cells = self._aim_cells(cannon, board) if board is not None else None
+            button = self._switch_for(cannon)
+            if cells is not None and button is not None:
+                plan = (cannon, cells, button)
+                break
+        self._aim = (part, plan)
+        return plan
+
+    def _aim_cells(self, cannon, board):
+        """Lever cells that make `cannon` hit `board`, or None (a continuous aim channel
+        or no cell that hits)."""
+        from .parts.trap.cannon import direction
+
+        opts: dict[str, tuple] = {}
+        for key in ("aim_yaw", "aim_pitch"):
+            if key not in cannon.binds:
+                opts[key] = (None, [(None, float(cannon.live[key]))])
+                continue
+            ch, (i0, i1, o0, o1) = cannon.binds[key]
+            src = self._writer(ch)
+            cells = getattr(src, "channel_cells", None)
+            cells = cells(ch) if callable(cells) else None
+            if src is None or cells is None or i1 == i0:
+                return None
+            opts[key] = (src, [(float(v), o0 + (float(v) - i0) * (o1 - o0) / (i1 - i0))
+                               for v in cells])
+        for vy, ay in opts["aim_yaw"][1]:
+            for vp, ap in opts["aim_pitch"][1]:
+                d = direction(np.array(math.radians(cannon.yaw + ay)), np.array(math.radians(ap)))
+                if bool(np.all(cannon.hits_board(d, board))):
+                    return [(opts[k][0], v) for k, v in (("aim_yaw", vy), ("aim_pitch", vp))
+                            if opts[k][0] is not None and v is not None]
+        return None
 
     def _demo_act(self, entry: tuple) -> np.ndarray | None:
         """Action for the `demo:` entry, or None when it is done."""
@@ -555,6 +787,10 @@ class ScriptedSolver:
             return self.tow_act(env.parts[entry[1]], entry[2] if cmd == "tow" else None)
         if cmd == "drag":
             return self.drag_act(env.parts[entry[1]], env.parts[entry[2]])
+        if cmd == "break":
+            return self.break_act(env.parts[entry[1]], entry[2])
+        if cmd == "repair":
+            return self.repair_act(env.parts[entry[1]])
         part = env.parts[entry[1]]
         if part.satisfied():
             return None

@@ -125,6 +125,40 @@ What expressions can use: channel names (a dotted name like `laps.count` is also
 
 The `circuit` observation gives each breakable part's position relative to the body and whether it is broken (3 per part).
 
+A fuse repair needs `repair_with: <marker id>`: an object with that marker (R26) set down within `socket_dist` (0.06 m) of the part counts as the fuse in its socket and makes the part whole again. There is no reachable top on a 0.2 m box, so the beak sets the fuse against the part. A part needs only one of `repair` and `repair_with`.
+
+`mpg check`, stage `circuit` (the break graph)
+
+- Walking the parts whose reading changes when a part breaks (`circuit.py`), it reports per breakable part what the break reaches and which channels go off. The sets are in the result, so a room author can read what the graph thinks. A wire changes only the readers in its `to`; the channel itself lives on.
+- Failures: a `demo:` that breaks a part with `on_break: fail`, or one that no part reads anything of, so breaking it changes nothing.
+- Warnings: a part with no way to repair it (`repair`, `repair_with`) whose break shuts a door the answer walks through (the break is played through the plan). The per-cause warnings are in the `parts` stage: `shell` with no cannon in the room, `peck` on a part that does not stop the duck (not on a wall or a part whose body blocks it), `crush` where an object that can rest on the part outweighs its `crush_force`.
+- Planning (R6a): the parts a `demo:` breaks are taken as broken from the start and left out of the order, since breaking is not a place the body walks to and some rooms open only once something is cut.
+
+Sub-goals `break <part> via <shell|crush|peck|destroyer>` and `repair <part>`
+
+- `peck`: plan the way to the point 0.3 m in front of the side the cover faces, lean on it and, head down, work the grab on and off once per env step. A duck that walks up stops with its beak 1.4-2.2 cm off a wall cover and 4.4 cm off a box standing on the floor (measured 2026-11-14), so the presets set `peck_dist` to 0.04 m (cover) and 0.06 m (box). The task needs `head` and `grab`.
+- `shell`: for every cell of the cannon's aim channels, work out the ballistics against the part's face, find a cell that hits, plan the way to the lever, push it to that cell and step on the fire button.
+- `crush`: pick an object up and drop it on the part (setting it down gently is only 0.30 N and breaks nothing). The task needs `head` and `grab`.
+- `destroyer`: press the switch that writes the `in` of the press whose reach holds the part.
+- `repair`: with `repair_with`, pick the fuse with that marker up and set it against the part; otherwise press the switch that writes the `repair` channel.
+- After a break or a repair the body walks 0.35 m off the part (3 s at most): a body left against a breakable box sits in a cell the planner calls blocked, and the next sub-goal would wait there for ever.
+
+The eight `puzzles/circuit/` presets and the example room `examples/rooms/power_cut.yaml`
+
+| Preset | The answer |
+|---|---|
+| `cut_the_lock` | source -> wire -> relay -> lock. Break the relay with a shell and the door opens. |
+| `wrong_wire` | Two cables. Pecking marker 1 opens the door; marker 9 is `on_break: fail`. |
+| `fuse_repair` | The press breaks the relay in the first step. Take the fuse from the dispenser and plug it in. |
+| `clock_door` | Time the walk through a door a clock source opens and shuts (the room with no breaking). |
+| `press_relay` | Step on the knob so the press breaks the relay. |
+| `jam_the_turret` | Peck the source that drives the side wind and the way is calm. |
+| `peck_cable` | Cut the cable cover on the wall with two pecks. |
+| `sabotage_order` | Break the two relays in the order a, b; out of order the `lock.wrong` pulse repairs both. |
+
+- Measured (2026-11-14, `mpg check`, 20 seeds): all eight 20/20. `power_cut.yaml` 20/20 (mean 50.5 s of a 120 s episode) across its three rooms: the clock door, the relay cut by a shell, the fuse. A clock door that shuts in the gateway is where the duck swerves and falls (17/20, then 13/20), so its open stretch is 60% of 10 s, which gives 20/20.
+- No preset uses `crush`; the cause is covered by the tests (a 40 g dispenser cube dropped on a low relay: 4/4).
+
 ## Moving devices and setters
 
 - Platform (`platform`, presets `device/moving_platform`, `device/elevator`): follows `path: [[dx, dy, z], ...]`, measured from `pos` (z is the top face height), at `speed`. `mode` is `loop`, `pingpong` or `once`; `run` is `always`, `while_signal` (while the signal is on) or `on_signal` (one trip per turn-on). It moves on slide joints with position actuators, so objects on it ride along.
@@ -603,8 +637,8 @@ Role `prop`, update stage `logic`.
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
-| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
-| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -648,6 +682,8 @@ Role `prop`, update stage `logic`.
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -689,7 +725,7 @@ Role `prop`, update stage `device`.
 | `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | area it reaches, around `pos` (ignored when `targets` is given) |
 | `targets` | list |  | `[]` |  |  | parts it strikes (default: whatever is in its area) |
 | `height` | float | m | `0.3` | [0.1, 1] |  | how high the frame stands |
-| `cooldown` | float | s | `0.5` | [0, 60] | 예 | shortest time between two strikes |
+| `cooldown` | float | s | `0.5` | [0, 60] | yes | shortest time between two strikes |
 | `cooldown` | float | s | `0.5` | [0, 60] | yes | shortest time between two strikes |
 | `charges` | int |  | — | [1, 100] |  | strikes it has (none: unlimited) |
 
@@ -808,6 +844,8 @@ Role `prop`, update stage `logic`.
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -1110,6 +1148,8 @@ Role `prop`, update stage `logic`.
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -1186,6 +1226,8 @@ Role `prop`, update stage `input`.
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -1355,6 +1397,8 @@ Role `prop`, update stage `logic`.
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | yes | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | yes | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -1453,6 +1497,7 @@ Role `switch`, update stage `input`.
 | `logic/source_pattern` | `source` | `mode: pattern`, `pattern: [1.0, 0.0, 1.0, 0.0, 0.0]`, `step: 1.0` |
 | `logic/transmitter` | `transmitter` | `band: radio`, `delay: 0.0` |
 | `logic/wire` | `wire` | `thickness: 0.012` |
+| `logic/wire_cut` | `wire` | `breakable: True`, `by: ['peck']`, `hp: 2`, `mount: wall`, `depth: 0.04`, `height: 0.18`, `peck_dist: 0.04` |
 | `logic/wire_cut` | `wire` | `breakable: True`, `by: ['peck']`, `hp: 2`, `mount: wall`, `depth: 0.04`, `height: 0.18` |
 | `logic/xor` | `gate` | `op: xor` |
 | `npc/flee` | `npc` | `behavior: flee`, `speed: 0.08`, `sense: 0.4` |

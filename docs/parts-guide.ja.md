@@ -125,6 +125,40 @@ parts:
 
 観測項目`circuit`は、壊せる部品ごとに相対位置と破壊の有無を返します（部品あたり3個）。
 
+ヒューズで直すには`repair_with: <マーカー番号>`を与えます。その番号を持つ物体（R26マーカー）が部品から`socket_dist`（既定0.06 m）以内に置かれるとソケットに差したものとみなし、部品は元に戻ります。0.2 mの箱の上にくちばしの届く面はないので、くちばしは部品の横に置きます。`repair`チャンネルと`repair_with`はどちらか一方あれば十分です。
+
+`mpg check`の`circuit`段階（破壊グラフ）
+
+- 部品が壊れると読む値が変わる部品をたどり（`circuit.py`）、部品ごとに「届く部品」と「消えるチャンネル」を出します。結果にそのまま入るので、部屋を作るときにグラフが何を知っているか読めます。配線は`to`の読み手だけが変わり、チャンネル自体は生きています。
+- 失敗: `demo:`が`on_break: fail`の部品を壊すとき、または壊しても何も読んでいない部品を壊すとき。
+- 警告: 直す手段（`repair`、`repair_with`）がない部品の破壊で、解答が通る扉が閉まるとき（計画に破壊を入れて判定します）。原因ごとの警告は`parts`段階にあります: `shell`なのに部屋に大砲がない、`peck`なのにアヒルを止める場所ではない（壁や塞いでくれる部品の胴に付いていない）、`crush`なのにその部品の上に載せられる物体の重さが`crush_force`を超える。
+- 計画（R6a）: `demo:`が壊す部品は最初から壊れているものとして扱い、順序からは外します。壊すことは歩いて行く場所ではなく、切らなければ開かない部屋もあるからです。
+
+解答の下位目標`break <部品> via <shell|crush|peck|destroyer>`と`repair <部品>`
+
+- `peck`: カバーが向いている側の0.3 m手前まで道を探して行き、体で寄りかかって頭を下げ、環境ステップごとに掴みを入れて切ります。歩いて寄ったアヒルのくちばしは壁のカバーから1.4〜2.2 cm、床に立つ箱から4.4 cm離れて止まるので（2026-11-14測定）、プリセットは`peck_dist`を0.04 m（カバー）と0.06 m（箱）にしています。taskに`head`と`grab`が必要です。
+- `shell`: 大砲の照準チャンネルのマスごとに弾道を計算して部品の面に当たるマスを探し、レバーまで道を探して行ってそのマスまで押し、発射ボタンを踏みます。
+- `crush`: 物体を掴んで部品の上に落とします（そっと置くだけでは0.30 Nで壊れません）。taskに`head`と`grab`が必要です。
+- `destroyer`: その部品を叩くプレスの`in`を書くスイッチを押します。
+- `repair`: `repair_with`があればその番号のヒューズを掴んで部品の横に置き、なければ`repair`チャンネルを書くスイッチを押します。
+- 壊した後・直した後は部品から0.35 m離れるまで下がります（最大3秒）。部品の箱に寄りかかったままの体は計画が塞がったマスと見るので、次の下位目標がその場で止まります。
+
+プリセット`puzzles/circuit/`8種と例の部屋`examples/rooms/power_cut.yaml`
+
+| プリセット | 解き方 |
+|---|---|
+| `cut_the_lock` | 信号源 → 配線 → 中継器 → 錠。大砲で中継器を壊すと扉が開きます。 |
+| `wrong_wire` | 配線2本。マーカー1をつついて切れば開き、マーカー9（`on_break: fail`）を切ると失敗です。 |
+| `fuse_repair` | プレスが最初のステップで中継器を壊します。ディスペンサーからヒューズを取って差します。 |
+| `clock_door` | 時計の信号源で開閉する扉のタイミングを合わせて通ります（壊さない基本の部屋）。 |
+| `press_relay` | ボタンでプレスを下ろして中継器を壊します。 |
+| `jam_the_turret` | 横風を回す信号源をつついて壊し、道を静かにします。 |
+| `peck_cable` | 壁のケーブルカバーを2回つついて切ります。 |
+| `sabotage_order` | 中継器2つをa → bの順で壊します。順序を間違えると`lock.wrong`のパルスが両方を直します。 |
+
+- 測定値（2026-11-14、`mpg check`、シード20個）: 8種すべて20/20。`power_cut.yaml`は20/20（平均50.5秒、エピソード120秒）で、時計の扉 → 大砲で中継器を切る → ヒューズを差す、の3部屋を通ります。時計の扉が通行中に閉まるとアヒルが戸口で曲がって倒れるため（17/20、次に13/20）、開いている時間を10秒の60%にして20/20になりました。
+- `crush`を使うプリセットはありません。原因は試験で確認します（40 gのディスペンサーキューブを低い中継器に落として4/4）。
+
 ## 動く装置と設定変更器
 
 - プラットフォーム(`platform`、プリセット`device/moving_platform`、`device/elevator`): `pos`から測った`path: [[dx, dy, z], …]`(zは上面の高さ)を`speed`でたどります。`mode`は`loop`、`pingpong`、`once`、`run`は`always`、`while_signal`(信号がオンの間)、`on_signal`(オンになるたびに一回運行)です。スライド関節と位置アクチュエーターで動くので、上に置いた物体も一緒に運びます。
@@ -603,8 +637,8 @@ def majority(inputs, state, dt):
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
-| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
-| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | 可 | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | 可 | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -648,6 +682,8 @@ def majority(inputs, state, dt):
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | 可 | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | 可 | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -689,7 +725,7 @@ def majority(inputs, state, dt):
 | `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | area it reaches, around `pos` (ignored when `targets` is given) |
 | `targets` | list |  | `[]` |  |  | parts it strikes (default: whatever is in its area) |
 | `height` | float | m | `0.3` | [0.1, 1] |  | how high the frame stands |
-| `cooldown` | float | s | `0.5` | [0, 60] | 예 | shortest time between two strikes |
+| `cooldown` | float | s | `0.5` | [0, 60] | 可 | shortest time between two strikes |
 | `cooldown` | float | s | `0.5` | [0, 60] | 可 | shortest time between two strikes |
 | `charges` | int |  | — | [1, 100] |  | strikes it has (none: unlimited) |
 
@@ -808,6 +844,8 @@ def majority(inputs, state, dt):
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | 可 | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | 可 | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -1110,6 +1148,8 @@ def majority(inputs, state, dt):
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | 可 | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | 可 | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -1186,6 +1226,8 @@ def majority(inputs, state, dt):
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | 可 | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | 可 | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -1355,6 +1397,8 @@ def majority(inputs, state, dt):
 | `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
 | `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
 | `crush_force` | float | N | `0.5` | [0.05, 200] | 可 | `crush`: contact force of an object that counts (measured, R34) |
 | `min_speed` | float | m/s | `1.0` | [0, 30] | 可 | `shell`: slowest hit that counts |
 | `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
@@ -1453,6 +1497,7 @@ def majority(inputs, state, dt):
 | `logic/source_pattern` | `source` | `mode: pattern`, `pattern: [1.0, 0.0, 1.0, 0.0, 0.0]`, `step: 1.0` |
 | `logic/transmitter` | `transmitter` | `band: radio`, `delay: 0.0` |
 | `logic/wire` | `wire` | `thickness: 0.012` |
+| `logic/wire_cut` | `wire` | `breakable: True`, `by: ['peck']`, `hp: 2`, `mount: wall`, `depth: 0.04`, `height: 0.18`, `peck_dist: 0.04` |
 | `logic/wire_cut` | `wire` | `breakable: True`, `by: ['peck']`, `hp: 2`, `mount: wall`, `depth: 0.04`, `height: 0.18` |
 | `logic/xor` | `gate` | `op: xor` |
 | `npc/flee` | `npc` | `behavior: flee`, `speed: 0.08`, `sense: 0.4` |

@@ -425,3 +425,72 @@ def test_a_destroyer_needs_breakable_targets(tmp_path):
               "targets": ["b"]}]
     env = room(tmp_path, parts, name="badpress")
     assert any("does not list `destroyer`" in p for p in env.parts["press"].check_static(env))
+
+
+# ---- repair_with: the fuse goes in the part's own socket (R34, 3c) ------------------
+def fuse_room(tmp_path, marker=3, name="socketfuse", **cfg):
+    parts = [box_part("b", [0.4, 0.4], ["destroyer"], repair_with=3, **cfg),
+             {"name": "fuse", "type": "cube", "pos": [0.9, -0.9], "size": 0.04,
+              "marker": {"id": marker}}]
+    return room(tmp_path, parts, name=name)
+
+
+def test_a_fuse_against_the_part_repairs_it(tmp_path):
+    """`repair_with` needs no receptacle: the marked object within `socket_dist` of the
+    part is the fuse in its socket."""
+    env = fuse_room(tmp_path)
+    b, fuse = env.parts["b"], env.parts["fuse"]
+    b.hit(env.model, "destroyer")
+    body_steps(env, 0.2)
+    assert b.broken and b.has_repair()
+    fuse.put(env.data, [0.4 + 0.08, 0.4, 0.02])               # set down against the box
+    body_steps(env, 0.3)
+    assert not b.broken and b.hp_left == b.hp
+
+
+def test_a_fuse_with_the_wrong_marker_does_not_repair_it(tmp_path):
+    env = fuse_room(tmp_path, marker=5, name="wrongfuse")
+    b, fuse = env.parts["b"], env.parts["fuse"]
+    b.hit(env.model, "destroyer")
+    body_steps(env, 0.2)
+    fuse.put(env.data, [0.4 + 0.08, 0.4, 0.02])
+    body_steps(env, 0.3)
+    assert b.broken, "only the fuse with the part's own marker id counts"
+
+
+def test_a_fuse_far_from_the_part_does_not_repair_it(tmp_path):
+    env = fuse_room(tmp_path, name="farfuse")
+    b, fuse = env.parts["b"], env.parts["fuse"]
+    b.hit(env.model, "destroyer")
+    body_steps(env, 0.2)
+    fuse.put(env.data, [0.4 + 0.25, 0.4, 0.02])               # outside `socket_dist`
+    body_steps(env, 0.3)
+    assert b.broken
+
+
+def test_a_part_without_repair_says_so(tmp_path):
+    env = room(tmp_path, [box_part("b", [0.4, 0.4], ["destroyer"])], name="norepair")
+    assert not env.parts["b"].has_repair()
+
+
+# ---- the cause warnings (R34 static checks, 3c) ------------------------------------
+def test_shell_without_a_cannon_warns(tmp_path):
+    env = room(tmp_path, [box_part("b", [0.4, 0.4], ["shell"])], name="noshell")
+    assert any("no cannon" in w for w in env.parts["b"].check_warnings(env))
+
+
+def test_a_pecked_part_that_does_not_stop_the_duck_warns(tmp_path):
+    """A relay the duck can push is nothing to lean on, and the walking policy cannot
+    hold a place on open floor (Open question 8)."""
+    parts = [{"name": "r", "type": "relay", "in": ["s"], "pos": [0.4, 0.0], "movable": True,
+              "breakable": True, "by": ["peck"]}]
+    env = room(tmp_path, parts, name="pecknowall")
+    assert any("does not stop the duck" in w for w in env.parts["r"].check_warnings(env))
+
+
+def test_an_object_heavier_than_crush_force_warns(tmp_path):
+    parts = [box_part("b", [0.4, 0.4], ["crush"]),
+             {"name": "heavy", "type": "cube", "pos": [0.9, -0.9], "size": 0.04, "mass": 0.08}]
+    env = room(tmp_path, parts, name="heavy")
+    warn = env.parts["b"].check_warnings(env)
+    assert any("merely setting" in w and "heavy" in w for w in warn), warn

@@ -26,6 +26,11 @@ actions:   the task actions cover what the plan needs (R19): `grab` when an
            order, R28); `crouch` for a `glide` sub-goal (R30); without them a policy
            can never do it. Checked after
            `order`, on its solution order;
+circuit:   the break graph (R34, circuit.py): what breaking each breakable part
+           reaches, against `demo:` (nothing broken that ends the episode, nothing
+           broken that changes nothing) with warnings when the answer leans on a
+           part that can be broken with no repair; checked after `order`, on its
+           solution order;
 (a) order: a signal path to a goal exists: a switch/door order that reaches a
            goal (link graph on the room grid), and every coin is reachable (R36);
            in letter-map rooms (R37) also: parts, spawn and their random ranges lie on
@@ -52,6 +57,7 @@ import numpy as np
 import mujoco
 
 from .env import PuzzleEnv
+from .circuit import check_circuit, demo_breaks
 from .logic import free_mask, solution_order
 from .parts.base import BODY_PREFIX
 from .parts.floor.coin import unreachable_coins
@@ -63,7 +69,7 @@ from .solver import ScriptedSolver, run_episode
 
 STABILITY_SECONDS = 10.0
 LOAD_STAGES = ("values", "channels", "demo")
-STATIC = ("community", *LOAD_STAGES, "body", "parts", "overlap", "order", "actions")   # community: --community only
+STATIC = ("community", *LOAD_STAGES, "body", "parts", "overlap", "order", "circuit", "actions")  # community: --community only
 DYNAMIC = ("stability", "solver")
 STAGES = STATIC + DYNAMIC
 OVERLAP_DEPTH = 0.005    # [m] penetration that counts as an overlap
@@ -164,7 +170,8 @@ def check_order(env: PuzzleEnv) -> dict[str, Any]:
     layout = env.sample_layout(None)
     for n, xy in layout["parts"].items():
         env.parts[n].place(env.model, xy)
-    res = solution_order(env.grid, env.walls, env.parts, layout["spawn"][:2])
+    res = solution_order(env.grid, env.walls, env.parts, layout["spawn"][:2],
+                         broken=demo_breaks(env.room))
     if res["ok"] and (coins := unreachable_coins(env, res["order"], layout["spawn"][:2])):
         res = {**res, "ok": False, "reason": "; ".join(coins)}
     out = {"ok": res["ok"], "order": res["order"], **({"reason": res["reason"]} if not res["ok"] else {})}
@@ -275,6 +282,10 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
     why = []
     if "grab" not in env.actions:
         need = [e[1] for e in demo if e[0] in ("grab", "pull")]
+        need += [e[1] for e in demo if e[0] == "break" and e[2] == "peck"]      # the beak cuts it (R34)
+        need += [e[1] for e in demo if e[0] == "break" and e[2] == "crush"]     # an object is carried
+        need += [e[1] for e in demo if e[0] == "repair"
+                 and env.parts[e[1]].repair_with is not None]                    # the fuse is carried
         need += [n for n in order if getattr(env.parts[n], "grab_handle", False)]     # held devices (R28)
         dragged = {e[2] for e in demo if e[0] == "drag"}           # a rope drags it there (R31)
         need += [n for n in order if any(takes(env.parts[n], o) for o in objs) and n not in dragged
@@ -300,6 +311,11 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
         if low:
             why.append(f"wall buttons {low} are below the level beak tip ({level} m) but the task "
                        f"actions {env.actions} have no `head`")
+        pecked = sorted(e[1] for e in demo if e[0] == "break" and e[2] == "peck"
+                        and env.parts[e[1]].break_top() < level)                  # R34
+        if pecked:
+            why.append(f"pecking {pecked} needs the beak below the level tip ({level} m) but the "
+                       f"task actions {env.actions} have no `head`")
     return {"ok": not why, "actions": list(env.actions), **({"reason": "; ".join(why)} if why else {})}
 
 
@@ -310,6 +326,7 @@ def check_static(env: PuzzleEnv) -> dict[str, Any]:
     out["parts"] = check_parts(env)
     out["overlap"] = check_overlap(env)
     out["order"] = check_order(env)
+    out["circuit"] = check_circuit(env, out["order"]["order"])
     out["actions"] = check_actions(env, out["order"]["order"])
     return out
 

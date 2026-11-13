@@ -1,0 +1,26 @@
+# Sabotage in order (R34 + R7 sequence lock): two relays must be broken in the
+# order a, b. The sequence lock watches `a.broken` and `b.broken` and latches on
+# when they arrive in that order, which opens the door. Out of order it pulses
+# `lock.wrong` instead, and that pulse is both relays' `repair` channel, so the
+# room puts itself back together and the duck starts again.
+# Both relays stand 0.2 m high, so the lowered beak reaches them, and their own
+# boxes are what stop the duck while it pecks: walking into a free-standing box
+# leaves the beak 4.4 cm off it (measured 2026-11-14), hence `peck_dist: 0.06`.
+# Task: examples/task_sabotage_order.yaml (`head` and `grab`).
+name: sabotage_order
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+parts:
+  - {name: sig, preset: logic/source_const, pos: [-1.35, 0.95], body: false}
+  - {name: a, preset: logic/relay, pos: [-0.75, -0.5], in: [sig], by: [peck], hp: 1,
+     size: [0.1, 0.1], height: 0.2, repair: lock.wrong, peck_dist: 0.06}
+  - {name: b, preset: logic/relay, pos: [-0.25, 0.5], in: [sig], by: [peck], hp: 1,
+     size: [0.1, 0.1], height: 0.2, repair: lock.wrong, peck_dist: 0.06}
+  - {name: lock, type: gate, sequence: [a.broken, b.broken], latch: true}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [lock]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}
+demo: [break a via peck, break b via peck, goto goal]
