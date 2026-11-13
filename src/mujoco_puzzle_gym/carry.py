@@ -87,7 +87,8 @@ LOOK_DIST = 0.6      # [m] look: stand this far from the marker (gaze max_dist 2
 LOOK_AIM = 0.1       # [rad] look: facing the marker this well, stand
 BLOCK_Z = 0.05       # [m] obstacle ray from the trunk centre at this height ...
 BLOCK_DIST = 0.16    # [m] ... hitting within this (footprint front 0.11 m) blocks walking off
-NOT_GROUP_3 = np.array([1, 1, 1, 0, 1, 1], dtype=np.uint8)   # the body's collision geoms are group 3
+RAY_GROUPS = np.array([1, 0, 1, 0, 1, 1], dtype=np.uint8)    # not the body's collision geoms (group 3) nor
+                                                              # zone sensor boxes (group 1: standing in one blocked)
 
 
 def _wrap(a: float) -> float:
@@ -322,7 +323,7 @@ class Carrier:
         f = np.array([math.cos(s.yaw), math.sin(s.yaw), 0.0])
         start = np.array([*s.pos[:2], BLOCK_Z])
         gid = np.zeros(1, dtype=np.int32)
-        d = mujoco.mj_ray(env.model, env.data, start, f, NOT_GROUP_3, 1, -1, gid)
+        d = mujoco.mj_ray(env.model, env.data, start, f, RAY_GROUPS, 1, -1, gid)
         fixed = gid[0] >= 0 and env.model.body_weldid[env.model.geom_bodyid[gid[0]]] == 0
         return bool(fixed) and 0.0 <= d <= BLOCK_DIST      # loose objects (the one let go) do not count
 

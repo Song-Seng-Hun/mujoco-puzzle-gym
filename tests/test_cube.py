@@ -1,6 +1,8 @@
 """R17 cube: mass and handles, the pressure plate and the socket count it (not
-while held). Grab helpers come from test_grab.py."""
+while held); R31 `rest_on`: a cube starts resting on another cube's top. Grab
+helpers come from test_grab.py."""
 
+import numpy as np
 import pytest
 from rooms import body_steps, open_room
 from test_grab import CUBE, grab, make, to_beak  # noqa: F401  (make: fixture)
@@ -45,3 +47,51 @@ def test_socket_takes_the_cube_once_let_go(make):
     assert env.signals.get("s.ok") == 0                    # held: not in (R5)
     grab(env, on=False, seconds=0.8)
     assert env.signals.get("s.ok") == 1
+
+
+# ---- R31 overload: a cube resting on a cube (`rest_on`) -------------------------------------
+CART = {"name": "cart", "type": "cube", "pos": [0.8, 0.8], "size": 0.18, "mass": 0.06, "friction": 0.4,
+        "hitch": True, "random": [0.1, 0.1]}
+LOAD = {"name": "c", "type": "cube", "pos": [0.87, 0.75], "size": 0.04, "mass": 0.05, "friction": 0.8,
+        "rest_on": "cart"}
+
+
+def test_rest_on_starts_on_the_base_top_and_moves_with_it(make):
+    env = make([CART, LOAD])
+    cart, c = env.parts["cart"], env.parts["c"]
+    bases = []
+    for seed in range(3):
+        env.reset(seed=seed)
+        base = env.data.xpos[cart._bid].copy()
+        bases.append(base[:2])
+        assert c.pos(env.data)[:2] == pytest.approx(base[:2] + [0.07, -0.05], abs=1e-6)
+        assert c.pos(env.data)[2] == pytest.approx(0.18 + 0.02, abs=2e-3)
+    assert np.ptp(np.array(bases), axis=0).max() > 0.01                 # the cart's random range moved it
+    body_steps(env, 0.5)
+    assert c.pos(env.data)[2] == pytest.approx(0.2, abs=5e-3)          # it rests there
+
+
+def test_rest_on_cube_gets_the_hitch_contact_priority(make):
+    from mujoco_puzzle_gym.parts.object.cube import REST_PRIORITY
+
+    env = make([CART, LOAD])
+    m = env.model
+    assert m.geom("part/c/box").priority == REST_PRIORITY
+    assert m.geom("part/cart/box").priority == 0           # not resting on anything (no rope here: no hitch priority)
+
+
+@pytest.mark.parametrize("change, why", [
+    ({"random": [0.05, 0.0]}, "random"),
+    ({"rest_on": "goal"}, "must name another cube"),
+    ({"rest_on": "c"}, "must name another cube"),
+    ({"pos": [1.0, 0.8]}, "outside its top face"),
+])
+def test_rest_on_rejects(tmp_path, asset_dir, change, why):
+    with pytest.raises(RoomError, match=why):
+        open_room(tmp_path, [CART, {**LOAD, **change}])
+
+
+def test_rest_on_base_must_not_rest_on_another(tmp_path, asset_dir):
+    top = {**LOAD, "name": "top", "rest_on": "c"}
+    with pytest.raises(RoomError, match="must name another cube that is not stacked"):
+        open_room(tmp_path, [CART, LOAD, top])

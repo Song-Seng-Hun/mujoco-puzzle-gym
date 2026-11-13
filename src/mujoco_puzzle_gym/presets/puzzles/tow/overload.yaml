@@ -1,0 +1,40 @@
+# Overload (R31): a cart (cube 0.18 m, 0.06 kg, friction 0.4: drag 0.24 N) with
+# two load cubes on it (0.05 kg each, friction 0.8, `rest_on: cart`) must reach
+# the delivery zone (as wide as the room) to open the one-shot door to the goal.
+# The cart stands in a dead-end bay against the west wall (0.34 m wide, the duck
+# cannot get behind it), so it can only be pulled out, not pushed. Its rope is
+# weak (`max_tension` 0.3 N): towed loaded, it snaps at the bay (the cart stays,
+# the door stays shut). Lift both cubes off with the beak (handles on +x, at the
+# bay mouth) and drop them on the dump pad, then stand on the hitch station south
+# of the bay mouth and drag the cart into the zone. The walking gait drops the
+# tension near zero every step, so what snaps the rope is the highest tension
+# held for 0.2 s (`snap_time`): see docs/parts-guide.md (Tow rope) for the
+# measured margin. Episodes need 120 s and the grab actions
+# (examples/task_overload.yaml).
+name: overload
+size: [5.0, 1.5]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [1.2, -0.75], to: [1.2, -0.28]}     # divider, opening at y = 0
+  - {from: [1.2, 0.28], to: [1.2, 0.75]}
+  - {from: [-2.5, 0.2], to: [-2.3, 0.2]}        # the cart's bay
+  - {from: [-2.5, -0.2], to: [-2.3, -0.2]}
+spawn: {pos: [-1.5, 0.0], yaw: 3.1416, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: cart, type: cube, pos: [-2.37, 0.0], size: 0.18, mass: 0.06, friction: 0.4, hitch: true}
+  - {name: c1, type: cube, pos: [-2.30, 0.045], size: 0.04, mass: 0.05, friction: 0.8, handles: [+x], rest_on: cart}
+  - {name: c2, type: cube, pos: [-2.30, -0.045], size: 0.04, mass: 0.05, friction: 0.8, handles: [+x], rest_on: cart}
+  - {name: rope, type: rope, pos: [-2.0, -0.6], length: 0.4, hitch_radius: 0.4, max_tension: 0.3}
+  - {name: station, type: hitch_station, pos: [-2.05, -0.2], mode: attach}
+  - {name: dump, preset: input/object_zone, pos: [-1.5, 0.45], size: [0.4, 0.4], objects: [c1, c2]}
+  - {name: zone, preset: input/object_zone, pos: [0.0, 0.0], size: [0.5, 1.4], objects: [cart]}
+  - {name: door, preset: device/oneshot_door, pos: [1.2, 0.0], in: [zone]}
+  - {name: goal, type: goal, pos: [1.9, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - grab c1
+  - drop c1 dump
+  - grab c2
+  - drop c2 dump
+  - tow rope cart
+  - drag rope zone
+  - goto goal

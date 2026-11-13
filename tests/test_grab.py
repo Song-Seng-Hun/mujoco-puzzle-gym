@@ -8,7 +8,7 @@ up to it; the scripted `grab` sub-goal is tested with the example room (slow).
 import mujoco
 import numpy as np
 import pytest
-from rooms import body_steps, open_room
+from rooms import body_steps, open_room, stand_at
 
 
 @pytest.fixture
@@ -152,3 +152,13 @@ def test_reset_clears_the_hold(make):
     env.reset(seed=1)
     assert env.data.eq_active[eq] == 0 and env.world.held == set()
     assert env.parts["_beak"].held is None and env.signals.get("beak.holding") == 0
+
+
+def test_walk_off_is_not_blocked_by_a_zone_sensor_box(make):
+    """The walk-off ray ignores zone sensor boxes (group 1, no contacts): standing in a
+    drop zone after letting go is not 'a wall ahead' (R31 overload's dump)."""
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+
+    env = make([{"name": "dump", "preset": "input/object_zone", "pos": [0.0, 0.0], "size": [0.4, 0.4]}])
+    stand_at(env, 0.1, 0.0)                              # the box's far face 0.1 m ahead
+    assert not ScriptedSolver(env).carrier._blocked_ahead()

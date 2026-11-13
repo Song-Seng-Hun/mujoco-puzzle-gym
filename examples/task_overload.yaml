@@ -1,0 +1,9 @@
+# Task for the preset puzzles/tow/overload (R31): the load cubes must be lifted
+# off the cart, so the actions add `head` and `grab`. Two carries, the tow and the
+# drag take the scripted solver about 50 s (42-81 s, 20 seeds), so episodes are
+# 120 s. Missing keys take task.DEFAULTS.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/tow/overload.yaml
+env:
+  episode_seconds: 120
+actions: [move, head, grab]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, target_pos, beak]

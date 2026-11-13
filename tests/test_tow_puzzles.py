@@ -8,11 +8,13 @@
 - slow: without the rope steps (or walking straight at the goal) the presets are not
   solved; `cleat_hold` without its handoff station (lift the door, walk back) and
   `npc_leash` by herding instead of towing are not solved either; `pit_bridge` without
-  the drag or without untying is not solved. Their 20-seed
-  `mpg check` runs in test_examples.py (room presets).
+  the drag or without untying is not solved; `overload` towed without unloading the
+  cart is not solved (the rope snaps). Their 20-seed `mpg check` runs in
+  test_examples.py (room presets); `overload` needs the grab actions (its task).
 """
 
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -26,7 +28,8 @@ from mujoco_puzzle_gym.solver import ScriptedSolver, run_episode
 
 TOW = catalog.PRESET_ROOT / "puzzles/tow"
 NAMES = ["sled_delivery", "drop_and_go", "chain_dropoff", "tethered_start", "cleat_hold", "npc_leash",
-         "pit_bridge"]
+         "pit_bridge", "overload"]
+TASKS = {"overload": Path(__file__).resolve().parents[1] / "examples/task_overload.yaml"}    # grab actions
 
 
 def test_tow_presets_listed():
@@ -35,7 +38,7 @@ def test_tow_presets_listed():
 
 @pytest.mark.parametrize("name", NAMES)
 def test_tow_presets_pass_static_stages(asset_dir, name):
-    res = check(TOW / f"{name}.yaml", static_only=True)
+    res = check(TOW / f"{name}.yaml", task=TASKS.get(name), static_only=True)
     assert res["static"]["ok"] and "warnings" not in res["parts"], res
     raw = yaml.safe_load((TOW / f"{name}.yaml").read_text())
     ropes = {p["name"] for p in raw["parts"] if p.get("type") == "rope"}
@@ -108,7 +111,7 @@ def without(path, tmp_path, demo, drop=()):
     raw["parts"] = [p for p in raw["parts"] if p["name"] not in drop]
     out = tmp_path / path.name
     out.write_text(yaml.safe_dump(raw))
-    return PuzzleEnv(room=out)
+    return PuzzleEnv(room=out, task=TASKS.get(path.stem))
 
 
 @pytest.mark.slow
@@ -120,7 +123,8 @@ def without(path, tmp_path, demo, drop=()):
                                         ("npc_leash", ["goto goal"]),
                                         ("npc_leash", ["herd bot zone", "goto goal"]),
                                         ("pit_bridge", ["untow rope", "goto goal"]),        # no drag: the pit stays open
-                                        ("pit_bridge", ["drag rope pit", "goto goal"])])    # no untow: the rope holds
+                                        ("pit_bridge", ["drag rope pit", "goto goal"]),     # no untow: the rope holds
+                                        ("overload", ["tow rope cart", "drag rope zone", "goto goal"])])   # loaded: snaps
 def test_tow_presets_need_the_rope_steps(asset_dir, tmp_path, name, demo):
     env = without(TOW / f"{name}.yaml", tmp_path, demo)
     solver = ScriptedSolver(env)
@@ -146,7 +150,7 @@ def walk_straight(env, seed: int) -> dict:
 @pytest.mark.slow
 @pytest.mark.parametrize("name", NAMES)
 def test_walking_straight_does_not_solve(asset_dir, name):
-    env = PuzzleEnv(room=TOW / f"{name}.yaml")
+    env = PuzzleEnv(room=TOW / f"{name}.yaml", task=TASKS.get(name))
     wins = [walk_straight(env, s)["success"] for s in range(3)]
     env.close()
     assert not any(wins)
