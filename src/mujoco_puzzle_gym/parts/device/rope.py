@@ -65,9 +65,10 @@ Static check (`mpg check` stage `parts`): `hitch_radius` and `clip_radius` at mo
 `length`; the default ends (with their random ranges) within `length`. Warnings: a hitch
 object whose sliding friction x weight is above DRAG_WARN (OQ9: walking keeps 0.8 of its
 speed up to about 0.4 N), and on the `demo:` way while towing (from `tow <rope> ...` to
-`untow <rope>`): a door narrower than the towed thing, or a bend sharper than a right
-angle within `length` (the tendon is straight through walls; a towed thing catches on
-corners).
+`untow <rope>`, from the start for a rope tying the body to an object or NPC at reset,
+and on `drag <rope> <part>` legs): a door narrower than the towed thing, or a bend
+sharper than a right angle within `length` (the tendon is straight through walls; a
+towed thing catches on corners).
 """
 
 from __future__ import annotations
@@ -737,10 +738,21 @@ def warp_bundle(env, key, pose, warp_one) -> None:
 # ---- static warnings on the demo way ------------------------------------------------
 def tow_path_warnings(env, rope: Rope) -> list[str]:
     """Doors narrower than the towed thing and bends sharper than a right angle within
-    `length` on the `demo:` way between `tow <rope> ...` and `untow <rope>`."""
+    `length` on the `demo:` way while the rope tows: from `tow <rope> ...` (or from the
+    start when the rope ties the body to an object or NPC at reset) to `untow <rope>`,
+    and on every `drag <rope> <part>` leg (towing the rope's configured end that is not
+    the body when no `tow` named one)."""
     demo = list(getattr(env.room, "demo", []) or [])
-    if not any(e[0] == "tow" and e[1] == rope.name for e in demo):
+    ends = rope.ends_cfg
+    start = None
+    if BODY_HITCH in ends:
+        e = ends.index(BODY_HITCH)
+        other = ends[1 - e]
+        if rope.tied0[e] and rope.tied0[1 - e] and not getattr(env.parts.get(other), "is_anchor", False):
+            start = other
+    if start is None and not any(e[0] in ("tow", "drag") and e[1] == rope.name for e in demo):
         return []
+    plain = [h for h in ends if h and h != BODY_HITCH]
     from ...logic import free_mask
 
     grid, parts = env.grid, env.parts
@@ -748,7 +760,7 @@ def tow_path_warnings(env, rope: Rope) -> list[str]:
     free = free_mask(grid, env.walls, parts, on, inflate=env.body.footprint_radius)
     legs: list[tuple[np.ndarray, np.ndarray, str]] = []   # (from, to, towed hitch name)
     here = np.asarray(env.room.spawn_pos, dtype=float)
-    towing: str | None = None
+    towing: str | None = start
     for e in demo:
         if e[0] == "tow" and e[1] == rope.name:
             st = _station_for(parts, rope, e[2])
@@ -758,6 +770,13 @@ def tow_path_warnings(env, rope: Rope) -> list[str]:
             continue
         if e[0] == "untow" and e[1] == rope.name:
             towing = None
+            continue
+        if e[0] == "drag" and e[1] == rope.name and e[2] in parts:
+            to = np.asarray(parts[e[2]].xy, dtype=float)
+            towed = towing or (plain[-1] if plain else None)
+            if towed is not None:
+                legs.append((here, to, towed))
+            here = to
             continue
         if e[0] in ("goto", "press") and e[1] in parts:
             to = np.asarray(parts[e[1]].target_xy(), dtype=float)
