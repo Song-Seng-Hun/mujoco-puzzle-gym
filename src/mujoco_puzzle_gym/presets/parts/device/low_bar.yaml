@@ -1,0 +1,8 @@
+# Low bar (R30): a static bar across the way, underside 0.228 m: it blocks a
+# walking or rolling duck, but a roller that crouches about 0.28 m before it at
+# 0.35 m/s or more glides under (solver step `glide <bar>`, task action
+# `crouch`). Lay it across the whole way. Set: pos, length, axis, bottom.
+type: low_bar
+length: 1.5
+axis: y
+bottom: 0.228
