@@ -1,0 +1,25 @@
+# Cleat hold (R31): the rope door in the divider has no motor; gravity holds it
+# shut. The duck starts tied to a rope that runs from the door's top edge up over
+# a ceiling pulley (`via:`) and down to the duck's hitch. Walking away from the
+# door lifts it. On the handoff station by the floor anchor the rope end moves
+# from the duck to the anchor in one step, so the door stays up; then walk back
+# under it to the goal. Walking back still tied lets the door down in front of
+# the duck. The rope carries the door's weight (0.05 kg panel + 0.02 kg knot,
+# 0.69 N), so it gets its own `max_tension`.
+name: cleat_hold
+size: [4.0, 1.5]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.6, -0.75], to: [0.6, -0.28]}     # divider, opening at y = 0
+  - {from: [0.6, 0.28], to: [0.6, 0.75]}
+spawn: {pos: [0.25, 0.0], yaw: 3.14159, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: door, preset: device/rope_door, pos: [0.6, 0.0], mass: 0.05}
+  - {name: post, type: anchor, pos: [-0.4, 0.0]}
+  - {name: rope, type: rope, pos: [0.0, 0.6], a: door, b: body, length: 1.5, via: [[0.6, 0.0, 0.85]],
+     max_tension: 1.5}
+  - {name: station, type: hitch_station, pos: [-0.55, 0.0], mode: handoff, to: post}
+  - {name: goal, type: goal, pos: [1.6, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - untow rope
+  - goto goal
