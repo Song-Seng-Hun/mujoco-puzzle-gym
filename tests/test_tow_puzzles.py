@@ -60,8 +60,30 @@ def test_box_dragged_into_a_pit_must_be_flush(asset_dir, tmp_path):
     why = res["parts"]["reason"]
     assert "'box' (0.10 m high) dragged into pit 'pit'" in why and f"({CATCH_DEPTH:.2f} m deep)" in why
     assert "0.40 m below the floor" in why
-    # the tallest cube (0.3 m) still falls short of the catch plane depth: no box fills a pit yet
+    # the tallest cube (0.3 m) falls short of the catch plane depth: only a pit with `depth` can be filled
     assert not check(pit_room(tmp_path, 0.3), static_only=True)["parts"]["ok"]
+
+
+def deep_pit_room(tmp_path, opening) -> "Path":
+    raw = yaml.safe_load(pit_room(tmp_path, 0.3).read_text())
+    for p in raw["parts"]:
+        if p["name"] == "box":
+            p.update({"handles": ["-x"], "handle_size": 0.005, "pos": [-1.6, 0.0]})
+        if p["name"] == "pit":
+            p.update({"size": opening, "depth": 0.3})
+    raw["parts"] = [p if p["name"] != "rope" else {**p, "pos": [-1.2, 0.5], "length": 0.5} for p in raw["parts"]]
+    path = tmp_path / "deep_pit.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+def test_box_dragged_into_a_deep_pit_must_fit_its_opening(asset_dir, tmp_path):
+    """With `depth` the 0.3 m box is flush; the opening must be 0-4 cm wider than the box's
+    largest horizontal size (0.305 m with its handle), each side."""
+    assert check(deep_pit_room(tmp_path, [0.31, 0.345]), static_only=True)["parts"]["ok"]
+    for opening in ([0.30, 0.345], [0.31, 0.35], [0.4, 0.4]):
+        res = check(deep_pit_room(tmp_path, opening), static_only=True)
+        assert not res["parts"]["ok"] and "must be 0-4 cm wider than the box (0.305 m across" in res["parts"]["reason"]
 
 
 def test_cleat_hold_without_its_pulley_fails_static(tmp_path):

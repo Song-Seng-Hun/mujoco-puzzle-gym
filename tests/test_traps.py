@@ -191,6 +191,120 @@ def test_pit_is_a_hole_for_planning(tmp_path):
     env.close()
 
 
+
+# ---- pit depth: a flush box fills it (R16, R31 pit_bridge) ----------------------------------
+DEEP = {"name": "pit", "preset": "trap/pit", "pos": [0.0, 0.0], "size": [0.31, 0.345], "depth": 0.3}
+FILLER = {"name": "box", "type": "cube", "pos": [0.0, 0.0], "size": 0.3, "handles": ["-x"], "handle_size": 0.005,
+          "mass": 0.08, "friction": 0.5, "hitch": True}
+ROPE = {"name": "rope", "type": "rope", "pos": [0.4, 0.4], "b": "box", "length": 1.0}
+
+
+def deep_pit_env(tmp_path, name, box=None, extra=()):
+    """A deep pit with the box put in it (its handle clear of the rim) and settled on the plate."""
+    env = open_room(tmp_path, [DEEP, {**FILLER, "pos": [0.8, 0.0], **(box or {})}, *extra], name=name)
+    put_box(env, [0.0025, 0.0, -0.3 + env.parts["box"].size / 2])
+    body_steps(env, 0.6)
+    return env
+
+
+def put_box(env, xyz, tilt_deg=0.0):
+    box = env.parts["box"]
+    a = env.model.jnt_qposadr[env.model.body_jntadr[box._bid]]
+    t = math.radians(tilt_deg) / 2
+    env.data.qpos[a:a + 7] = [*xyz, math.cos(t), math.sin(t), 0.0, 0.0]
+    env.data.qvel[env.model.jnt_dofadr[env.model.body_jntadr[box._bid]]:][:6] = 0.0
+    mujoco.mj_forward(env.model, env.data)
+
+
+def test_deep_pit_with_a_flush_box_is_floor(tmp_path):
+    from mujoco_puzzle_gym.logic import live_free
+    env = deep_pit_env(tmp_path, "pitfill")
+    pit = env.parts["pit"]
+    assert pit.filler_top() == pytest.approx(0.0, abs=0.002)
+    assert env.floor_height((0.0, 0.0))[0] == pytest.approx(0.0, abs=0.002)   # fall height from the box top
+    assert pit.hole_now(env.grid) is None
+    assert live_free(env.grid, env.walls, env.parts, 0.3)[env.grid.cell((0.0, 0.0))]
+    env._place_body((0.0, 0.0, 0.0))                          # standing on the box: no fall, no pit fail
+    assert not body_steps(env, 1.0) and not pit.failed()
+    env.close()
+
+
+def test_deep_pit_is_a_hole_again_when_the_box_leaves(tmp_path):
+    env = deep_pit_env(tmp_path, "pitunfill")
+    pit = env.parts["pit"]
+    put_box(env, [0.8, 0.0, 0.15])                            # out on the floor
+    assert pit.filler_top() is None and pit.hole_now(env.grid) is not None
+    assert env.floor_height((0.0, 0.0))[0] is None
+    put_box(env, [0.0025, 0.0, -0.15], tilt_deg=8.0)          # back in, tilted more than 5 deg
+    assert pit.filler_top() is None
+    put_box(env, [0.0025, 0.0, -0.15], tilt_deg=3.0)
+    assert pit.filler_top() is not None
+    put_box(env, [0.0025, 0.0, 0.05])                         # held up: top 0.2 m above the floor
+    assert pit.filler_top() is None
+    put_box(env, [0.8, 0.0, 0.15])
+    _, _, terminated, _, info = drop_in(env)                  # the open deep pit still fails the episode
+    assert terminated and info["failed"] == ["pit"]
+    env.close()
+
+
+def test_deep_pit_box_too_short_does_not_fill(tmp_path):
+    env = deep_pit_env(tmp_path, "pitshort", box={"size": 0.2})
+    assert env.parts["pit"].filler_top() is None and env.parts["pit"].hole_now(env.grid) is not None
+    env.close()
+
+
+def test_deep_pit_filled_state_follows_snapshots(tmp_path):
+    env = deep_pit_env(tmp_path, "pitsnap")
+    pit = env.parts["pit"]
+    full = env.save_snapshot()
+    put_box(env, [0.8, 0.0, 0.15])
+    empty = env.save_snapshot()
+    env.restore_snapshot(full)
+    assert pit.filler_top() is not None and pit.hole_now(env.grid) is None
+    env.restore_snapshot(empty)
+    assert pit.filler_top() is None and pit.hole_now(env.grid) is not None
+    env.close()
+
+
+def test_pit_without_depth_is_unchanged(tmp_path):
+    """No `depth`: no plate (the box falls to the catch plane), never filled, a hole for planning."""
+    from mujoco_puzzle_gym.logic import free_mask
+    raw_pit = {k: v for k, v in DEEP.items() if k != "depth"}
+    env = open_room(tmp_path, [raw_pit, {**FILLER, "pos": [0.8, 0.0]}], name="pitnodepth")
+    put_box(env, [0.0025, 0.0, -0.15])
+    body_steps(env, 1.0)
+    pit = env.parts["pit"]
+    assert pit.cubes == [] and not pit.fillable and pit.filler_top() is None
+    assert env.data.xpos[env.parts["box"]._bid][2] < -0.2           # below where a plate would hold it
+    assert pit.hole_now(env.grid) is not None
+    assert not free_mask(env.grid, env.walls, env.parts, set())[env.grid.cell((0.0, 0.0))]
+    assert not any(env.model.geom(g).name.startswith("part/pit/plate") for g in range(env.model.ngeom))
+    env.close()
+
+
+@pytest.mark.parametrize("box, extra, fillable", [({}, (ROPE,), True),
+                                                  ({}, (), False),                      # no rope can tie it
+                                                  ({"hitch": False}, (), False),
+                                                  ({"size": 0.25}, (ROPE,), False),     # not flush
+                                                  ({"handle_size": 0.05}, (ROPE,), False)])   # wider than the opening
+def test_deep_pit_is_fillable_for_the_static_order(tmp_path, box, extra, fillable):
+    from mujoco_puzzle_gym.logic import free_mask
+    env = open_room(tmp_path, [DEEP, {**FILLER, "pos": [0.8, 0.0], **box}, *extra], name="pitorder")
+    assert env.parts["pit"].fillable == fillable
+    assert free_mask(env.grid, env.walls, env.parts, set())[env.grid.cell((0.0, 0.0))] == fillable
+    env.close()
+
+
+@pytest.mark.parametrize("size, why", [([0.31, 0.345], None),
+                                       ([0.30, 0.345], "must be 0-4 cm wider"),       # narrower than the box
+                                       ([0.31, 0.35], "must be 0-4 cm wider"),        # 4.5 cm wider
+                                       ([0.4, 0.4], "must be 0-4 cm wider")])
+def test_pit_opening_fit(tmp_path, size, why):
+    env = open_room(tmp_path, [{**DEEP, "size": size}, {**FILLER, "pos": [0.8, 0.0]}, ROPE], name="pitfit")
+    got = env.parts["pit"].fits(env.parts["box"].extent())
+    assert (got is None) if why is None else (why in got)
+    env.close()
+
 # ---- slippery / sticky floors ------------------------------------------------------------
 @pytest.mark.parametrize("preset, slide", [("trap/slippery_floor", 0.2), ("trap/sticky_floor", 2.0)])
 def test_floor_presets_set_friction(tmp_path, preset, slide):

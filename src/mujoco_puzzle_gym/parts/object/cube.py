@@ -50,6 +50,11 @@ class Cube(Grabbable):
         out = self.size / 2 + float(c["handle_size"]) / 2
         self._local = np.array([np.asarray(FACES[f]) * out for f in self.handles])
 
+    def extent(self) -> tuple[float, float, float]:
+        """(x, y, z) size [m] with the handles, at the reset orientation (pit fit, R16)."""
+        hs = float(self.cfg["handle_size"])
+        return tuple(self.size + hs * sum(f in self.handles for f in (f"+{a}", f"-{a}")) for a in "xyz")
+
     def marker_face_size(self, face):
         return self.size
 

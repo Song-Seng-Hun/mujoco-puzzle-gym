@@ -75,8 +75,9 @@ rope is tied to the body; written by the room's first rope). Observation item `t
 Static check (`mpg check` stage `parts`): `hitch_radius` and `clip_radius` at most
 `length` (less the path between the first and last pulley); the default ends (with
 their random ranges) within `length` along the rope (through the pulleys); a box the
-`demo:` drags into a pit (`drag <rope> <pit>`) as tall as the pit is deep (rim to the
-catch plane, `floor.CATCH_DEPTH`) within 1 cm, so its top is flush with the floor. Warnings: a hitch
+`demo:` drags into a pit (`drag <rope> <pit>`) as tall as the pit is deep (rim to its
+`depth` plate, else to the catch plane, `floor.CATCH_DEPTH`) within 1 cm, so its top is
+flush with the floor, and each side of the opening 0-4 cm wider than the box (`Pit.fits`, R16). Warnings: a hitch
 object whose sliding friction x weight is above DRAG_WARN (OQ9: walking keeps 0.8 of its
 speed up to about 0.4 N), and on the `demo:` way while towing (from `tow <rope> ...` to
 `untow <rope>`, from the start for a rope tying the body to an object or NPC at reset,
@@ -111,7 +112,6 @@ PAIR_FRICTION = [1.0, 1.0, 0.005, 0.0001, 0.0001]
 HITCH_PRIORITY = 2        # hitch objects' own friction wins over the floor's (priority 1)
 DRAG_WARN = 0.4           # [N] OQ9: walking keeps >= 0.8 of its speed up to a steady ~0.4 N
 G = 9.81
-FLUSH_TOL = 0.01          # [m] a box dragged into a pit: its top this close to the floor
 FIXED_KINDS = ("anchor", "door")   # hitch kinds the world holds (`Hitch.fixed`)
 LOOSE_BOX = 1.0e3         # [m] leash limits while a rope holds an NPC (none in effect)
 
@@ -912,12 +912,12 @@ def tow_path_warnings(env, rope: Rope) -> list[str]:
 
 
 def pit_fill_problems(env, rope: Rope) -> list[str]:
-    """A box the `demo:` drags into a pit (`drag <rope> <pit>`) must fill it flush: its
-    height equal to the pit's depth (rim to the catch plane) within FLUSH_TOL, else the
-    walk across it steps down or up (R31 `pit_bridge`). The towed box is the last `tow`
-    hitch, else the far end at reset (`reset_towed`, chains either way round), else the
-    rope's configured end that is not the body."""
-    from ...floor import CATCH_DEPTH
+    """A box the `demo:` drags into a pit (`drag <rope> <pit>`) must fill it flush
+    (`Pit.fits`): its height equal to the pit's depth (rim to its `depth` plate, else to
+    the catch plane) within 1 cm (`pit.FILL_TOL`), else the walk across it steps down or up, and the
+    opening 0-4 cm wider than the box on both axes (R16, R31 `pit_bridge`). The towed box
+    is the last `tow` hitch, else the far end at reset (`reset_towed`, chains either way
+    round), else the rope's configured end that is not the body."""
     from ..trap.pit import Pit
 
     demo = list(getattr(env.room, "demo", []) or [])
@@ -937,25 +937,23 @@ def pit_fill_problems(env, rope: Rope) -> list[str]:
             if box is None or not box.has_body:
                 continue
             pit = env.parts[e[2]]
-            depth = float(pit.height_at(pit.xy)[1]) + CATCH_DEPTH
-            h = _height(env, box)
-            if abs(h - depth) > FLUSH_TOL:
-                out.append(f"rope {rope.name!r}: {towed!r} ({h:.2f} m high) dragged into pit {pit.name!r} "
-                           f"({depth:.2f} m deep) leaves its top {abs(depth - h):.2f} m "
-                           f"{'below' if h < depth else 'above'} the floor; a box filling a pit must be "
-                           f"flush within {FLUSH_TOL * 100:.0f} cm")
+            ext = _extent(env, box)
+            why = pit.fits(ext)
+            if why is not None:
+                out.append(f"rope {rope.name!r}: {towed!r} ({ext[2]:.2f} m high) dragged into pit {pit.name!r} "
+                           f"({pit.full_depth:.2f} m deep) {why}")
     return out
 
 
-def _height(env, part) -> float:
-    """Height [m] of `part`'s colliding geoms (body frame z extent, 0 if none)."""
+def _extent(env, part) -> np.ndarray:
+    """(x, y, z) size [m] of `part`'s colliding geoms in its body frame (0 if none)."""
     m = env.model
-    lo, hi = math.inf, -math.inf
+    lo, hi = np.full(3, math.inf), np.full(3, -math.inf)
     for g in np.nonzero(m.geom_bodyid == part._bid)[0]:
         if m.geom_contype[g] or m.geom_conaffinity[g]:
-            c = float(m.geom_pos[g][2] + m.geom_aabb[g][2])
-            lo, hi = min(lo, c - float(m.geom_aabb[g][5])), max(hi, c + float(m.geom_aabb[g][5]))
-    return hi - lo if hi > lo else 0.0
+            c = m.geom_pos[g] + m.geom_aabb[g][:3]
+            lo, hi = np.minimum(lo, c - m.geom_aabb[g][3:]), np.maximum(hi, c + m.geom_aabb[g][3:])
+    return np.where(hi > lo, hi - lo, 0.0)
 
 
 def tow_legs(env, rope: Rope, start: str | None = None) -> list[tuple[np.ndarray, np.ndarray, str]]:

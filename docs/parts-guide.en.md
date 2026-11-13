@@ -894,6 +894,7 @@ Role `prop`, update stage `device`.
 | `enabled` | int |  | `1` | [0, 1] | yes | 0 closes the lid; only a pit with `in` can be switched |
 | `size` | vec | m | `[0.3, 0.3]` | [0.05, 5] |  | tile size [x, y] |
 | `on_fall` | enum |  | `fail` | `fail`, `reset` |  | fail: the episode ends; reset: back to the last checkpoint or the start |
+| `depth` | float | m | — | [0.06, 0.45] |  | bottom plate this deep (none: open down to the catch plane); a flush cube on it fills the pit |
 
 ### `platform`
 
