@@ -366,6 +366,14 @@ class PuzzleEnv(gym.Env):
                         obj.place(self.model, put)
                         layout["parts"][name] = put
                         obj.floor_z = p.h
+        for name in layout["parts"]:                             # cubes resting on a cube (R31 `rest_on`)
+            obj = self.parts[name]
+            base = self.parts.get(getattr(obj, "rest_on", None) or "")
+            if base is not None:
+                xy = np.asarray(layout["parts"][base.name], float) + obj.base_xy - base.base_xy
+                obj.place(self.model, xy)
+                layout["parts"][name] = xy
+                obj.floor_z = base.floor_z + base.top()
         self.body.reset(self.data, layout["spawn"])
         if self.floor is not None:
             self._place_body(layout["spawn"])

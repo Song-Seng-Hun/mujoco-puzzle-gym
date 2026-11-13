@@ -3,14 +3,18 @@
 - the tow presets are listed, load and pass the static stages with no warnings, and
   their `demo:` uses the rope (`tow`, `drag`, `untow` or a button that unties);
 - a box the `demo:` drags into a pit must be as tall as the pit is deep (top flush
-  with the floor within 1 cm), else the static stage `parts` fails;
+  with the floor within 1 cm) and fit its opening (0-4 cm wider), else the static stage
+  `parts` fails;
 - slow: without the rope steps (or walking straight at the goal) the presets are not
   solved; `cleat_hold` without its handoff station (lift the door, walk back) and
-  `npc_leash` by herding instead of towing are not solved either. Their 20-seed
-  `mpg check` runs in test_examples.py (room presets).
+  `npc_leash` by herding instead of towing are not solved either; `pit_bridge` without
+  the drag or without untying is not solved; `overload` towed without unloading the
+  cart is not solved (the rope snaps). Their 20-seed `mpg check` runs in
+  test_examples.py (room presets); `overload` needs the grab actions (its task).
 """
 
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -23,7 +27,9 @@ from mujoco_puzzle_gym.floor import CATCH_DEPTH
 from mujoco_puzzle_gym.solver import ScriptedSolver, run_episode
 
 TOW = catalog.PRESET_ROOT / "puzzles/tow"
-NAMES = ["sled_delivery", "drop_and_go", "chain_dropoff", "tethered_start", "cleat_hold", "npc_leash"]
+NAMES = ["sled_delivery", "drop_and_go", "chain_dropoff", "tethered_start", "cleat_hold", "npc_leash",
+         "pit_bridge", "overload"]
+TASKS = {"overload": Path(__file__).resolve().parents[1] / "examples/task_overload.yaml"}    # grab actions
 
 
 def test_tow_presets_listed():
@@ -32,7 +38,7 @@ def test_tow_presets_listed():
 
 @pytest.mark.parametrize("name", NAMES)
 def test_tow_presets_pass_static_stages(asset_dir, name):
-    res = check(TOW / f"{name}.yaml", static_only=True)
+    res = check(TOW / f"{name}.yaml", task=TASKS.get(name), static_only=True)
     assert res["static"]["ok"] and "warnings" not in res["parts"], res
     raw = yaml.safe_load((TOW / f"{name}.yaml").read_text())
     ropes = {p["name"] for p in raw["parts"] if p.get("type") == "rope"}
@@ -60,8 +66,30 @@ def test_box_dragged_into_a_pit_must_be_flush(asset_dir, tmp_path):
     why = res["parts"]["reason"]
     assert "'box' (0.10 m high) dragged into pit 'pit'" in why and f"({CATCH_DEPTH:.2f} m deep)" in why
     assert "0.40 m below the floor" in why
-    # the tallest cube (0.3 m) still falls short of the catch plane depth: no box fills a pit yet
+    # the tallest cube (0.3 m) falls short of the catch plane depth: only a pit with `depth` can be filled
     assert not check(pit_room(tmp_path, 0.3), static_only=True)["parts"]["ok"]
+
+
+def deep_pit_room(tmp_path, opening) -> "Path":
+    raw = yaml.safe_load(pit_room(tmp_path, 0.3).read_text())
+    for p in raw["parts"]:
+        if p["name"] == "box":
+            p.update({"handles": ["-x"], "handle_size": 0.005, "pos": [-1.6, 0.0]})
+        if p["name"] == "pit":
+            p.update({"size": opening, "depth": 0.3})
+    raw["parts"] = [p if p["name"] != "rope" else {**p, "pos": [-1.2, 0.5], "length": 0.5} for p in raw["parts"]]
+    path = tmp_path / "deep_pit.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+def test_box_dragged_into_a_deep_pit_must_fit_its_opening(asset_dir, tmp_path):
+    """With `depth` the 0.3 m box is flush; the opening must be 0-4 cm wider than the box's
+    largest horizontal size (0.305 m with its handle), each side."""
+    assert check(deep_pit_room(tmp_path, [0.31, 0.345]), static_only=True)["parts"]["ok"]
+    for opening in ([0.30, 0.345], [0.31, 0.35], [0.4, 0.4]):
+        res = check(deep_pit_room(tmp_path, opening), static_only=True)
+        assert not res["parts"]["ok"] and "must be 0-4 cm wider than the box (0.305 m across" in res["parts"]["reason"]
 
 
 def test_cleat_hold_without_its_pulley_fails_static(tmp_path):
@@ -83,7 +111,7 @@ def without(path, tmp_path, demo, drop=()):
     raw["parts"] = [p for p in raw["parts"] if p["name"] not in drop]
     out = tmp_path / path.name
     out.write_text(yaml.safe_dump(raw))
-    return PuzzleEnv(room=out)
+    return PuzzleEnv(room=out, task=TASKS.get(path.stem))
 
 
 @pytest.mark.slow
@@ -93,7 +121,10 @@ def without(path, tmp_path, demo, drop=()):
                                         ("tethered_start", ["goto goal"]),
                                         ("cleat_hold", ["goto goal"]),
                                         ("npc_leash", ["goto goal"]),
-                                        ("npc_leash", ["herd bot zone", "goto goal"])])
+                                        ("npc_leash", ["herd bot zone", "goto goal"]),
+                                        ("pit_bridge", ["untow rope", "goto goal"]),        # no drag: the pit stays open
+                                        ("pit_bridge", ["drag rope pit", "goto goal"]),     # no untow: the rope holds
+                                        ("overload", ["tow rope cart", "drag rope zone", "goto goal"])])   # loaded: snaps
 def test_tow_presets_need_the_rope_steps(asset_dir, tmp_path, name, demo):
     env = without(TOW / f"{name}.yaml", tmp_path, demo)
     solver = ScriptedSolver(env)
@@ -119,7 +150,7 @@ def walk_straight(env, seed: int) -> dict:
 @pytest.mark.slow
 @pytest.mark.parametrize("name", NAMES)
 def test_walking_straight_does_not_solve(asset_dir, name):
-    env = PuzzleEnv(room=TOW / f"{name}.yaml")
+    env = PuzzleEnv(room=TOW / f"{name}.yaml", task=TASKS.get(name))
     wins = [walk_straight(env, s)["success"] for s in range(3)]
     env.close()
     assert not any(wins)

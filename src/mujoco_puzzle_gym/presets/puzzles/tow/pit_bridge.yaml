@@ -1,0 +1,31 @@
+# Pit bridge (R31, R16): the only way to the goal is the gap in the divider,
+# and a pit (0.31 x 0.345 m, a plate 0.3 m down) lies in front of it, its east
+# edge on the wall: walking in steps into it. The duck starts north of the pit,
+# tied by a 1.1 m rope to a 0.3 m box south of it, set against the wall face.
+# Walk on north (`drag rope pit`): the box follows, tips over the pit's rim and
+# drops in flat, its top flush with the floor, so the pit is floor again. Walk
+# to the hitch station (it unties the rope), then over the box and through the
+# gap. Still tied, the rope holds the duck back short of the goal (it is strong,
+# `max_tension` 5 N: turning round after the drag pulls up to 3.1 N; a snap
+# fails the episode). The box: 0.08 kg, friction 0.5 (drag 0.39 N); one 5 mm
+# handle on -x makes it 0.305 m across, so the opening may be 0.345 m along
+# the pull, which the box needs to tip in flat (0.34 m wedged it at 45 deg in
+# 2 of 4 tries in a trial layout). Across the walk the opening is 0.31 m.
+name: pit_bridge
+size: [4.0, 3.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.0, -1.5], to: [0.0, -0.24]}      # divider, gap at y = 0
+  - {from: [0.0, 0.24], to: [0.0, 1.5]}
+spawn: {pos: [-0.17, 0.42], yaw: 1.5708, random: [0.02, 0.02, 0.1]}
+parts:
+  - {name: box, type: cube, pos: [-0.181, -0.635], size: 0.3, handles: [-x], handle_size: 0.005, mass: 0.08,
+     friction: 0.5, hitch: true}
+  - {name: rope, type: rope, pos: [-1.0, -1.0], a: body, b: box, length: 1.1, max_tension: 5.0, on_snap: fail}
+  - {name: pit, preset: trap/pit, pos: [-0.185, -0.035], size: [0.31, 0.345], depth: 0.3}
+  - {name: station, type: hitch_station, pos: [-1.15, -0.02], size: [0.2, 0.2], mode: detach}
+  - {name: goal, type: goal, pos: [1.4, 0.0], radius: 0.15, random: [0.05, 0.0]}
+demo:
+  - drag rope pit
+  - untow rope
+  - goto goal
