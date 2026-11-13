@@ -22,7 +22,8 @@ actions:   the task actions cover what the plan needs (R19): `grab` when an
            the plan presses sits wholly below the level beak tip (the body's
            `beak_height`; a dispenser's wall plate counts when the plan takes
            from it: a `take` sub-goal, or its item for a receptacle in the
-           order, R28); without them a policy can never do it. Checked after
+           order, R28); `crouch` for a `glide` sub-goal (R30); without them a policy
+           can never do it. Checked after
            `order`, on its solution order;
 (a) order: a signal path to a goal exists: a switch/door order that reaches a
            goal (link graph on the room grid), and every coin is reachable (R36);
@@ -265,7 +266,8 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
     """Static: task actions the plan needs (R19). `grab`: a `grab` / `pull` sub-goal, a part
     in `order` that a grabbable object sets off and the body cannot, or a held device
     (`grab_handle`, R28) in `order`; `head`: a wall button in
-    `order` (or a `press` sub-goal) whose top edge is below the level beak tip."""
+    `order` (or a `press` sub-goal) whose top edge is below the level beak tip; `crouch`:
+    a `glide` sub-goal or a low bar the order stage lets a gliding body pass (R30)."""
     demo = list(getattr(env.room, "demo", []) or [])
     objs = [p for p in env.parts.values() if isinstance(p, Grabbable)]
     why = []
@@ -277,6 +279,13 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
         if need:
             why.append(f"{sorted(set(need))} need the beak grab but the task actions {env.actions} "
                        "have no `grab`")
+    if "crouch" not in env.actions:
+        bars = {e[1] for e in demo if e[0] == "glide"}
+        bars |= {p.name for p in env.parts.values() if getattr(p, "glide_ok", False)}  # passable only gliding
+        bars = sorted(bars)
+        if bars:
+            why.append(f"`glide` under {bars} needs the crouch but the task actions {env.actions} "
+                       "have no `crouch`")
     level = env.body.capabilities.values.get("beak_height")
     if "head" not in env.actions and level is not None:
         pressed = set(order) | {e[1] for e in demo if e[0] in ("press", "take")}

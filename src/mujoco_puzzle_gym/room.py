@@ -53,7 +53,8 @@ the level head, R28), `turn <lever> <value>` (a push lever to that cell, R28),
 `turn <dial> <cell>` (R28), `pull <cord or drawer>` (R28), `look <part>` (until `<part>.seen`, R27),
 `take <dispenser>` (trigger it and wait for the new copy; later `grab`, `place`
 and `drop` given the dispenser's name work on that copy, R28), `addon <station>`
-(stand on the station until it switches the body's addon, R30). Objects are grabbable parts (cube, laundry, key, ...). After the last one the solver goes on with the grid
+(stand on the station until it switches the body's addon, R30), `glide <low bar>`
+(on wheels: a straight full-push run-up, crouch before the bar, R30). Objects are grabbable parts (cube, laundry, key, ...). After the last one the solver goes on with the grid
 answer (the solution order), so a demo may stop before the goal. Without
 `demo:` the solver uses the grid answer only.
 
@@ -106,7 +107,7 @@ class RoomError(ValueError):
 
 
 DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop", "turn", "pull", "look",
-                 "take", "addon")
+                 "take", "addon", "glide")
 MAX_WAIT = 60.0                        # [s] longest `wait`
 
 
@@ -114,8 +115,9 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
     """`demo:` entries as tuples: ("goto"|"press", part), ("wait", seconds),
     ("push", ball, target), ("herd", npc, part or (x, y)), ("grab", object),
     ("place" | "drop", object, part), ("turn", lever, value), ("pull", cord), ("look", part),
-    ("take", dispenser), ("addon", station). `grab` / `place` / `drop` take a dispenser's name after a `take`
-    of it (its copy handed out last). Raises RoomError (stage `demo`) naming the bad entry."""
+    ("take", dispenser), ("addon", station), ("glide", low bar). `grab` / `place` / `drop`
+    take a dispenser's name after a `take` of it (its copy handed out last). Raises RoomError
+    (stage `demo`) naming the bad entry."""
     if raw is None:
         return []
     if not isinstance(raw, list):
@@ -163,6 +165,13 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
             if not hasattr(parts[st], "addon") or not hasattr(parts[st], "max_speed"):
                 raise RoomError(f"demo[{i}]: {st!r} is not an addon station", "demo")
             out.append(("addon", st))
+        elif cmd == "glide":
+            if len(args) != 1:
+                raise RoomError(f"demo[{i}]: write `glide <low bar>`, got {entry!r}", "demo")
+            bar = part(i, args[0])
+            if not hasattr(parts[bar], "glide_ok"):
+                raise RoomError(f"demo[{i}]: {bar!r} is not a low bar (glide under a `low_bar`)", "demo")
+            out.append(("glide", bar))
         elif cmd == "take":
             if len(args) != 1:
                 raise RoomError(f"demo[{i}]: write `take <dispenser>`, got {entry!r}", "demo")

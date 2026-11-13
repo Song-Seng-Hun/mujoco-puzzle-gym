@@ -8,9 +8,15 @@ warning for steps reachable on wheels, and the `puzzles/roller/` presets.
   restores it when the body leaves, on reset and on a snapshot restore;
 - `mpg check` stage `parts` warns (does not fail) when steps are reachable on
   wheels without a detach pad in the way;
-- the six roller presets load and pass the static stages;
-- slow: walking only (no `addon` sub-goal), the timed corridor's door closes
-  before the body gets there. The presets' and examples' 20-seed `mpg check`
+- the low bar (R30 `glide_under`) is a static colliding bar at its `bottom`
+  height in the measured range; the planner passes it only in a room with a
+  station that puts the roller on (else a warning); `glide <bar>` parses, needs
+  the task action `crouch`, and the solver's glide goes back, faces the bar,
+  pushes and sends `crouch` GLIDE_CROUCH before the bar;
+- the eight roller presets load and pass the static stages (with their tasks);
+- slow: walking only (no `addon` sub-goal), the timed corridor's and the roll
+  delivery's doors close before the body gets there; rolling at the low bar
+  without `glide` is blocked. The presets' and examples' 20-seed `mpg check`
   runs in test_examples.py and test_check2.py.
 """
 
@@ -24,12 +30,15 @@ from rooms import open_room, stand_at, tick
 from mujoco_puzzle_gym import catalog
 from mujoco_puzzle_gym.check import check, check_parts
 from mujoco_puzzle_gym.env import PuzzleEnv
-from mujoco_puzzle_gym.solver import ScriptedSolver, run_episode
+from mujoco_puzzle_gym.room import RoomError, parse_demo
+from mujoco_puzzle_gym.solver import GLIDE_CROUCH, ScriptedSolver, run_episode
 
 ROOT = Path(__file__).resolve().parents[1]
 ROLLER = catalog.PRESET_ROOT / "puzzles/roller"
 NAMES = ["speed_gate", "timed_corridor", "mode_switch_route", "brake_strip", "one_way_station",
-         "crosswind"]
+         "crosswind", "glide_under", "roll_delivery"]
+#: Presets whose demo needs task actions beyond `move`.
+TASKS = {n: ROOT / f"examples/task_{n}.yaml" for n in ("glide_under", "roll_delivery")}
 STATION = {"name": "st", "preset": "device/addon_roller", "pos": [1.0, -1.0]}
 
 
@@ -177,34 +186,139 @@ def test_flat_roller_room_has_no_step_warning(asset_dir):
     assert "warnings" not in res["parts"]
 
 
+# ---- low bar and glide ------------------------------------------------------------------
+def bar_room(tmp_path, station: str | None = "attach", demo=None, **bar):
+    """A 3.0 x 0.8 m corridor, a low bar across it at x 0, the goal behind it."""
+    parts = [{"name": "bar", "preset": "device/low_bar", "pos": [0.0, 0.0], "length": 0.74, **bar},
+             {"name": "goal", "type": "goal", "pos": [1.2, 0.0], "radius": 0.1}]
+    if station:
+        parts.append({"name": "st", "preset": "device/addon_roller", "pos": [-1.0, 0.0], "mode": station})
+    raw = {"name": "bar_room", "size": [3.0, 0.8], "spawn": {"pos": [-1.3, 0.0], "yaw": 0.0},
+           "parts": parts, **({"demo": demo} if demo else {})}
+    path = tmp_path / f"bar_{station}.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+def test_low_bar_is_static_and_collides(asset_dir, tmp_path):
+    env = PuzzleEnv(room=bar_room(tmp_path))
+    m = env.model
+    g = m.geom("part/bar/bar")
+    bid = int(g.bodyid[0])
+    assert m.body_jntnum[bid] == 0 and m.body_dofnum[bid] == 0      # static: no state to save
+    assert m.geom_contype[g.id] and m.geom_conaffinity[g.id]
+    env.reset(seed=0)
+    bottom = env.data.geom_xpos[g.id][2] - m.geom_size[g.id][2]
+    assert bottom == pytest.approx(0.228, abs=1e-6)
+    assert m.geom_size[g.id][1] == pytest.approx(0.37)             # axis y: length along y
+    assert env.parts["bar"].save_state() == {}
+    env.close()
+
+
+@pytest.mark.parametrize("bottom", [0.2, 0.25])
+def test_low_bar_bottom_out_of_range(asset_dir, tmp_path, bottom):
+    res = check(bar_room(tmp_path, bottom=bottom), static_only=True)
+    assert not res["values"]["ok"] and "bottom" in res["values"]["reason"]
+
+
+@pytest.mark.parametrize("station", [None, "attach", "toggle", "detach"])
+def test_low_bar_planner(asset_dir, tmp_path, station):
+    res = check(bar_room(tmp_path, station), static_only=True)
+    glide = station in ("attach", "toggle")
+    assert res["order"]["ok"] == glide, res["order"]
+    warns = res["parts"].get("warnings", [])
+    assert any("low bar" in w for w in warns) != glide
+
+
+def test_demo_glide_parsed(asset_dir, tmp_path):
+    env = PuzzleEnv(room=bar_room(tmp_path))
+    assert parse_demo(["addon st", "glide bar"], env.parts) == [("addon", "st"), ("glide", "bar")]
+    for bad in (["glide st"], ["glide"], ["glide bar goal"]):
+        with pytest.raises(RoomError):
+            parse_demo(bad, env.parts)
+    env.close()
+
+
+def test_glide_needs_the_crouch_action(asset_dir, tmp_path):
+    room = bar_room(tmp_path, demo=["addon st", "glide bar", "goto goal"])
+    res = check(room, static_only=True)
+    assert not res["actions"]["ok"] and "crouch" in res["actions"]["reason"]
+    res = check(room, task={"actions": ["move", "crouch"]}, static_only=True)
+    assert res["static"]["ok"], res
+
+
+def test_a_passable_bar_needs_the_crouch_without_a_glide_step(asset_dir, tmp_path):
+    room = bar_room(tmp_path, demo=None)             # grid answer only: the bar still needs a glide
+    res = check(room, static_only=True)
+    assert not res["actions"]["ok"] and "crouch" in res["actions"]["reason"]
+
+
+def test_glide_act_phases(asset_dir, tmp_path):
+    env = PuzzleEnv(room=bar_room(tmp_path, demo=["glide bar"]), task={"actions": ["move", "crouch"]})
+    env.reset(seed=0, options={"layout": env.sample_layout(None)})
+    solver = ScriptedSolver(env)
+    bar = env.parts["bar"]
+    stand_at(env, -0.6, 0.0)                         # too close for a run-up: go back first
+    solver.glide_act(bar)
+    assert solver._glide["phase"] == "back"
+    solver._glide = None
+    stand_at(env, -1.1, 0.0, yaw=1.0)                # far enough, facing away: turn in place
+    act = solver.glide_act(bar)
+    assert solver._glide["phase"] == "face" and act[0] == -1.0 and act[2] < 0
+    stand_at(env, -1.1, 0.05, yaw=0.0)               # facing the bar: full push, steer to the line
+    act = solver.glide_act(bar)
+    assert solver._glide["phase"] == "run" and act[0] == 1.0 and act[2] < 0 and not solver._crouch
+    stand_at(env, -GLIDE_CROUCH + 0.01, 0.0)          # at the crouch point
+    solver.glide_act(bar)
+    assert solver._crouch
+    assert env.scripted_action([1.0, 0.0, 0.0], crouch=1.0)[3] == 1.0
+    stand_at(env, 0.35, 0.0)                         # past the bar: done
+    assert solver.glide_act(bar) is None and solver._glide is None
+    env.close()
+
+
 # ---- presets ---------------------------------------------------------------------------
 def test_roller_presets_listed():
     assert {f"puzzles/roller/{n}" for n in NAMES} <= set(catalog.puzzle_preset_names())
-    assert "trap/brake_strip" in catalog.part_preset_names()
+    assert {"trap/brake_strip", "device/low_bar"} <= set(catalog.part_preset_names())
+    assert "puzzles/roller/fast_herd" not in catalog.puzzle_preset_names()
 
 
 @pytest.mark.parametrize("name", NAMES)
 def test_roller_presets_pass_static_stages(asset_dir, name):
-    res = check(ROLLER / f"{name}.yaml", static_only=True)
+    res = check(ROLLER / f"{name}.yaml", task=TASKS.get(name), static_only=True)
     assert res["static"]["ok"] and "warnings" not in res["parts"], res
     raw = yaml.safe_load((ROLLER / f"{name}.yaml").read_text())
     assert any(d.startswith("addon ") for d in raw["demo"])
 
 
 # ---- slow -----------------------------------------------------------------------------
-def walking_only(path: Path, tmp_path: Path) -> PuzzleEnv:
+def walking_only(path: Path, tmp_path: Path, drop=("addon ",)) -> PuzzleEnv:
     raw = yaml.safe_load(path.read_text())
-    raw["demo"] = [d for d in raw["demo"] if not d.startswith("addon ")]
+    raw["demo"] = [d for d in raw["demo"] if not d.startswith(drop)]
     out = tmp_path / path.name
     out.write_text(yaml.safe_dump(raw))
-    return PuzzleEnv(room=out)
+    task = TASKS.get(path.stem)
+    if task is not None:
+        task = {k: v for k, v in yaml.safe_load(task.read_text()).items() if k != "room"}
+    return PuzzleEnv(task=task, room=out)
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("room", [ROLLER / "timed_corridor.yaml", ROLLER / "speed_gate.yaml",
-                                  ROOT / "examples/rooms/roller_rink.yaml"], ids=lambda p: p.stem)
+                                  ROLLER / "roll_delivery.yaml", ROOT / "examples/rooms/roller_rink.yaml"],
+                         ids=lambda p: p.stem)
 def test_walking_only_does_not_solve(asset_dir, tmp_path, room):
     env = walking_only(room, tmp_path)
+    solver = ScriptedSolver(env)
+    wins = [run_episode(env, s, solver)["success"] for s in range(3)]
+    env.close()
+    assert not any(wins)
+
+
+@pytest.mark.slow
+def test_rolling_at_the_low_bar_without_glide_is_blocked(asset_dir, tmp_path):
+    env = walking_only(ROLLER / "glide_under.yaml", tmp_path, drop=("glide ",))
     solver = ScriptedSolver(env)
     wins = [run_episode(env, s, solver)["success"] for s in range(3)]
     env.close()

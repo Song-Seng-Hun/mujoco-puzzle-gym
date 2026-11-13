@@ -27,6 +27,8 @@ KINDS = {"logic_lock": "buttons and logic", "doors": "doors and trapdoors",
          "roller_rink": "addon station", "roller_route": "roller mechanics"}
 #: Example rooms whose task adds actions beyond `move` (R19).
 TASKS = {r: ROOT / f"examples/task_{r}.yaml" for r in ("cube_plate", "cube_socket", "laundry")}
+#: Room presets whose `demo:` needs task actions beyond `move` (R30).
+PRESET_TASKS = {f"puzzles/roller/{n}": ROOT / f"examples/task_{n}.yaml" for n in ("glide_under", "roll_delivery")}
 ROOM_PRESETS = [n for n in catalog.puzzle_preset_names()
                 if "map" in (r := yaml.safe_load((catalog.PRESET_ROOT / f"{n}.yaml").read_text()))
                 or "size" in r]
@@ -52,7 +54,7 @@ def test_new_example_rooms_use_presets(room):
 @pytest.mark.slow
 @pytest.mark.parametrize("name", ROOM_PRESETS)
 def test_room_presets_pass_check(asset_dir, tmp_path, name):
-    res = check(catalog.PRESET_ROOT / f"{name}.yaml", snap_dir=tmp_path)
+    res = check(catalog.PRESET_ROOT / f"{name}.yaml", task=PRESET_TASKS.get(name), snap_dir=tmp_path)
     assert res["ok"], res
     assert res["solver"]["successes"] >= 18
 

@@ -1,0 +1,6 @@
+# Task for the preset puzzles/roller/glide_under (R30): gliding under the low
+# bar needs the roller's crouch, so the actions add `crouch`. Without it `mpg
+# check` fails the stage `actions`. Missing keys take task.DEFAULTS.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/roller/glide_under.yaml
+actions: [move, crouch]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, addon]

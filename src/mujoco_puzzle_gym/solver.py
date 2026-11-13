@@ -34,6 +34,11 @@ is passable, an opening trapdoor as a hole):
   name work on that copy (R28);
 - `addon <station>`: walk onto the station's pad and stand until it switches the
   body's addon (R30; a station with `in` channels waits for them).
+- `glide <low bar>`: on wheels, go back to at least GLIDE_START before the bar's
+  centre line if closer (to GLIDE_RUNUP), face across the bar, push at full
+  strength along the line through the bar's centre and send `crouch` once the
+  trunk is GLIDE_CROUCH before the line; done GLIDE_PAST beyond it (R30; the
+  task needs the `crouch` action).
 `press` on a wall button (and a wall button in the grid answer) walks up to
 the plate with the beak tip at its height, or with a held stick's far end
 (R28). Head and grab values are kept between steps (a held object stays held
@@ -63,6 +68,17 @@ TAKE_SETTLE = 1.5      # [s] take: wait at most this long for a new copy to rest
 WALL_WAIT = 0.35        # [m] off a dispenser's wall plate while it cannot hand out (take)
 REST_SPEED = 0.02      # [m/s] a copy this slow rests
 ADDON_MARGIN = 0.06    # [m] addon: stand this far inside the station's pad edge
+# glide (R30, measured 2026-11-13 at a 0.228 m bar, 20 seeds, crouch at distance d before
+# the bar's centre line): entering at 0.32-0.48 m/s, d 0.2 / 0.25 / 0.3 / 0.35 / 0.4 / 0.5
+# glides under 6 / 14 / 20 / 20 / 20 / 7 of 20; at 0.35-0.41 m/s 19 / 20 / 20 / 20 / 0 / 0.
+# Full push reaches 0.38-0.45 m/s after 3-4 s. At 10 Hz the crouch starts 0-4 cm inside
+# GLIDE_CROUCH.
+GLIDE_RUNUP = 1.2      # [m] glide: run-up start before the bar's centre line
+GLIDE_START = 1.0      # [m] closer than this: go back to GLIDE_RUNUP first
+GLIDE_CROUCH = 0.30    # [m] send `crouch` once the trunk is this close to the line
+GLIDE_PAST = 0.3       # [m] done this far beyond the line
+GLIDE_FACE = 0.15      # [rad] heading error at which the run-up starts
+GLIDE_LINE = 1.5       # [rad/m] heading correction per metre off the line
 
 
 def plan_free(env, free: np.ndarray, inflate: float) -> np.ndarray:
@@ -102,6 +118,8 @@ class ScriptedSolver:
         self._take_from: int | None = None     # take: the dispenser's count when it began
         self._step: tuple | None = None        # grid-answer delivery: ("take" | "grab" | "place", part)
         self._addon_from: str | None = None    # addon: the body's mode when the sub-goal began
+        self._glide: dict | None = None        # glide: travel direction and phase
+        self._crouch = False                   # glide: send `crouch` this step
 
     @property
     def in_demo(self) -> bool:
@@ -119,7 +137,9 @@ class ScriptedSolver:
 
     def act(self) -> np.ndarray:
         c = self.carrier
-        return self.env.scripted_action(self._move(), c.head, c.grab)
+        self._crouch = False
+        move = self._move()
+        return self.env.scripted_action(move, c.head, c.grab, 1.0 if self._crouch else -1.0)
 
     def _move(self) -> np.ndarray:
         act = self.carrier.off_wall()
@@ -285,6 +305,56 @@ class ScriptedSolver:
             return STAND.copy()
         return self._walk_to(station)
 
+    def glide_act(self, bar) -> np.ndarray | None:
+        """Run up to low bar `bar` on wheels and crouch under it (R30); None once the
+        trunk is GLIDE_PAST beyond the bar's centre line."""
+        env = self.env
+        s = env.body_state
+        pos = s.pos[:2]
+        if self._glide is None:
+            n = bar.across()
+            d = -n if float((pos - bar.xy) @ n) > 0 else n            # towards the bar and on
+            ahead = float((bar.xy - pos) @ d)
+            self._glide = {"d": d, "phase": "face" if ahead >= GLIDE_START else "back"}
+        g = self._glide
+        d = g["d"]
+        ahead = float((bar.xy - pos) @ d)            # trunk to the bar's centre line
+        if ahead <= -GLIDE_PAST:
+            self._glide = None
+            return None
+        heading = math.atan2(d[1], d[0])
+        if g["phase"] == "back":
+            start = bar.xy - d * GLIDE_RUNUP
+            if ahead >= GLIDE_RUNUP - 0.1:
+                g["phase"] = "face"
+            else:
+                return self._steer(self._point_field(start), start)
+        if g["phase"] == "face":
+            err = (heading - s.yaw + math.pi) % (2 * math.pi) - math.pi
+            if abs(err) > GLIDE_FACE:
+                return np.array([-1.0, 0.0, math.copysign(1.0, err)], dtype=np.float32)
+            g["phase"] = "run"
+        side = float((pos - bar.xy) @ np.array([-d[1], d[0]]))       # left of the line: > 0
+        want = heading - float(np.clip(GLIDE_LINE * side, -0.5, 0.5))
+        err = (want - s.yaw + math.pi) % (2 * math.pi) - math.pi
+        if ahead <= GLIDE_CROUCH:
+            self._crouch = True
+        return np.array([1.0, 0.0, float(np.clip(TURN_GAIN * err, -1.0, 1.0))], dtype=np.float32)
+
+    def _point_field(self, xy) -> np.ndarray:
+        """Distance field (free cells now) to a 0.1 m disk around `xy`."""
+        from .env import GATE_PASSABLE
+        from .logic import live_free
+
+        env = self.env
+        key = ("point", round(float(xy[0]), 3), round(float(xy[1]), 3))
+        if key not in self._live:
+            inflate = env.body.footprint_radius + CLEARANCE
+            free = plan_free(env, live_free(env.grid, env.walls, env.parts, GATE_PASSABLE, inflate=inflate),
+                             inflate)
+            self._live[key] = (free, env.grid.distance(free, env.grid.disk(np.asarray(xy, float), 0.1)))
+        return self._live[key][1]
+
     def _steer(self, field: np.ndarray, target_xy) -> np.ndarray:
         env = self.env
         s = env.body_state
@@ -366,6 +436,8 @@ class ScriptedSolver:
             return self.carrier.look_act(env.parts[entry[1]])
         if cmd == "addon":
             return self.addon_act(env.parts[entry[1]])
+        if cmd == "glide":
+            return self.glide_act(env.parts[entry[1]])
         part = env.parts[entry[1]]
         if part.satisfied():
             return None

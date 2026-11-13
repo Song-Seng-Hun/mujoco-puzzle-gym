@@ -1,0 +1,10 @@
+# Task for the preset puzzles/roller/roll_delivery (R30, R28): the key must be
+# grabbed and placed (on feet: the head command is fixed on wheels), so the
+# actions add `head` and `grab`. Without `grab` `mpg check` fails the stage
+# `actions`. The scripted solver needs about 40 s, so episodes are 60 s.
+# Missing keys take task.DEFAULTS.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/roller/roll_delivery.yaml
+env:
+  episode_seconds: 60
+actions: [move, head, grab]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, target_pos, beak, addon]
