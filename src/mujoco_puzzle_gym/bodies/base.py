@@ -151,6 +151,10 @@ class BodyAdapter(ABC):
         """Start the addon's one-shot crouch if allowed now (R30); False when ignored."""
         return False
 
+    def wheel_dofs(self, model: mujoco.MjModel) -> list[int]:
+        """DOF indices of the addon wheels' joints (brake strip, R30); empty without wheels."""
+        return []
+
     # ---- beak (R18, R19) ---------------------------------------------------
     def grab_site(self) -> str | None:
         """Name of the beak-tip site in the compiled scene (weld grab, wall buttons),

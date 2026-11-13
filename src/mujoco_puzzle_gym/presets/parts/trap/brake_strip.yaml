@@ -1,0 +1,8 @@
+# Brake strip (R30): while the body is over it, the roller wheels get joint
+# friction 0.01 N m, so a rolling duck stops 0.08-0.13 m past its edge (from
+# 0.3-0.5 m/s, without a fall). Lay it under an addon station or at the end of
+# a run. On feet it does nothing. Set: pos, size, in (optional).
+type: brake_strip
+size: [0.3, 0.6]
+frictionloss: 0.01
+damping: 0.0

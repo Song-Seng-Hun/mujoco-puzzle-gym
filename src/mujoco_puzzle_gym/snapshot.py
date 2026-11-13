@@ -33,9 +33,11 @@ if TYPE_CHECKING:
 SIG = mujoco.mjtState.mjSTATE_INTEGRATION
 #: Model arrays that parts, setters (R13) and difficulty steps (R21) may change while running.
 #: `body_gravcomp` holds parked pool bodies still (parts/pool.py); `jnt_range` the
-#: NPC leash, which follows the robot's placement (parts/npc/rover.py).
+#: NPC leash, which follows the robot's placement (parts/npc/rover.py); `dof_frictionloss`
+#: and `dof_damping` the wheel brake of a brake strip (parts/trap/brake.py, R30).
 MODEL_FIELDS = ("body_pos", "body_quat", "geom_rgba", "geom_friction", "geom_contype",
-                "geom_conaffinity", "eq_data", "body_gravcomp", "jnt_range")
+                "geom_conaffinity", "eq_data", "body_gravcomp", "jnt_range",
+                "dof_frictionloss", "dof_damping")
 
 
 @dataclass

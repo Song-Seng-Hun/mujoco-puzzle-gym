@@ -13,7 +13,7 @@ from .logic import Counter, Gate, Receiver, Transmitter
 from .npc import Npc
 from .object import Ball, Cube, Pin
 from .switch import Switch
-from .trap import Cannon, Pendulum, Pit, Pusher, Spinner, Wind
+from .trap import BrakeStrip, Cannon, Pendulum, Pit, Pusher, Spinner, Wind
 
 register_part("switch", Switch, replace=True)
 register_part("door", Door, replace=True)
@@ -64,6 +64,7 @@ register_part("dial", Dial, replace=True)
 register_part("drawer", Drawer, replace=True)
 register_part("dispenser", Dispenser, replace=True)
 register_part("addon_station", AddonStation, replace=True)
+register_part("brake_strip", BrakeStrip, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
            "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
@@ -71,4 +72,4 @@ __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "
            "Ball", "Pin", "Cube", "GoalNet", "Platform", "Pillar", "Turntable", "Conveyor", "Spring",
            "Setter", "Target", "Wind", "Pusher", "Spinner", "Pendulum", "Pit", "Cannon", "Npc",
            "Laundry", "Key", "HandleBall", "Egg", "Stick", "Lever", "PullCord", "Dial", "Drawer", "Dispenser",
-           "AddonStation"]
+           "AddonStation", "BrakeStrip"]
