@@ -62,6 +62,9 @@ LEASH_SOLREF = [0.01, 1.0]   # stiff leash limits (2 physics steps): a hard shov
 RAY_RANGE = 1.0        # [m] ray length (free distance compared between the sides)
 MOVING = 0.01          # [m/s]
 LOOSE_BOX = 1.0e3      # [m] slide limits while a tow rope holds it (R31): none in effect
+#: Slide-joint damping [N s/m] while a rope tows it (R31): with its motors off and no floor
+#: friction it would coast on after the body stops.
+TOW_DAMPING = 1.0
 DUCK_SPEED = 0.16      # [m/s] walking body speed (spec R29 "about 0.16 m/s")
 BODY_RGBA = (0.3, 0.45, 0.85, 1.0)
 WHEEL_RGBA = (0.15, 0.15, 0.15, 1.0)
@@ -243,6 +246,7 @@ class Npc(Part):
         self._colliding = (model.geom_contype != 0) | (model.geom_conaffinity != 0)
         self._gain0 = model.actuator_gainprm[self._act].copy()
         self._bias0 = model.actuator_biasprm[self._act].copy()
+        self._damp0 = model.dof_damping[self._v[:2]].copy()
         gids = np.nonzero(model.geom_bodyid == self._bid)[0]
         self._bits = [(int(g), int(model.geom_contype[g]), int(model.geom_conaffinity[g])) for g in gids]
 
@@ -268,12 +272,15 @@ class Npc(Part):
         """A rope is tied to it (`towed`) or not: motor gains zero / back, leash limits
         off / back (off until it is inside again when it is outside its leash)."""
         self.towed = bool(towed)
+        slide = self._v[:2]
         if self.towed:
             model.actuator_gainprm[self._act] = 0.0
             model.actuator_biasprm[self._act] = 0.0
+            model.dof_damping[slide] = TOW_DAMPING
         else:
             model.actuator_gainprm[self._act] = self._gain0
             model.actuator_biasprm[self._act] = self._bias0
+            model.dof_damping[slide] = self._damp0
         self.returning = bool(self.leash is not None and not self.towed
                               and not self._in_leash(model.body_pos[self._bid][:2]
                                                      + data.qpos[self._q[:2]]))   # qpos: also mid-restore
@@ -288,6 +295,7 @@ class Npc(Part):
         if self.towed:                                       # a rope held it last episode (R31)
             model.actuator_gainprm[self._act] = self._gain0
             model.actuator_biasprm[self._act] = self._bias0
+            model.dof_damping[self._v[:2]] = self._damp0
         self.towed = self.returning = False
         model.body_pos[self._bid, 2] = self.floor_z          # no z joint: stand on raised floor
         for i in range(3):

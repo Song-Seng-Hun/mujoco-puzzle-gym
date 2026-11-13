@@ -201,7 +201,7 @@ class Rope(Part):
     has_body = False
     is_rope = True
     suffixes = (".attached_a", ".attached_b", ".tension", ".snapped", ".attach_failed")
-    state_keys = ("tied", "cur", "over", "snapped", "held_t", "was_held", "edges", "pending")
+    state_keys = ("tied", "cur", "over", "snapped", "held_t", "was_held", "hold_untied", "edges", "pending")
     fields = (
         Field("length", "float", 0.4, unit="m", min=0.05, max=5.0, runtime=True,
               doc="most distance between the knots (tendon range); bind it for a winch"),
@@ -379,6 +379,7 @@ class Rope(Part):
         self.snapped = False
         self.held_t = [0.0, 0.0]
         self.was_held = [False, False]
+        self.hold_untied = [False, False]   # untied by this hold: letting go does not clip it again
         self.edges = {k: False for k in self.channels}
         self.pending = 0.0           # attach_failed pulse to write this step
         self._acc, self._n = 0.0, 0
@@ -567,14 +568,17 @@ class Rope(Part):
                 if self.held_t[e] >= float(self.cfg["untie_time"]) - 1e-9:
                     self.untie(model, data, e, lay=False)       # stays in the beak
                     self.held_t[e] = 0.0
+                    self.hold_untied[e] = True
             else:
                 self.held_t[e] = 0.0
-            if self.was_held[e] and not now and self.tied[e] is None:
+            if self.was_held[e] and not now and self.tied[e] is None and not self.hold_untied[e]:
                 other = self.tied[1 - e]
                 h = self.nearest(data, data.site_xpos[kn.sid], float(self.cfg["clip_radius"]),
                                  {other} if other is not None else set())
                 if h is not None:
                     self.tie(model, data, e, h)
+            if not now:
+                self.hold_untied[e] = False
             self.was_held[e] = now
 
     def _write(self) -> None:

@@ -20,11 +20,13 @@
 import mujoco
 import numpy as np
 import pytest
+import yaml
 from rooms import body_steps, open_room, stand_at, tick
 
 from mujoco_puzzle_gym.check import check_parts
+from mujoco_puzzle_gym.env import PuzzleEnv
 from mujoco_puzzle_gym.parts.base import Part
-from mujoco_puzzle_gym.parts.device.rope import KNOT_HZ
+from mujoco_puzzle_gym.parts.device.rope import KNOT_HZ, tow_path_warnings
 from mujoco_puzzle_gym.registry import register_part
 from mujoco_puzzle_gym.room import RoomError, parse_demo
 from mujoco_puzzle_gym.solver import ScriptedSolver
@@ -230,6 +232,15 @@ def test_beak_ties_and_unties_a_knot(make):
     assert rope.tied[1] is not None
     tick(env)
     assert rope.tied[1] is None                           # held untie_time: loose
+    env.world.held = set()                                # let go right there, within clip_radius
+    tick(env)
+    tick(env)
+    assert rope.tied[1] is None                           # it stays loose (no clip on this release)
+    env.world.held = {rid}                                # a new hold, let go there: ties again
+    tick(env)
+    env.world.held = set()
+    tick(env)
+    assert rope.tied_hitch(1).name == "sled"
 
 
 def test_tied_knots_sit_on_hitches_on_random_layouts(make):
@@ -409,6 +420,20 @@ def test_npc_tied_is_dragged_with_zero_gains(make):
     assert bot.towed                                      # the default tie again
 
 
+def test_towed_npc_stops_with_the_body(make):
+    npc = {"name": "bot", "preset": "npc/flee", "pos": [-1.3, 0.0], "leash": [-1.5, -0.3, -1.1, 0.3]}
+    env = make([npc, {**ROPE, "b": "bot"}])
+    bot = env.parts["bot"]
+    tension = []
+    body_steps(env, 4.0, cmd=np.array([0.4, 0.0, 0.0]), every=lambda e: tension.append(rope_of(e).tension))
+    assert np.mean(tension[100:]) < 0.3                   # measured 0.20 N mean at full walk (damping 1.0)
+    assert np.linalg.norm(bot.vel(env.data)) > 0.1
+    body_steps(env, 1.0)                                  # the body stops: no coasting on (measured 0.82 s)
+    assert np.linalg.norm(bot.vel(env.data)) < 0.02
+    env.world.untie(env.model, env.data, rope_of(env).tied_hitch(1).rid)
+    assert env.model.dof_damping[bot._v[0]] == bot._damp0[0]
+
+
 # ---- obs, demo, checks ------------------------------------------------------------------------------
 def test_tow_obs(make):
     env = make([SLED, ROPE], task={"obs": ["tow"]})
@@ -438,6 +463,37 @@ def test_demo_tow_untow_parsed_and_solved(make):
         if tied_at is not None and not solver.in_demo:
             break
     assert tied_at is not None and not rope.on_body and not solver.in_demo
+
+
+def wall_room(tmp_path, parts, walls=()):
+    raw = {"name": "walls", "size": [3.0, 3.0], "spawn": {"pos": [-1.0, -0.8], "yaw": 0.0}, "walls": list(walls),
+           "parts": [*parts, {"name": "goal", "type": "goal", "pos": [1.0, -0.8], "radius": 0.1}],
+           "demo": ["tow rope sled", "goto goal"]}
+    path = tmp_path / f"walls{len(list(tmp_path.iterdir()))}.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    env = PuzzleEnv(room=path)
+    env.reset(seed=0)
+    return env
+
+
+def test_tow_path_warnings(asset_dir, tmp_path):
+    sled = {**SLED, "pos": [-1.3, -0.8], "mass": 0.1}
+    rope = {**ROPE, "pos": [0.0, 1.2]}
+    gap = [{"from": [0.0, -1.5], "to": [0.0, -1.0]}, {"from": [0.0, -0.6], "to": [0.0, 1.5]}]
+    door = [{"name": "btn", "preset": "input/floor_momentary", "pos": [-0.5, 1.0]},
+            {"name": "door", "preset": "device/sliding_door", "pos": [0.0, -0.8], "in": ["btn"], "width": 0.4}]
+    cases = [([sled, rope], (), None),                                       # straight: nothing
+             ([sled, rope, *door], gap, None),                               # 0.1 m cube through 0.4 m door
+             ([{"name": "sled", "type": "stick", "pos": [-1.4, -0.8], "length": 0.5, "hitch": True}, rope, *door],
+              gap, "passes door 'door'"),                                    # 0.5 m stick: too wide
+             ([sled, rope], [{"from": [0.0, -1.5], "to": [0.0, 0.6]}], "bends more than 90 deg")]  # hairpin
+    for parts, walls, want in cases:
+        env = wall_room(tmp_path, parts, walls)
+        try:
+            got = tow_path_warnings(env, env.parts["rope"])
+        finally:
+            env.close()
+        assert (got == []) if want is None else (len(got) == 1 and want in got[0]), (want, got)
 
 
 def test_static_checks(make):
