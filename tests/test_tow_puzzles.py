@@ -5,7 +5,9 @@
 - a box the `demo:` drags into a pit must be as tall as the pit is deep (top flush
   with the floor within 1 cm), else the static stage `parts` fails;
 - slow: without the rope steps (or walking straight at the goal) the presets are not
-  solved. Their 20-seed `mpg check` runs in test_examples.py (room presets).
+  solved; `cleat_hold` without its handoff station (lift the door, walk back) and
+  `npc_leash` by herding instead of towing are not solved either. Their 20-seed
+  `mpg check` runs in test_examples.py (room presets).
 """
 
 import math
@@ -21,7 +23,7 @@ from mujoco_puzzle_gym.floor import CATCH_DEPTH
 from mujoco_puzzle_gym.solver import ScriptedSolver, run_episode
 
 TOW = catalog.PRESET_ROOT / "puzzles/tow"
-NAMES = ["sled_delivery", "drop_and_go", "chain_dropoff", "tethered_start"]
+NAMES = ["sled_delivery", "drop_and_go", "chain_dropoff", "tethered_start", "cleat_hold", "npc_leash"]
 
 
 def test_tow_presets_listed():
@@ -62,10 +64,23 @@ def test_box_dragged_into_a_pit_must_be_flush(asset_dir, tmp_path):
     assert not check(pit_room(tmp_path, 0.3), static_only=True)["parts"]["ok"]
 
 
+def test_cleat_hold_without_its_pulley_fails_static(tmp_path):
+    """A rope door opens in the static order only with a pulley over it (cleat_hold passes above)."""
+    raw = yaml.safe_load((TOW / "cleat_hold.yaml").read_text())
+    for p in raw["parts"]:
+        if p.get("type") == "rope":
+            p.pop("via")
+    out = tmp_path / "cleat_hold.yaml"
+    out.write_text(yaml.safe_dump(raw))
+    res = check(out, static_only=True)
+    assert not res["parts"]["ok"] and "no rope that can tie to it has a `via` pulley" in res["parts"]["reason"]
+
+
 # ---- slow: the rope steps are needed ------------------------------------------------------
-def without(path, tmp_path, demo):
+def without(path, tmp_path, demo, drop=()):
     raw = yaml.safe_load(path.read_text())
     raw["demo"] = demo
+    raw["parts"] = [p for p in raw["parts"] if p["name"] not in drop]
     out = tmp_path / path.name
     out.write_text(yaml.safe_dump(raw))
     return PuzzleEnv(room=out)
@@ -75,7 +90,10 @@ def without(path, tmp_path, demo):
 @pytest.mark.parametrize("name, demo", [("sled_delivery", ["goto goal"]),
                                         ("drop_and_go", ["drag rope zone", "goto goal"]),
                                         ("chain_dropoff", ["drag front drop_a", "goto goal"]),
-                                        ("tethered_start", ["goto goal"])])
+                                        ("tethered_start", ["goto goal"]),
+                                        ("cleat_hold", ["goto goal"]),
+                                        ("npc_leash", ["goto goal"]),
+                                        ("npc_leash", ["herd bot zone", "goto goal"])])
 def test_tow_presets_need_the_rope_steps(asset_dir, tmp_path, name, demo):
     env = without(TOW / f"{name}.yaml", tmp_path, demo)
     solver = ScriptedSolver(env)
@@ -146,3 +164,18 @@ def test_reversed_chain_order_picks_the_far_cart(asset_dir, tmp_path):
         assert legs_of(env, "rear") == [([-2.1, 0.0], [-0.6, 0.35], "cart_b")]
     finally:
         env.close()
+
+
+@pytest.mark.slow
+def test_cleat_hold_needs_the_handoff(asset_dir, tmp_path):
+    """Lifting the door by walking to the anchor and walking back to it still tied lets
+    the door down in front of the duck (measured: shut, lift < 1 mm, within 0.2 m)."""
+    env = without(TOW / "cleat_hold.yaml", tmp_path, ["goto post", "goto goal"], drop=("station",))
+    solver = ScriptedSolver(env)
+    door = env.parts["door"]
+    runs, lifted = [], []
+    for s in range(3):
+        runs.append(run_episode(env, s, solver)["success"])
+        lifted.append(door.lift(env.data))
+    env.close()
+    assert not any(runs) and max(lifted) < door.clearance

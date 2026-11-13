@@ -1,0 +1,9 @@
+# Rope door (R31): a passive panel in a wall gap on a vertical slide; gravity
+# closes it and only a tow rope lifts it (its hitch is the top edge: run the rope
+# through a ceiling pulley, `via:`, right above it). Open once lifted 0.34 m, the
+# gap the walking duck needs. Set: pos, width, axis, mass (at most 0.15 kg; the
+# rope carries its weight, give that rope its own `max_tension`).
+type: rope_door
+width: 0.5
+axis: y
+mass: 0.05

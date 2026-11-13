@@ -18,7 +18,15 @@
 - `demo:` `drag <rope> <part>`: parsed (errors for a non-rope, a part without a floor
   area, a wrong arity), the towed hitch (also down a chain of ropes), the aim beyond
   the part, done once the hitch is inside or comes loose; a short run drags the sled
-  into a zone; a drag target needs no `grab` action; a drag leg gets the path warnings.
+  into a zone; a drag target needs no `grab` action; a drag leg gets the path warnings;
+- pulleys (`via`): the tendon runs through them, ties and the static checks measure the
+  path through them, a body warp lets go of a pulley rope and leaves it;
+- rope door: gravity shuts it, it blocks until lifted clear (live planning), a rope can
+  lift it (static planning), its hitch is fixed for warps;
+- handoff station: the end moves from the body to the `to:` hitch in one step (never
+  loose; snapshots before and after), holds the door up, a too-far hitch fails;
+- NPC leash area: recomputed on restore and channel unties (not saved), untied outside it
+  walks back; NPC sensors count as switches once a rope can tow the NPC.
 """
 
 import mujoco
@@ -121,11 +129,11 @@ def test_room_without_rope_builds_as_before(make):
 
 
 def test_bad_hitch_names_and_cap(make):
-    with pytest.raises(RoomError, match="not a hitch"):
+    with pytest.raises(RoomError, match="not a hitch .*a rope door"):
         make([{**ROPE, "b": "goal"}])
     with pytest.raises(RoomError, match="no hitch"):
         make([{**ROPE, "b": None, "tied": ["a", "b"]}])
-    with pytest.raises(RoomError, match="max_hitches"):
+    with pytest.raises(RoomError, match="rope doors.*max_hitches"):
         make([SLED, {**ROPE, "max_hitches": 1}])
 
 
@@ -642,3 +650,203 @@ def test_drag_leg_path_warning(asset_dir, tmp_path):
     finally:
         env.close()
     assert len(got) == 1 and "passes door 'door'" in got[0]
+
+
+# ---- pulleys (`via`) --------------------------------------------------------------------------------
+POST = {"name": "post", "type": "anchor", "pos": [-1.3, 0.0]}
+VIA = {**ROPE, "b": "post", "via": [[-1.15, 0.0, 0.5]], "length": 1.1}
+
+
+def test_via_tendon_runs_through_the_pulley(make):
+    env = make([POST, VIA])
+    rope, m, d = rope_of(env), env.model, env.data
+    assert m.ntendon == 1 and m.site(rope._via_name(0)).id >= 0
+    a, b = (d.site_xpos[k.sid] for k in rope.knots)
+    path = rope.path_len(a, b)
+    assert path == pytest.approx(float(np.linalg.norm(a - VIA["via"][0]) + np.linalg.norm(VIA["via"][0] - b)))
+    assert d.ten_length[rope._tendon] == pytest.approx(path, abs=1e-6)
+    assert path > 0.9 and float(np.linalg.norm(a - b)) < 0.35          # much longer than straight
+    run = walk(env, 3.0)                                                # the post holds: taut at 1.1 m
+    assert d.ten_length[rope._tendon] <= 1.1 + 0.01 and run["apart"][-1] < 0.6
+
+
+def test_via_ties_measure_the_path(make):
+    env = make([{"name": "src", "type": "t_rsrc", "pos": [0, 0]}, POST,
+                {**VIA, "tied": ["a"], "rest": [[-1.0, 0.5], [-1.3, 0.1]], "attach_b": "src", "length": 0.9}])
+    rope = rope_of(env)
+    env.parts["src"].value = 1.0                  # straight 0.3 m, through the pulley about 0.97 m
+    tick(env)
+    assert rope.tied == [0, None] and env.signals.get("rope.attach_failed") == 1.0
+
+
+def test_via_static_checks(make):
+    env = make([POST, VIA])
+    assert env.parts["rope"].check_static(env) == []
+    short = make([POST, {**VIA, "length": 0.9}])
+    why = short.parts["rope"].check_static(short)
+    assert any("apart along the rope through its pulleys" in w for w in why)
+    two = make([POST, {**VIA, "via": [[-1.15, 0.0, 0.5], [-1.15, 0.6, 0.5]], "length": 1.75,
+                       "hitch_radius": 1.2}])
+    why = two.parts["rope"].check_static(two)
+    assert any("hitch_radius 1.2 m is longer than its length 1.75 m less 0.60 m between its pulleys" in w
+               for w in why)
+
+
+def test_warp_leaves_a_pulley_rope_behind(make):
+    env = make([POST, VIA])
+    rope = rope_of(env)
+    env.warp("body", (0.8, 0.5, 0.0))
+    assert rope.tied == [None, 1]                      # the body's end comes loose, the rope stays
+    mujoco.mj_forward(env.model, env.data)
+    assert float(np.linalg.norm(env.data.site_xpos[rope.knots[0].sid][:2] - [0.8, 0.5])) > 1.0
+
+
+# ---- rope door ------------------------------------------------------------------------------------
+DOOR = {"name": "door", "preset": "device/rope_door", "pos": [0.6, 0.0]}
+LIFT = {**ROPE, "a": "door", "b": "body", "length": 1.5, "via": [[0.6, 0.0, 0.85]], "max_tension": 1.5}
+HANDOFF = {"name": "pad", "type": "hitch_station", "pos": [-0.55, 0.0], "mode": "handoff", "to": "post"}
+CLEAT_POST = {"name": "post", "type": "anchor", "pos": [-0.4, 0.0]}
+
+
+def test_rope_door_falls_shut_and_blocks(make):
+    from mujoco_puzzle_gym.logic import gate_passable
+
+    env = make([DOOR])
+    door, d = env.parts["door"], env.data
+    assert door.role == "gate" and not door.liftable and door.check_static(env)    # no rope: never opens
+    assert env.model.body_mass[door._bid] == pytest.approx(0.05)
+    d.qpos[door._qadr] = 0.3
+    body_steps(env, 1.5)
+    assert door.lift(d) < 0.002 and door.state() == 0.0
+    assert env.signals.get("door.open") == 0.0 and env.signals.get("door.lift") == 0.0
+    assert len(door.blockers(False)) == 1 and door.blockers(True) == []
+    d.qpos[door._qadr] = 0.2                           # half way: not passable for the live planners
+    tick(env)
+    assert 0.3 < door.state() < 1.0 and not gate_passable(door, 0.3)
+    d.qpos[door._qadr] = 0.36
+    tick(env)
+    assert door.state() == 1.0 and gate_passable(door, 0.3) and env.signals.get("door.open") == 1.0
+    with pytest.raises(RoomError, match="mass"):
+        make([{**DOOR, "mass": 0.2}])
+
+
+def test_rope_door_is_liftable_with_a_rope_and_a_fixed_hitch(make):
+    env = make([DOOR, CLEAT_POST, LIFT], spawn=(0.25, 0.0))
+    door, rope = env.parts["door"], rope_of(env)
+    assert door.liftable and door.check_static(env) == [] and rope.check_static(env) == []
+    assert rope.tied_hitch(0).kind == "door" and rope.tied_hitch(0).fixed
+    plain = make([DOOR, {**LIFT, "via": None, "length": 0.5}], spawn=(0.25, 0.0))
+    assert not plain.parts["door"].liftable and "no rope that can tie to it has a `via` pulley over it" \
+        in plain.parts["door"].check_static(plain)[0]
+    plain.warp("body", (-0.8, 0.5, 0.0))               # a door end is fixed: it comes loose, the rope goes along
+    assert rope_of(plain).tied == [None, 0]             # end b stays on the body (hitch 0)
+
+
+@pytest.mark.parametrize("via, ok", [((0.6, 0.0, 0.85), True), ((0.6, 0.26, 0.85), True),
+                                     ((0.6, 0.27, 0.85), False), ((0.62, 0.0, 0.85), True),
+                                     ((0.63, 0.0, 0.85), False), ((0.6, 0.0, 0.59), False),
+                                     ((0.6, 0.0, 0.6), True)])
+def test_rope_door_needs_a_pulley_over_its_footprint(make, via, ok):
+    """The rule (rope_door `_over`): the via point's xy in the panel's 0.52 x 0.04 m footprint
+    (axis y), its z above the hitch at the open lift (0.25 + 0.003 + 0.34 = 0.593 m)."""
+    env = make([DOOR, {**LIFT, "via": [list(via)]}], spawn=(0.25, 0.0))
+    door = env.parts["door"]
+    assert door.liftable == ok and (door.check_static(env) == []) == ok
+
+
+def cleat_room(make, **pad):
+    env = make([DOOR, CLEAT_POST, LIFT, {**HANDOFF, **pad}], spawn=(0.25, 0.0))
+    env.room.demo = [("untow", "rope")]
+    return env
+
+
+def test_handoff_holds_the_door_up(make):
+    env = cleat_room(make)
+    rope, door, d = rope_of(env), env.parts["door"], env.data
+    solver = ScriptedSolver(env)
+    lifts = []
+    for _ in range(150):                               # measured: handed off after 4.2-4.4 s
+        env.step(solver.act())
+        lifts.append((rope.on_body, door.lift(d), rope.tied[1]))
+        if not solver.in_demo:
+            break
+    assert not solver.in_demo and not rope.snapped
+    assert None not in [t for _, _, t in lifts]          # the end is never loose: body, then post
+    before = [x for on, x, _ in lifts if on][-1]
+    assert rope.tied_hitch(1).name == "post" and env.signals.get("pad.towing") == 0.0
+    assert before > door.clearance
+    body_steps(env, 2.0)                               # stays up (measured 0.381 m)
+    assert door.lift(d) > door.clearance and door.state() == 1.0 and not rope.snapped
+    assert knot_gap(env, rope, 1) < 0.01
+
+
+def test_handoff_moves_the_end_in_the_same_step(make):
+    post = {"name": "post", "type": "anchor", "pos": [-0.4, 0.2]}
+    sled = {**SLED, "pos": [-0.7, 0.0]}
+    env = make([sled, post, ROPE, {**HANDOFF, "pos": [-0.4, 0.0]}])
+    rope, d = rope_of(env), env.data
+    snap = env.save_snapshot()
+    env.body.teleport(env.data, (-0.4, 0.0, 0.0))
+    env.body.kick(env.data, [0.3, 0.0, 0.0])           # on the pad at 0.3 m/s > max_speed: nothing
+    tick(env)
+    assert rope.on_body
+    stand_at(env, -0.4, -0.6)
+    stand_at(env, -0.4, 0.0)
+    assert rope.tied_hitch(0).name == "post" and rope.tied_hitch(1).name == "sled" and not rope.on_body
+    eq = {h.name: rope._eq[0][i] for i, h in enumerate(rope.hitches)}
+    assert d.eq_active[eq["post"]] == 1 and d.eq_active[eq["body"]] == 0
+    assert np.linalg.norm(d.qpos[rope.knots[0]._q:rope.knots[0]._q + 3] - d.site_xpos[rope.hitches[rope._index['post']].sid]) < 1e-9
+    after = env.save_snapshot()
+    env.restore_snapshot(snap)
+    assert rope.tied_hitch(0).name == "body" and d.eq_active[eq["body"]] == 1 and d.eq_active[eq["post"]] == 0
+    env.restore_snapshot(after)
+    assert rope.tied_hitch(0).name == "post" and d.eq_active[eq["post"]] == 1
+
+
+def test_handoff_too_far_fails_and_bad_values(make):
+    far = {"name": "post", "type": "anchor", "pos": [-0.4, 0.5]}
+    env = make([{**SLED, "pos": [-0.7, 0.0]}, far, ROPE, {**HANDOFF, "pos": [-0.4, 0.0], "cooldown": 0.0}])
+    rope = rope_of(env)
+    stand_at(env, -0.4, 0.0)                           # post 0.58 m from the sled > 0.4 m
+    assert rope.on_body
+    env.body.teleport(env.data, (-0.4, -0.6, 0.0))
+    tick(env)                                          # the pulse comes out with the rope's next write
+    assert env.signals.get("rope.attach_failed") == 1.0
+    for bad, why in (({"to": None}, "needs `to"), ({"to": "body"}, "not a hitch"),
+                     ({"mode": "detach"}, "for `mode: handoff` only")):
+        with pytest.raises(RoomError, match=why):
+            make([SLED, CLEAT_POST, ROPE, {**HANDOFF, **bad}])
+
+
+# ---- NPC leash area (R29, R31 npc_leash) ----------------------------------------------------------
+BOT = {"name": "bot", "preset": "npc/flee", "pos": [-1.3, 0.0], "leash": [-1.5, -0.3, -1.1, 0.3]}
+
+
+def test_npc_leash_follows_the_rope_on_restore_and_channels(make):
+    from mujoco_puzzle_gym.parts.npc.rover import Npc
+
+    assert not {"towed", "returning"} & set(Npc.state_keys)          # recomputed, never saved
+    env = make([{"name": "off", "type": "t_rsrc", "pos": [0, 0]}, BOT, {**ROPE, "b": "bot", "detach_b": "off"}])
+    rope, bot, m = rope_of(env), env.parts["bot"], env.model
+    walk(env, 3.0)                                    # dragged out of its leash box
+    assert bot.towed and bot.pos(env.data)[0] > -1.1
+    tied = env.save_snapshot()
+    env.parts["off"].value = 1.0                      # the channel unties the robot's end outside its box
+    body_steps(env, 0.1)
+    assert rope.tied == [0, None] and not bot.towed and bot.returning
+    assert m.jnt_range[bot._j[0], 1] > 100 and m.actuator_gainprm[bot._act, 0].all()
+    loose = env.save_snapshot()
+    env.restore_snapshot(tied)                        # tied again: zero gains, no limits
+    assert bot.towed and not bot.returning and not m.actuator_gainprm[bot._act, 0].any()
+    assert m.jnt_range[bot._j[0], 1] > 100
+    env.restore_snapshot(loose)                       # untied outside: heading back, limits off
+    assert not bot.towed and bot.returning and m.jnt_range[bot._j[0], 1] > 100
+    env.parts["off"].value = 0.0
+    body_steps(env, 8.0)
+    assert -1.5 <= bot.pos(env.data)[0] <= -1.1 and not bot.returning and m.jnt_range[bot._j[0], 1] < 1.0
+
+
+def test_npc_sensor_is_a_switch_when_a_rope_can_tow_the_npc(make):
+    zone = {"name": "zone", "preset": "input/object_zone", "pos": [0.2, 0.0], "trigger": "npc", "objects": None}
+    assert make([BOT, zone]).parts["zone"].role == "sensor"          # outside the leash: no herding there
+    assert make([BOT, zone, {**ROPE, "a": None, "b": None, "tied": []}]).parts["zone"].role == "switch"

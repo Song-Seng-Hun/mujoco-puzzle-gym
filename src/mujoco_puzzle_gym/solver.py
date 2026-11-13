@@ -42,8 +42,8 @@ is passable, an opening trapdoor as a hole):
 - `tow <rope> <hitch>`: done once the rope ties the body and the hitch; else walk
   onto the rope's attach (or toggle) hitch station nearest the hitch and stand until
   it ties (no such station: stand, a channel ties it) (R31);
-- `untow <rope>`: done once the rope is off the body; else the same with a detach
-  (or toggle) station.
+- `untow <rope>`: done once the rope is off the body; else the same with a detach,
+  toggle or handoff station (a handoff moves the end to the station's `to:` hitch).
 - `drag <rope> <part>`: the towed hitch is the rope's end away from the body (its
   other end, or for a rope between two towed things the end farther along the
   chain); walk forward to a point beyond the part's centre, on the line from the
@@ -333,7 +333,7 @@ class ScriptedSolver:
         if hitch is None:
             if not rope.on_body:
                 return None
-            modes = ("detach", "toggle")
+            modes = ("detach", "toggle", "handoff")
         else:
             if rope.on_body and h in rope.tied:
                 return None
@@ -493,12 +493,12 @@ class ScriptedSolver:
         """(free cells now, distance field to `part`'s target area), cached by the
         gates open and the holes there now."""
         from .env import GATE_PASSABLE
-        from .logic import live_free
+        from .logic import gate_passable, live_free
 
         env = self.env
         parts = env.parts.values()
         key = (part.name, part.target_key(),
-               tuple(p.name for p in parts if p.role == "gate" and p.state() >= GATE_PASSABLE),
+               tuple(p.name for p in parts if gate_passable(p, GATE_PASSABLE)),
                tuple(p.name for p in parts if p.hole_now(env.grid) is not None))
         if key not in self._live:
             inflate = env.body.footprint_radius + CLEARANCE

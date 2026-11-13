@@ -1,0 +1,25 @@
+# NPC leash (R31, R29): the fleeing robot keeps to its small pen (`leash`) and
+# runs from the duck, so herding never gets it out. The hitch station next to
+# the pen ties the duck to the robot (within the rope's `hitch_radius`); while
+# tied, the robot's motors and pen limits are off and it is dragged along.
+# Drag it into the zone: the zone unties the robot's end (`detach_b`) and the
+# one-shot door opens. The robot, now outside its pen, drives back home; the
+# duck goes through the door with the loose rope end trailing.
+name: npc_leash
+size: [5.0, 1.5]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [1.2, -0.75], to: [1.2, -0.28]}     # divider, opening at y = 0
+  - {from: [1.2, 0.28], to: [1.2, 0.75]}
+spawn: {pos: [-2.2, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: bot, preset: npc/flee, pos: [-1.6, 0.34], leash: [-1.7, 0.28, -1.5, 0.4]}
+  - {name: rope, type: rope, pos: [-1.6, -0.5], length: 0.55, hitch_radius: 0.5, detach_b: zone}
+  - {name: station, type: hitch_station, pos: [-1.6, 0.0], mode: attach}
+  - {name: zone, preset: input/object_zone, pos: [0.0, 0.0], size: [0.6, 0.6], trigger: npc, objects: null}
+  - {name: door, preset: device/oneshot_door, pos: [1.2, 0.0], in: [zone]}
+  - {name: goal, type: goal, pos: [1.9, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - tow rope bot
+  - drag rope zone
+  - goto goal
