@@ -29,12 +29,13 @@ import numpy as np
 from .layout import Grid, Segment
 
 
-def plan_channels(parts: dict[str, Any], on: set[str]) -> dict[str, float]:
+def plan_channels(parts: dict[str, Any], on: set[str], broken=frozenset()) -> dict[str, float]:
     """Channel values once the input parts named in `on` are on (planning).
 
     An input with a `plan_driver` (R29: a seek_button robot's `button`) reads
     channels written later in the order, so such rooms repeat the pass until
-    the values settle."""
+    the values settle. The parts named in `broken` report their broken values
+    instead (R34: the parts the room's `demo:` breaks; `plan_broken_values`)."""
     order = parts.bus.order if hasattr(parts, "bus") else list(parts.values())
     vals: dict[str, float] = {}
     get = lambda ch: vals.get(ch, 0.0)  # noqa: E731
@@ -42,7 +43,8 @@ def plan_channels(parts: dict[str, Any], on: set[str]) -> dict[str, float]:
     for _ in range(passes):
         before = dict(vals)
         for p in order:
-            vals.update(p.plan_values(on, get))
+            vals.update(p.plan_broken_values(get) if p.name in broken and hasattr(p, "plan_broken_values")
+                        else p.plan_values(on, get))
         if vals == before:
             break
     return vals
@@ -70,10 +72,11 @@ def upstream_inputs(part: Any) -> list[Any]:
 
 
 def free_mask(grid: Grid, walls: list[Segment], parts: dict[str, Any], on: set[str],
-              inflate: float = 0.0) -> np.ndarray:
+              inflate: float = 0.0, broken=frozenset()) -> np.ndarray:
     """Free cells with every gate closed unless the inputs in `on` open it, and no
-    cell over a hole (trapdoor, pit) that the inputs in `on` open."""
-    vals = plan_channels(parts, on)
+    cell over a hole (trapdoor, pit) that the inputs in `on` open. `broken`: see
+    `plan_channels` (R34)."""
+    vals = plan_channels(parts, on, broken)
     get = lambda ch: vals.get(ch, 0.0)  # noqa: E731
     segs = list(walls)
     for p in parts.values():
@@ -115,9 +118,9 @@ def _grow(mask: np.ndarray) -> np.ndarray:
 
 
 def _take_warp(grid: Grid, parts: dict[str, Any], on: set[str], reach: np.ndarray,
-               used: set[str]):
+               used: set[str], broken=frozenset()):
     """A reachable, unused warp pad leading out of `reach`: (part, destination xy) or None."""
-    vals = plan_channels(parts, on)
+    vals = plan_channels(parts, on, broken)
     for p in parts.values():
         if p.role != "warp" or p.name in used or not (_grow(p.target_mask(grid)) & reach).any():
             continue
@@ -128,26 +131,31 @@ def _take_warp(grid: Grid, parts: dict[str, Any], on: set[str], reach: np.ndarra
 
 
 def reach_with_warps(grid: Grid, walls: list[Segment], parts: dict[str, Any], on: set[str],
-                     start_xy, inflate: float = 0.0) -> np.ndarray:
+                     start_xy, inflate: float = 0.0, broken=frozenset()) -> np.ndarray:
     """Cells reachable from `start_xy` with the inputs in `on`, also through warp pads
     (R14: a `stages:` room's next zone, a pad to another spot) found on the way."""
-    free = free_mask(grid, walls, parts, on, inflate)
+    free = free_mask(grid, walls, parts, on, inflate, broken)
     reach = grid.flood(free, start_xy)
     used: set[str] = set()
-    while (warp := _take_warp(grid, parts, on, reach, used)) is not None:
+    while (warp := _take_warp(grid, parts, on, reach, used, broken)) is not None:
         used.add(warp[0].name)
         reach |= grid.flood(free, warp[1])
     return reach
 
 
 def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
-                   start_xy) -> dict[str, Any]:
+                   start_xy, broken=frozenset()) -> dict[str, Any]:
     """Find an order of switches (and the gates they open) that reaches a goal.
 
     Each round turns on reachable switches that open a closed gate: first none
     (gates already open), then one switch at a time, then all reachable ones;
     with all of them, the switches kept are those behind the gate in the signal
     graph. Returns {"ok", "order": [names], "targets": [non-gate names], "reason"}.
+
+    `broken` (R34): parts the room's `demo:` breaks. The plan takes them as broken
+    from the start and leaves them out of the order, since breaking is not a place
+    the body walks to; whether the break comes at the right moment is for the
+    scripted solver and the `circuit` stage.
     """
     on: set[str] = set()
     order: list[str] = []
@@ -157,7 +165,7 @@ def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
     gates = [p for p in parts.values() if p.role == "gate"]
     goals = [p for p in parts.values() if p.role == "goal"]
     while True:
-        reach = grid.flood(free_mask(grid, walls, parts, on), start_xy)
+        reach = grid.flood(free_mask(grid, walls, parts, on, broken=broken), start_xy)
         for g in goals:
             if (_grow(g.target_mask(grid)) & reach).any():
                 order.append(g.name)
@@ -167,7 +175,7 @@ def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
         new_names = {s.name for s in new}
         trial = on | new_names
         candidates = [set()] + [{s.name} for s in new] + ([new_names] if len(new) > 1 else [])
-        vals = [plan_channels(parts, on | c) for c in candidates]
+        vals = [plan_channels(parts, on | c, broken) for c in candidates]
         newly_open, needed = [], set()
         for g in gates:
             if g.name in opened:
@@ -182,7 +190,7 @@ def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
                         needed |= added
                     break
         if not newly_open:
-            warp = _take_warp(grid, parts, on, reach, warps_used)
+            warp = _take_warp(grid, parts, on, reach, warps_used, broken)
             if warp is not None:
                 order.append(warp[0].name)
                 warps_used.add(warp[0].name)

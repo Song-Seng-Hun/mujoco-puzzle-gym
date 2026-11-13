@@ -9,3 +9,7 @@ hp: 2
 mount: wall
 depth: 0.04
 height: 0.18
+# A duck that walks up to the cover stops with its lowered beak 1.4-2.2 cm off it
+# (measured 2026-11-14, 3 seeds), so the reach is 0.04 m, not the measured 0.02 m
+# of a tip held against it.
+peck_dist: 0.04

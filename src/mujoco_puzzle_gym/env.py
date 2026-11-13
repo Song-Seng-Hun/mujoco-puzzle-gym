@@ -71,6 +71,7 @@ from . import curriculum, snapshot
 from .grab import BEAK_PART
 from .bodies import DEFAULT_BODY, BodyState, make_body
 from .layout import Grid
+from .circuit import demo_breaks
 from .logic import free_mask, solution_order
 from .parts.base import Part, World
 from .obs import make_items
@@ -389,7 +390,8 @@ class PuzzleEnv(gym.Env):
         if self.world.ropes:
             mujoco.mj_forward(self.model, self.data)
         self.body_state: BodyState = self.read_body()
-        self.plan = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2])
+        self.plan = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2],
+                                   broken=demo_breaks(self.room))
         self.targets = [self.parts[n] for n in self.plan["targets"]] if self.plan["ok"] else \
             [p for p in self.parts.values() if p.role in ("switch", "goal")]
         self.targets = curriculum.with_flags(self, self.targets, layout["spawn"][:2])   # R21

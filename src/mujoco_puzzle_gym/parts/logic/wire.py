@@ -160,6 +160,10 @@ class Wire(Breakable):
     def break_geom(self, model):
         return self._cover
 
+    def peck_normal(self):
+        """The cover's front: the wall is behind it, so the duck pecks from here."""
+        return np.array([math.cos(self.facing), math.sin(self.facing)])
+
     # ---- runtime --------------------------------------------------------------------
     def reset(self, model, data):
         self._clear_cut()
@@ -207,6 +211,15 @@ class Wire(Breakable):
     def plan_values(self, on, get):
         return self.break_plan_values({})
 
+    def plan_broken_values(self, get):
+        """Planning: a cut wire takes the channel it carries from its readers. The plan
+        has one value per channel, so it drops the channel itself; where other parts
+        read that channel past the wire, the plan is optimistic and the scripted solver
+        is what proves the room."""
+        out = super().plan_broken_values(get)
+        out[self.carries] = self.broken_value
+        return out
+
     def check_static(self, env):
         out = []
         for part, channel in self._readers:
@@ -221,7 +234,7 @@ class Wire(Breakable):
         return out
 
     def check_warnings(self, env):
-        out = []
+        out = list(super().check_warnings(env))
         if self.breakable and "peck" in self.by and self.mount == "part":
             part = env.parts.get(self.on)
             if part is not None and not part.blockers(False):
