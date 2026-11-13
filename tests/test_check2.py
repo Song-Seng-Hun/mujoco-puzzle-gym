@@ -24,7 +24,7 @@ SWITCH_DOOR = ROOT / "examples/switch_door.yaml"
 MINI_SOCCER = ROOT / "examples/rooms/mini_soccer.yaml"
 EXAMPLES = [SWITCH_DOOR, *sorted((ROOT / "examples/rooms").glob("*.yaml"))]
 #: Example rooms that need task actions beyond `move` (check stage `actions`, R19).
-TASKS = {"cube_plate": ROOT / "examples/task_cube_plate.yaml"}
+TASKS = {r: ROOT / f"examples/task_{r}.yaml" for r in ("cube_plate", "cube_socket", "laundry")}
 
 
 def write_room(tmp_path, raw, name="room.yaml") -> Path:

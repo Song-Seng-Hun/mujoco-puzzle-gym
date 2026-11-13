@@ -142,6 +142,9 @@ parts:
 | [`examples/rooms/herd.yaml`](../examples/rooms/herd.yaml) | 逃げるロボットを隅のボタンの上へ追い込むと、その間ドアが開いています | `npc/flee`, `input/floor_momentary`(`trigger: npc`), `device/sliding_door` |
 | [`examples/rooms/warp_hop.yaml`](../examples/rooms/warp_hop.yaml) | ドアのない壁の向こうのゴールへ、ワープ板で越えます | `warp` |
 | [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml) | 台の上のキューブをくちばしでつかんで圧力板に載せると、ドアが開きます | `cube`, `pressure`, `door` |
+| [`examples/rooms/cube_socket.yaml`](../examples/rooms/cube_socket.yaml) | 台の上の鍵(マーカー7)を同じ番号のソケットに入れると、ドアが開きます。`--task examples/task_cube_socket.yaml` | `beak/key`, `input/socket`, `device/sliding_door` |
+| [`examples/rooms/wall_button.yaml`](../examples/rooms/wall_button.yaml) | 壁のボタンをくちばしで押すと、ドアが開きます | `beak/wall_button_beak_mid`, `device/sliding_door` |
+| [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | 二つの台の洗濯物をかごに入れる(2枚)と、ドアが開きます。`--task examples/task_laundry.yaml`(60秒のエピソード) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 文字マップで描いた二つの部屋、階段と坂 | `button`, `door` |
 
 ボールの組み立てプリセットは部屋一つ全体なので、そのまま`mpg check`に渡してもよく、`preset: puzzles/ball/bowling`で敷いて値を変えて使ってもかまいません。

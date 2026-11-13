@@ -142,6 +142,9 @@ All of these pass the solver stage of `mpg check` at least 18 times out of 20.
 | [`examples/rooms/herd.yaml`](../examples/rooms/herd.yaml) | Herd a fleeing robot onto the corner button; the door is open while it stays there | `npc/flee`, `input/floor_momentary` (`trigger: npc`), `device/sliding_door` |
 | [`examples/rooms/warp_hop.yaml`](../examples/rooms/warp_hop.yaml) | A warp pad takes the body over a wall without a door to the goal | `warp` |
 | [`examples/rooms/cube_plate.yaml`](../examples/rooms/cube_plate.yaml) | Pick the cube off its stand with the beak and put it on the pressure plate to open the door | `cube`, `pressure`, `door` |
+| [`examples/rooms/cube_socket.yaml`](../examples/rooms/cube_socket.yaml) | Carry the key (marker 7) off its stand into the socket with its number to open the door. `--task examples/task_cube_socket.yaml` | `beak/key`, `input/socket`, `device/sliding_door` |
+| [`examples/rooms/wall_button.yaml`](../examples/rooms/wall_button.yaml) | Press a wall button with the beak to open the door | `beak/wall_button_beak_mid`, `device/sliding_door` |
+| [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | Put the laundry from two stands into the basket (2 pieces) to open the door. `--task examples/task_laundry.yaml` (60 s episodes) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | Two rooms, and stairs and a ramp, drawn as text maps | `button`, `door` |
 
 The ball assembly presets are whole rooms, so you can pass one to `mpg check` as is, or lay it down with `preset: puzzles/ball/bowling` and change values.

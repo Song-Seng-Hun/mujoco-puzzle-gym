@@ -1,0 +1,34 @@
+# Example room (R5 socket, R26 markers, R28 key): carry the key into the socket
+# with its number and the door opens.
+# - The key (marker 7) waits on a stand (the raised "P" cells, 0.18 m: the beak
+#   tip is 0.135-0.21 m high, so an object on the floor is out of reach). The
+#   socket takes only marker 7 and shows that number too; it allows 45 deg of
+#   key heading (the carried key points where the body walks in from).
+# - The socket opens the sliding door in the divider (standard 0.50 m opening,
+#   as in doors.yaml) to the goal. Check with examples/task_cube_socket.yaml
+#   (`actions: [move, head, grab]`).
+name: cube_socket
+cell: 0.1
+legend:
+  "P": {type: floor, height: 0.18}
+map: |
+  ########################
+  #................#.....#
+  #................#.....#
+  #......PP........#.....#
+  #......................#
+  #......................#
+  #......................#
+  #......................#
+  #......................#
+  #................#.....#
+  #................#.....#
+  #................#.....#
+  ########################
+spawn: {pos: [-0.75, -0.3], yaw: 1.57, random: [0.08, 0.08, 0.3]}
+parts:
+  - {name: key, preset: beak/key, pos: [-0.48, 0.3], marker: {id: 7}}
+  - {name: socket, preset: input/socket, pos: [0.1, 0.0], accept: [7], angle_tolerance: 45.0,
+     marker: {id: 7}}
+  - {name: door, preset: device/sliding_door, pos: [0.55, 0.0], in: [socket.ok]}
+  - {name: goal, type: goal, pos: [0.85, 0.0], radius: 0.12, random: [0.05, 0.25]}

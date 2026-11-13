@@ -1,0 +1,10 @@
+# Task for examples/rooms/laundry.yaml (R19, R28): both pieces of laundry must be
+# grabbed, so the actions add `head` (match the beak tip to the hem height) and
+# `grab`. Without `grab`, `mpg check` fails the stage `actions`. Two carries take
+# the scripted solver about 31 s (median, up to about 60 s when it has to retry),
+# so episodes are 60 s. Missing keys take task.DEFAULTS.
+room: rooms/laundry.yaml
+env:
+  episode_seconds: 60
+actions: [move, head, grab]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, target_pos, beak]
