@@ -3,8 +3,8 @@
 from ..registry import register_part
 from .base import Part
 from .beak import Dial, Dispenser, Drawer, Egg, HandleBall, Key, Laundry, Lever, PullCord, Stick
-from .device import (AddonStation, Conveyor, Door, GoalNet, LowBar, Pillar, Platform, Setter, Spring,
-                     SwingDoor, Trapdoor, Turntable, Warp)
+from .device import (AddonStation, Anchor, Conveyor, Door, GoalNet, HitchStation, LowBar, Pillar, Platform,
+                     Rope, Setter, Spring, SwingDoor, Trapdoor, Turntable, Warp)
 from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
@@ -66,6 +66,9 @@ register_part("dispenser", Dispenser, replace=True)
 register_part("addon_station", AddonStation, replace=True)
 register_part("brake_strip", BrakeStrip, replace=True)
 register_part("low_bar", LowBar, replace=True)
+register_part("rope", Rope, replace=True)
+register_part("hitch_station", HitchStation, replace=True)
+register_part("anchor", Anchor, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
            "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
@@ -73,4 +76,4 @@ __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "
            "Ball", "Pin", "Cube", "GoalNet", "Platform", "Pillar", "Turntable", "Conveyor", "Spring",
            "Setter", "Target", "Wind", "Pusher", "Spinner", "Pendulum", "Pit", "Cannon", "Npc",
            "Laundry", "Key", "HandleBall", "Egg", "Stick", "Lever", "PullCord", "Dial", "Drawer", "Dispenser",
-           "AddonStation", "BrakeStrip", "LowBar"]
+           "AddonStation", "BrakeStrip", "LowBar", "Rope", "HitchStation", "Anchor"]

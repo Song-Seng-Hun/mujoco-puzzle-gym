@@ -183,6 +183,8 @@ class PuzzleEnv(gym.Env):
                     world.kinds[int(self.model.body_rootid[rid])] = p.kind
                     world.objects[int(self.model.body_rootid[rid])] = p
         world.checkpoints = [p for p in self.parts.values() if p.role == "checkpoint"]
+        world.ropes = [p for p in self.parts.values() if getattr(p, "is_rope", False)]
+        world.floor_height = self.floor_height
         for p in self.parts.values():
             p.world = world
         return world
@@ -216,10 +218,14 @@ class PuzzleEnv(gym.Env):
         moved = False
         for req in reqs:
             if req[0] in ("move", "kick"):
+                if req[0] == "kick" and req[2] != "body":    # R31: a launched object comes loose
+                    self.world.untie(self.model, self.data, int(req[2]))
                 self.push(req[0], req[2], req[3])
                 moved = True
                 continue
             if req[0] == "addon":                  # R30 station: height, velocity, collisions, policy
+                self.world.untie(self.model, self.data,      # R31: the body's rope ends come loose first
+                                 int(self.model.body_rootid[self.body.root_body_id(self.model)]))
                 self.body.set_addon(self.data, req[2])
                 continue
             if req[0] != "warp":
@@ -267,7 +273,16 @@ class PuzzleEnv(gym.Env):
     def warp(self, key, pose) -> None:
         """Move the walking body (key "body") or a free body (root body id) to `pose`.
         A free object the beak holds goes along, keeping its pose to the head (R14, R18);
-        a held device knob (R28) is let go."""
+        a held device knob (R28) is let go. With tow ropes (R31) the body takes along what
+        it tows and a warped object comes loose first (parts/device/rope.py)."""
+        if self.world.ropes:
+            from .parts.device.rope import warp_bundle
+
+            warp_bundle(self, key, pose, self._warp_one)
+            return
+        self._warp_one(key, pose)
+
+    def _warp_one(self, key, pose) -> None:
         if key == "body":
             beak = self.parts.get(BEAK_PART)
             held = beak.objects[beak.held] if beak is not None and beak.held is not None else None
@@ -361,6 +376,10 @@ class PuzzleEnv(gym.Env):
         for p in self.parts.values():
             p.reset(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
+        for p in self.parts.values():                            # R31: default rope ends tie now
+            p.after_reset(self.model, self.data)
+        if self.world.ropes:
+            mujoco.mj_forward(self.model, self.data)
         self.body_state: BodyState = self.read_body()
         self.plan = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2])
         self.targets = [self.parts[n] for n in self.plan["targets"]] if self.plan["ok"] else \

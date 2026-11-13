@@ -56,6 +56,8 @@ class Grabbable(FreeObject):
               doc="the beak grabs a handle this close to its tip (R18)"),
         Field("max_hold_force", "float", 3.0, unit="N", min=0.01, max=100.0,
               doc="the grab lets go when holding it takes more force"),
+        Field("hitch", "bool", False,
+              doc="a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's"),
     )
 
     def __init__(self, name, cfg):

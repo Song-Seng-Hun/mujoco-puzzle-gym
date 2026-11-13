@@ -58,12 +58,18 @@ def weld_now(model, data, eq: int, parent: int, child: int) -> None:
 
 
 def add_beak(parts: dict[str, Part]) -> None:
-    """Put the `_beak` part first in `parts` (once), holding every grabbable part."""
-    if BEAK_PART in parts:
-        if isinstance(parts[BEAK_PART], Beak):
-            return
-        raise ValueError(f"part name {BEAK_PART!r} is reserved for the beak grab")
+    """Put the `_beak` part first in `parts` (once), holding every grabbable part; a later
+    call adds grabbable parts added since (rope knots, R31)."""
     objs = [p for p in parts.values() if hasattr(p, "handle_points") and getattr(p, "grab_handle", True)]
+    if BEAK_PART in parts:
+        beak = parts[BEAK_PART]
+        if not isinstance(beak, Beak):
+            raise ValueError(f"part name {BEAK_PART!r} is reserved for the beak grab")
+        for o in objs:
+            if all(o is not q for q in beak.objects):
+                beak.objects.append(o)
+                beak.outputs += [o.name + ".held", o.name + ".dropped"]
+        return
     rest = list(parts.items())
     parts.clear()
     parts[BEAK_PART] = Beak(BEAK_PART, objs)

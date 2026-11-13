@@ -142,6 +142,12 @@ HEADING_CLIP = 0.5          # [rad] heading-error slot limit (OQ7)
 CROUCH_PERIOD = 5.0
 CROUCH_END_PHASE = 0.7
 CROUCH_MIN_SPEED = 0.2      # [m/s] spec R30 default
+# Tow hitch (R31, OQ9): low, so a pull does not tip the trunk back (standing hold 2.2 N
+# at 0.04 m, 1.0 N at 0.08 m, 0.6 N at 0.12 m). Trunk frame: under the midpoint of the
+# two hip_yaw anchors (x 0.006, y +-0.0175), 0.04 m above the floor in the standing pose
+# (trunk 0.1157 m high after 2 s at command 0; measured 0.007, 0.0005, -0.0756, seeds 0-2).
+TOW_SITE = "tow_hitch"
+TOW_SITE_POS = (0.007, 0.0, -0.0756)
 
 
 class MicroduckAdapter(BodyAdapter):
@@ -333,6 +339,13 @@ class MicroduckAdapter(BodyAdapter):
 
     def grab_site(self) -> str:
         return PREFIX + MOUTH_SITE
+
+    def tow_site(self, spec: mujoco.MjSpec | None = None) -> str:
+        name = PREFIX + TOW_SITE
+        if spec is not None and not any(s.name == name for s in spec.sites):
+            spec.body(PREFIX + TRUNK_BODY).add_site(name=name, pos=list(TOW_SITE_POS),
+                                                    size=[0.006, 0, 0], group=4)
+        return name
 
     def set_head(self, level: float) -> None:
         self.head = HEAD_LOW * float(np.clip(level, 0.0, 1.0))

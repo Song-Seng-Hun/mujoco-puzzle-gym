@@ -107,7 +107,7 @@ class RoomError(ValueError):
 
 
 DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop", "turn", "pull", "look",
-                 "take", "addon", "glide")
+                 "take", "addon", "glide", "tow", "untow")
 MAX_WAIT = 60.0                        # [s] longest `wait`
 
 
@@ -115,7 +115,8 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
     """`demo:` entries as tuples: ("goto"|"press", part), ("wait", seconds),
     ("push", ball, target), ("herd", npc, part or (x, y)), ("grab", object),
     ("place" | "drop", object, part), ("turn", lever, value), ("pull", cord), ("look", part),
-    ("take", dispenser), ("addon", station), ("glide", low bar). `grab` / `place` / `drop`
+    ("take", dispenser), ("addon", station), ("glide", low bar), ("tow", rope, hitch),
+    ("untow", rope). `grab` / `place` / `drop`
     take a dispenser's name after a `take` of it (its copy handed out last). Raises RoomError
     (stage `demo`) naming the bad entry."""
     if raw is None:
@@ -172,6 +173,24 @@ def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
             if not hasattr(parts[bar], "glide_ok"):
                 raise RoomError(f"demo[{i}]: {bar!r} is not a low bar (glide under a `low_bar`)", "demo")
             out.append(("glide", bar))
+        elif cmd in ("tow", "untow"):
+            n = 2 if cmd == "tow" else 1
+            if len(args) != n:
+                form = "tow <rope> <hitch>" if n == 2 else "untow <rope>"
+                raise RoomError(f"demo[{i}]: write `{form}`, got {entry!r}", "demo")
+            rope = part(i, args[0])
+            if not getattr(parts[rope], "is_rope", False):
+                raise RoomError(f"demo[{i}]: {rope!r} is not a rope", "demo")
+            if n == 2:
+                from .parts.device.rope import hitch_parts
+
+                hitch = part(i, args[1])
+                if parts[hitch] not in hitch_parts(parts):
+                    raise RoomError(f"demo[{i}]: {hitch!r} is not a rope hitch (an anchor, an npc or an "
+                                    f"object with `hitch: true`)", "demo")
+                out.append(("tow", rope, hitch))
+            else:
+                out.append(("untow", rope))
         elif cmd == "take":
             if len(args) != 1:
                 raise RoomError(f"demo[{i}]: write `take <dispenser>`, got {entry!r}", "demo")
