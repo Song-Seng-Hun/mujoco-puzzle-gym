@@ -20,6 +20,7 @@ import numpy as np
 
 from ...schema import Field, SchemaError
 from ...signals import is_on
+from ..breakable import BREAK_KEYS
 from .base import BodiedLogic
 
 LIMIT = 1_000_000
@@ -59,6 +60,7 @@ class Counter(BodiedLogic):
     def reset(self, model, data):
         self.count = self.start
         self.prev = {ch: False for ch in self.inputs}
+        self.break_reset(model)
         self._write()
         self.paint(model)
 
@@ -76,6 +78,9 @@ class Counter(BodiedLogic):
             self.write(float(self.count >= self.target), self.outputs[1])
 
     def update(self, model, data, body):
+        if self.break_step(model, data, body):          # broken: the output is frozen (R34)
+            self.paint(model)
+            return
         r, u, d = self._rising(self.reset_ch), self._rising(self.up), self._rising(self.down)
         if not self.enabled():
             return
@@ -108,10 +113,15 @@ class Counter(BodiedLogic):
                 self.outputs[1]: float(reached)}
 
     def save_state(self):
-        return {"count": self.count, "prev": dict(self.prev)}
+        return {"count": self.count, "prev": dict(self.prev),
+                **{k: getattr(self, k) for k in BREAK_KEYS}}
 
     def load_state(self, model, data, st):
         if not self.persist:
             self.count, self.prev = st["count"], dict(st["prev"])
+        for k in BREAK_KEYS:
+            if k in st:
+                setattr(self, k, st[k])
+        self.break_load(model)
         self._write()
         self.paint(model)

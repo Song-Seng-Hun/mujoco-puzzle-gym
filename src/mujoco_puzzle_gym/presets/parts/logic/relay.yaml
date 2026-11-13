@@ -1,0 +1,6 @@
+# Relay (R34): a box in the room that passes a channel through, so a circuit has a
+# place to break. Set: pos, in (channel); optional hp, by.
+type: relay
+breakable: true
+by: [shell, destroyer]
+hp: 1

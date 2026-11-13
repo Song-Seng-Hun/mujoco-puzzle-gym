@@ -1,0 +1,6 @@
+# Press (R34): on every turn-on of `in` it strikes the breakable parts in its area
+# once. It acts on breakable parts only: the duck and objects feel no force from it.
+# Set: pos, in (channel); optional size, targets, charges, cooldown.
+type: destroyer
+size: [0.3, 0.3]
+cooldown: 0.5

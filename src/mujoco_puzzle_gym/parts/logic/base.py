@@ -21,7 +21,7 @@ import numpy as np
 
 from ...layout import Segment
 from ...schema import Field
-from ..base import Part
+from ..breakable import Breakable
 
 OFF_RGBA = (0.25, 0.25, 0.30, 1.0)
 ON_RGBA = (1.0, 0.85, 0.25, 1.0)
@@ -29,8 +29,12 @@ BOX_RGBA = (0.45, 0.45, 0.5, 1.0)
 LAMP = 0.018          # lamp radius [m]
 
 
-class BodiedLogic(Part):
-    """Base for logic parts whose body is optional (`body: true`)."""
+class BodiedLogic(Breakable):
+    """Base for logic parts whose body is optional (`body: true`).
+
+    With a body the part can also be broken (R34): it mixes in `Breakable`, so
+    `breakable: true` works on a gate, a counter or a signal source, and each
+    subclass calls the break hooks in its `reset`, `update` and `load_state`."""
 
     has_body = False
     fields = (
@@ -67,6 +71,7 @@ class BodiedLogic(Part):
         super().bind(model, data)
         self._lamp = model.geom(self.body_name + "/lamp").id if self.has_body else -1
         self._lamp_on = False
+        self.break_bind(model, data)
 
     def paint(self, model) -> None:
         """Lamp colour from `state()`. Subclasses call it at the end of `reset`,
