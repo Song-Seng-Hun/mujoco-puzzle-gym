@@ -6,8 +6,13 @@ the nearest other hitch within the rope's `hitch_radius` of the body's hitch (`a
 the rope end already on that hitch stays, the other end moves to the body; a rope
 already on the body with its other end loose ties that end) or unties the body's end
 (`detach`); `toggle` does whichever applies (attach unless the rope ties the body to
-something). A hitch farther than the
-rope's length pulses `<rope>.attach_failed` and ties nothing. Signal: with `in`
+something); `handoff` moves the rope end on the body's hitch to the station's `to:`
+hitch (usually an anchor) in the same step: the knot goes onto that hitch and the tie
+switches over at once, so a rope holding a load (a rope door, R31 `cleat_hold`) never
+goes slack in between. The beak is not the way to move a tensioned end: the load is
+above the beak's `max_hold_force`. A hitch farther than the
+rope's length (along the rope, through its pulleys) pulses `<rope>.attach_failed` and
+ties nothing (a handoff then leaves the end on the body). Signal: with `in`
 channels, their turning on (later while they stay on, once the body is on the pad and
 slow); without, entering the pad. `enable` off holds it; after a change it waits
 `cooldown` seconds. `rope` names the rope it works (default: the room's only rope).
@@ -28,7 +33,7 @@ from ...schema import Field, SchemaError
 from ..base import Part
 from ..input._sense import in_rect
 
-MODES = ("attach", "detach", "toggle")
+MODES = ("attach", "detach", "toggle", "handoff")
 RGBA_OFF = (0.4, 0.3, 0.2, 1.0)
 RGBA_ON = (0.95, 0.75, 0.2, 1.0)
 POST_RGBA = (0.45, 0.35, 0.25, 1.0)
@@ -44,7 +49,8 @@ class HitchStation(Part):
     fields = (
         Field("size", "vec", [0.3, 0.3], length=2, unit="m", min=0.2, max=2.0, doc="pad size [x, y]"),
         Field("rope", "str", None, doc="the rope it ties (default: the room's only rope)"),
-        Field("mode", "enum", "attach", choices=MODES, doc="attach, detach or toggle"),
+        Field("mode", "enum", "attach", choices=MODES, doc="attach, detach, toggle or handoff"),
+        Field("to", "str", None, doc="handoff: the hitch the body's rope end moves to (an anchor, usually)"),
         Field("cooldown", "float", 1.0, unit="s", min=0.0, max=60.0,
               doc="time after a change before the station works again"),
         Field("max_speed", "float", 0.1, unit="m/s", min=0.01, max=1.0,
@@ -62,15 +68,20 @@ class HitchStation(Part):
         self.cooldown = float(c["cooldown"])
         self.max_speed = float(c["max_speed"])
         self.rope_name: str | None = c["rope"]
+        self.to: str | None = c["to"]
+        if (self.mode == "handoff") != (self.to is not None):
+            raise SchemaError(f"part {name!r}: " + ("a handoff station needs `to: <hitch>`" if self.to is None
+                                                     else "`to` is for `mode: handoff` only"))
         self.rope = None
         self._geoms: list[int] = []
         self.reset(None, None)
 
     @classmethod
     def add_room_parts(cls, parts):
-        from .rope import Rope
+        from .rope import BODY_HITCH, Rope, hitch_parts
 
         ropes = [p for p in parts.values() if isinstance(p, Rope)]
+        hitchable = {p.name for p in hitch_parts(parts)}
         for st in [p for p in parts.values() if isinstance(p, HitchStation)]:
             if st.rope_name is None:
                 if len(ropes) != 1:
@@ -80,7 +91,9 @@ class HitchStation(Part):
                 raise SchemaError(f"part {st.name!r}: rope {st.rope_name!r} is not a rope "
                                   f"(ropes: {[r.name for r in ropes]})")
             st.rope = parts[st.rope_name]
-
+            if st.to is not None and (st.to == BODY_HITCH or st.to not in hitchable):
+                raise SchemaError(f"part {st.name!r}: to: {st.to!r} is not a hitch the rope can move to "
+                                  f"(hitches: {sorted(hitchable)})")
     def build(self, spec):
         body = super().build(spec)
         body.add_geom(name=self.body_name + "/pad", type=mujoco.mjtGeom.mjGEOM_BOX,
@@ -126,11 +139,16 @@ class HitchStation(Part):
         if data.time < self.until or float(np.hypot(*body.lin_vel[:2])) >= self.max_speed:
             return
         self.armed = False
-        full = towing and None not in rope.tied      # the body tows something (a loose far end does not)
-        attach = self.mode == "attach" or (self.mode == "toggle" and not full)
-        if (attach and full) or (not attach and not towing):     # nothing to change
-            return
-        done = rope.station_attach(model, data) if attach else rope.station_detach(model, data)
+        if self.mode == "handoff":
+            if not towing:
+                return
+            done = rope.station_handoff(model, data, self.to)
+        else:
+            full = towing and None not in rope.tied      # the body tows something (a loose far end does not)
+            attach = self.mode == "attach" or (self.mode == "toggle" and not full)
+            if (attach and full) or (not attach and not towing):     # nothing to change
+                return
+            done = rope.station_attach(model, data) if attach else rope.station_detach(model, data)
         if done:
             self.until = data.time + self.cooldown
             self.uses += 1

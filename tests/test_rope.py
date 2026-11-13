@@ -733,3 +733,67 @@ def test_rope_door_is_liftable_with_a_rope_and_a_fixed_hitch(make):
     plain.warp("body", (-0.8, 0.5, 0.0))               # a door end is fixed: it comes loose, the rope goes along
     assert rope_of(plain).tied == [None, 0]             # end b stays on the body (hitch 0)
 
+
+def cleat_room(make, **pad):
+    env = make([DOOR, CLEAT_POST, LIFT, {**HANDOFF, **pad}], spawn=(0.25, 0.0))
+    env.room.demo = [("untow", "rope")]
+    return env
+
+
+def test_handoff_holds_the_door_up(make):
+    env = cleat_room(make)
+    rope, door, d = rope_of(env), env.parts["door"], env.data
+    solver = ScriptedSolver(env)
+    lifts = []
+    for _ in range(150):                               # measured: handed off after 4.2-4.4 s
+        env.step(solver.act())
+        lifts.append((rope.on_body, door.lift(d), rope.tied[1]))
+        if not solver.in_demo:
+            break
+    assert not solver.in_demo and not rope.snapped
+    assert None not in [t for _, _, t in lifts]          # the end is never loose: body, then post
+    before = [x for on, x, _ in lifts if on][-1]
+    assert rope.tied_hitch(1).name == "post" and env.signals.get("pad.towing") == 0.0
+    assert before > door.clearance
+    body_steps(env, 2.0)                               # stays up (measured 0.381 m)
+    assert door.lift(d) > door.clearance and door.state() == 1.0 and not rope.snapped
+    assert knot_gap(env, rope, 1) < 0.01
+
+
+def test_handoff_moves_the_end_in_the_same_step(make):
+    post = {"name": "post", "type": "anchor", "pos": [-0.4, 0.2]}
+    sled = {**SLED, "pos": [-0.7, 0.0]}
+    env = make([sled, post, ROPE, {**HANDOFF, "pos": [-0.4, 0.0]}])
+    rope, d = rope_of(env), env.data
+    snap = env.save_snapshot()
+    env.body.teleport(env.data, (-0.4, 0.0, 0.0))
+    env.body.kick(env.data, [0.3, 0.0, 0.0])           # on the pad at 0.3 m/s > max_speed: nothing
+    tick(env)
+    assert rope.on_body
+    stand_at(env, -0.4, -0.6)
+    stand_at(env, -0.4, 0.0)
+    assert rope.tied_hitch(0).name == "post" and rope.tied_hitch(1).name == "sled" and not rope.on_body
+    eq = {h.name: rope._eq[0][i] for i, h in enumerate(rope.hitches)}
+    assert d.eq_active[eq["post"]] == 1 and d.eq_active[eq["body"]] == 0
+    assert np.linalg.norm(d.qpos[rope.knots[0]._q:rope.knots[0]._q + 3] - d.site_xpos[rope.hitches[rope._index['post']].sid]) < 1e-9
+    after = env.save_snapshot()
+    env.restore_snapshot(snap)
+    assert rope.tied_hitch(0).name == "body" and d.eq_active[eq["body"]] == 1 and d.eq_active[eq["post"]] == 0
+    env.restore_snapshot(after)
+    assert rope.tied_hitch(0).name == "post" and d.eq_active[eq["post"]] == 1
+
+
+def test_handoff_too_far_fails_and_bad_values(make):
+    far = {"name": "post", "type": "anchor", "pos": [-0.4, 0.5]}
+    env = make([{**SLED, "pos": [-0.7, 0.0]}, far, ROPE, {**HANDOFF, "pos": [-0.4, 0.0], "cooldown": 0.0}])
+    rope = rope_of(env)
+    stand_at(env, -0.4, 0.0)                           # post 0.58 m from the sled > 0.4 m
+    assert rope.on_body
+    env.body.teleport(env.data, (-0.4, -0.6, 0.0))
+    tick(env)                                          # the pulse comes out with the rope's next write
+    assert env.signals.get("rope.attach_failed") == 1.0
+    for bad, why in (({"to": None}, "needs `to"), ({"to": "body"}, "not a hitch"),
+                     ({"mode": "detach"}, "for `mode: handoff` only")):
+        with pytest.raises(RoomError, match=why):
+            make([SLED, CLEAT_POST, ROPE, {**HANDOFF, **bad}])
+

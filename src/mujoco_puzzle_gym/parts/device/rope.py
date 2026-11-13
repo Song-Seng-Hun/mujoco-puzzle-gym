@@ -29,7 +29,8 @@ Tying and untying:
   its `a` / `b` hitch, or when unset to the nearest hitch within `hitch_radius` of the
   knot; untie it;
 - hitch stations (`hitch_station`, hitch_station.py) tie the body to the nearest hitch
-  within `hitch_radius` of the body's hitch, or untie the body's end;
+  within `hitch_radius` of the body's hitch, untie the body's end, or hand the body's
+  end over to their `to:` hitch in one step (`handoff`);
 - beak: a loose knot let go within `clip_radius` of a hitch ties to it; a tied knot held
   `untie_time` seconds comes loose (it stays in the beak).
 A tie that would put the hitch farther than `length` (the run-time value now) from the
@@ -562,6 +563,18 @@ class Rope(Part):
             return False
         self.untie(model, data, self.tied.index(self._body_h))
         return True
+
+    def station_handoff(self, model, data, to: str) -> bool:
+        """Handoff station: the end on the body's hitch moves to hitch `to` in this step
+        (knot onto it, the tie switched over); farther than the length now from the other
+        end along the rope: `attach_failed`, the end stays."""
+        if not self.on_body:
+            return False
+        h = self._index[to]
+        if h in self.tied:                        # the other end is there already: nothing to hold
+            self.pending = 1.0
+            return False
+        return self.tie(model, data, self.tied.index(self._body_h), h)
 
     @property
     def on_body(self) -> bool:
