@@ -43,6 +43,13 @@ episode. Defaults 0.9 N and 0.2 s (OQ9: dragging a 0.2 kg sled at friction 0.2 t
 tension is 0.42-0.43 N median, 0.68 N at the 95th percentile; the start spikes to
 1.2-1.7 N but stays above 1.5x for at most 0.07 s).
 
+Pulleys (`via`): a list of world points [x, y, z] (ceiling pulleys) the tendon passes
+in order from end a to end b; the length limit is on the whole path, and every length
+test (a tie, a station tie, the static check of the default ends) measures through
+them. Each point is a world site with a drawn wheel (no collision). A rope with `via`
+is held by the world: a body warp unties the end in the warped bundle and leaves the
+rope behind (it cannot be carried along through fixed pulleys).
+
 Length: `length` is a run-time value (R13 `bind` makes a winch). The tendon range moves
 to it at no more than `reel_speed` m/s (a lever cell jump 0.4 -> 0.1 m at once gave a
 0.3 kg sled over 200 N). Snapshots keep the current and the target length.
@@ -62,7 +69,8 @@ the body step), `.snapped`, `.attach_failed` (pulse), and `body.towing` (1 while
 rope is tied to the body; written by the room's first rope). Observation item `tow`.
 
 Static check (`mpg check` stage `parts`): `hitch_radius` and `clip_radius` at most
-`length`; the default ends (with their random ranges) within `length`; a box the
+`length` (less the path between the first and last pulley); the default ends (with
+their random ranges) within `length` along the rope (through the pulleys); a box the
 `demo:` drags into a pit (`drag <rope> <pit>`) as tall as the pit is deep (rim to the
 catch plane, `floor.CATCH_DEPTH`) within 1 cm, so its top is flush with the floor. Warnings: a hitch
 object whose sliding friction x weight is above DRAG_WARN (OQ9: walking keeps 0.8 of its
@@ -91,6 +99,8 @@ ENDS = ("a", "b")
 KNOT_R = 0.012            # [m] knot disc radius
 KNOT_HZ = 0.006           # [m] knot disc half height (rests with its centre this high)
 RING_R = 0.012            # [m] handle ring radius
+PULLEY_R = 0.02           # [m] drawn pulley wheel radius (`via` points)
+PULLEY_RGBA = (0.5, 0.5, 0.55, 1.0)
 KNOT_RGBA = (0.95, 0.8, 0.15, 1.0)
 ROPE_RGBA = (0.35, 0.25, 0.15, 1.0)
 PAIR_FRICTION = [1.0, 1.0, 0.005, 0.0001, 0.0001]
@@ -98,6 +108,7 @@ HITCH_PRIORITY = 2        # hitch objects' own friction wins over the floor's (p
 DRAG_WARN = 0.4           # [N] OQ9: walking keeps >= 0.8 of its speed up to a steady ~0.4 N
 G = 9.81
 FLUSH_TOL = 0.01          # [m] a box dragged into a pit: its top this close to the floor
+FIXED_KINDS = ("anchor", "door")   # hitch kinds the world holds (`Hitch.fixed`)
 LOOSE_BOX = 1.0e3         # [m] leash limits while a rope holds an NPC (none in effect)
 
 
@@ -105,7 +116,7 @@ LOOSE_BOX = 1.0e3         # [m] leash limits while a rope holds an NPC (none in 
 class Hitch:
     """A place a knot can tie to: `name` is a part name or "body"."""
     name: str
-    kind: str              # body | object | npc | anchor
+    kind: str              # body | object | npc | anchor | door (rope_door)
     site: str
     part: Any = None       # the owning part (None for the body)
     sid: int = -1
@@ -113,13 +124,15 @@ class Hitch:
 
     @property
     def fixed(self) -> bool:
-        return self.kind == "anchor"
+        """Held in place by the world (a warp cannot carry it along)."""
+        return self.kind in FIXED_KINDS
 
 
 def hitch_parts(parts: dict[str, Part]) -> list[Part]:
-    """Parts a rope can tie to, room order: anchors, NPC robots, objects with `hitch: true`."""
+    """Parts a rope can tie to, room order: anchors and rope doors (`hitch_kind`), NPC
+    robots, objects with `hitch: true`."""
     return [p for p in parts.values()
-            if getattr(p, "is_anchor", False) or getattr(p, "kind", None) == "npc"
+            if getattr(p, "hitch_kind", None) or getattr(p, "kind", None) == "npc"
             or (getattr(p, "kind", None) == "object" and p.cfg.get("hitch"))]
 
 
@@ -234,6 +247,9 @@ class Rope(Part):
         Field("attach_b", "str", None, doc="channel: on its rising edge end b ties"),
         Field("detach_b", "str", None, doc="channel: on its rising edge end b comes loose"),
         Field("max_hitches", "int", 16, min=1, max=64, doc="most hitches a room with ropes may have"),
+        Field("via", "any", None,
+              doc="[[x, y, z], ...]: world points (ceiling pulleys) the rope passes in order from a to b; "
+                  "`length` limits the whole path"),
     )
 
     def __init__(self, name, cfg):
@@ -261,6 +277,12 @@ class Rope(Part):
         if not ok:
             raise SchemaError(f"{owner}: rest must be [[xa, ya], [xb, yb]], got {rest!r}")
         self.rest = np.asarray(rest, dtype=float)
+        via = c["via"] or []
+        ok = all(isinstance(p, (list, tuple)) and len(p) == 3
+                 and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in p) for p in via)
+        if not ok:
+            raise SchemaError(f"{owner}: via must be a list of [x, y, z] points, got {via!r}")
+        self.via = np.asarray(via, dtype=float).reshape(-1, 3)
         self.channels = {k: c[k] for k in ("attach_a", "detach_a", "attach_b", "detach_b") if c[k]}
         self.watch += [ch for ch in self.channels.values() if ch not in self.watch]
         self.knots = [Knot(f"{name}/{e}", self, i, self.rest[i]) for i, e in enumerate(ENDS)]
@@ -275,6 +297,9 @@ class Rope(Part):
         if isinstance(out.get("rest"), (list, tuple)):
             out["rest"] = [[float(p[0]) + dx, float(p[1]) + dy] if isinstance(p, (list, tuple)) and len(p) == 2
                            else p for p in out["rest"]]
+        if isinstance(out.get("via"), (list, tuple)):
+            out["via"] = [[float(p[0]) + dx, float(p[1]) + dy, *p[2:]] if isinstance(p, (list, tuple)) and len(p) == 3
+                          else p for p in out["via"]]
         return out
 
     @classmethod
@@ -328,7 +353,7 @@ class Rope(Part):
                     for g in spec.body(p.body_name).geoms:
                         if g.contype or g.conaffinity:
                             g.priority = max(int(g.priority), HITCH_PRIORITY)
-            kind = "anchor" if getattr(p, "is_anchor", False) else p.kind
+            kind = getattr(p, "hitch_kind", None) or p.kind
             hitches.append(Hitch(p.name, kind, sname, part=p))
         self.hitches = hitches
         for e, h in zip(ENDS, self.ends_cfg):
@@ -342,10 +367,17 @@ class Rope(Part):
             for i, f in enumerate(floors):
                 spec.add_pair(name=f"{kn.body_name}/floor{i}", geomname1=f, geomname2=kn.geom_name,
                               condim=3, friction=PAIR_FRICTION)
+        for i, v in enumerate(self.via):              # pulleys: world sites with a drawn wheel
+            spec.worldbody.add_site(name=self._via_name(i), pos=list(v), size=[0.004, 0, 0], group=4)
+            spec.worldbody.add_geom(type=mujoco.mjtGeom.mjGEOM_CYLINDER, size=[PULLEY_R, 0.006, 0], pos=list(v),
+                                    quat=[math.sqrt(0.5), math.sqrt(0.5), 0, 0], rgba=PULLEY_RGBA,
+                                    contype=0, conaffinity=0, mass=0.0)
         t = spec.add_tendon(name=self.tendon_name, limited=mujoco.mjtLimited.mjLIMITED_TRUE,
                             range=[0.0, self.length0], width=0.003, rgba=ROPE_RGBA)
-        for kn in self.knots:
-            t.wrap_site(kn.site_name)
+        t.wrap_site(self.knots[0].site_name)
+        for i in range(len(self.via)):
+            t.wrap_site(self._via_name(i))
+        t.wrap_site(self.knots[1].site_name)
         for e, kn in enumerate(self.knots):
             for h in hitches:
                 spec.add_equality(name=self._eq_name(e, h), type=mujoco.mjtEq.mjEQ_CONNECT,
@@ -355,6 +387,18 @@ class Rope(Part):
     @property
     def tendon_name(self) -> str:
         return f"part/{self.name}/rope"
+
+    def _via_name(self, i: int) -> str:
+        return f"part/{self.name}/via{i}"
+
+    def path_len(self, pa, pb) -> float:
+        """Rope path length [m] from point `pa` (end a) through the `via` points to `pb` (end b)."""
+        pts = [np.asarray(pa, float), *self.via, np.asarray(pb, float)]
+        return float(sum(np.linalg.norm(q - p) for p, q in zip(pts[:-1], pts[1:])))
+
+    def _span(self, end: int, p, other) -> float:
+        """Path length with end `end` at `p` and the other end at `other`."""
+        return self.path_len(p, other) if end == 0 else self.path_len(other, p)
 
     def _eq_name(self, end: int, h: Hitch) -> str:
         return f"part/{self.name}/{ENDS[end]}@{h.name}"
@@ -435,7 +479,7 @@ class Rope(Part):
         p = data.site_xpos[self.hitches[h].sid].copy()
         if check:
             other = self._end_point(data, 1 - end)
-            if float(np.linalg.norm(p - other)) > self.cur + 1e-6:
+            if self._span(end, p, other) > self.cur + 1e-6:
                 self.pending = 1.0
                 return False
         old = self.tied[end]
@@ -502,11 +546,11 @@ class Rope(Part):
             return False
         dp = data.site_xpos[self.hitches[b].sid]
         t = self.nearest(data, dp, float(self.cfg["hitch_radius"]), {b})
-        if t is None or float(np.linalg.norm(data.site_xpos[self.hitches[t].sid] - dp)) > self.cur + 1e-6:
-            self.pending = 1.0
-            return False
         te = self.tied.index(t) if t in self.tied else 1
         be = 1 - te
+        if t is None or self._span(be, dp, data.site_xpos[self.hitches[t].sid]) > self.cur + 1e-6:
+            self.pending = 1.0
+            return False
         if self.tied[te] != t:
             self.tie(model, data, te, t, check=False)
         if self.tied[be] != b:
@@ -620,15 +664,24 @@ class Rope(Part):
         c = self.cfg
         L = float(c["length"])
         out = []
+        inner = self.path_len(self.via[0], self.via[-1]) if len(self.via) else 0.0    # between the pulleys
         for key in ("hitch_radius", "clip_radius"):
-            if float(c[key]) > L:
-                out.append(f"rope {self.name!r}: {key} {c[key]:g} m is longer than its length {L:g} m")
+            if float(c[key]) > L - inner:
+                what = f"its length {L:g} m" + (f" less {inner:.2f} m between its pulleys" if inner else "")
+                out.append(f"rope {self.name!r}: {key} {c[key]:g} m is longer than {what}")
         env.reset(options={"layout": env.sample_layout(None)})
         (pa, ra), (pb, rb) = self._hitch_box(env, 0), self._hitch_box(env, 1)
-        dxy = np.abs(pa[:2] - pb[:2]) + ra + rb
-        worst = float(math.sqrt(float(dxy @ dxy) + (pa[2] - pb[2]) ** 2))
+        if len(self.via):
+            def far(p, r, v):
+                dxy = np.abs(p[:2] - v[:2]) + r
+                return float(math.sqrt(float(dxy @ dxy) + (p[2] - v[2]) ** 2))
+            worst = far(pa, ra, self.via[0]) + inner + far(pb, rb, self.via[-1])
+        else:
+            dxy = np.abs(pa[:2] - pb[:2]) + ra + rb
+            worst = float(math.sqrt(float(dxy @ dxy) + (pa[2] - pb[2]) ** 2))
         if worst > L + 1e-6:
-            out.append(f"rope {self.name!r}: its ends at reset can be {worst:.2f} m apart (random ranges "
+            along = " along the rope through its pulleys" if len(self.via) else ""
+            out.append(f"rope {self.name!r}: its ends at reset can be {worst:.2f} m apart{along} (random ranges "
                        f"included), longer than its length {L:g} m")
         return out + pit_fill_problems(env, self)
 
@@ -667,14 +720,14 @@ def far_end(ends, others, start):
 
 def reset_towed(env, rope: "Rope") -> str | None:
     """The part `rope` tows at reset (from its configured, tied ends and the other ropes'),
-    by `far_end`; None for none or an anchor."""
+    by `far_end`; None for none or a fixed hitch (anchor, rope door)."""
     def tied_ends(r):
         return [h if h and t else None for h, t in zip(r.ends_cfg, r.tied0)]
 
     others = [tuple(tied_ends(r)) for r in env.world.ropes if r is not rope and None not in tied_ends(r)]
     ends = tied_ends(rope)
     e = far_end(ends, others, BODY_HITCH)
-    if e is None or getattr(env.parts.get(ends[e]), "is_anchor", False):
+    if e is None or getattr(env.parts.get(ends[e]), "hitch_kind", None) in FIXED_KINDS:
         return None
     return ends[e]
 
@@ -715,8 +768,10 @@ def sync_npcs(world, model, data) -> None:
 # ---- warps (R14) ------------------------------------------------------------------
 def warp_bundle(env, key, pose, warp_one) -> None:
     """Warp `key` to `pose` with ropes: an object comes loose first; the body takes along
-    everything tied to it through ropes (anchored ends come loose), each keeping its pose
-    relative to the body (`warp_one` moves the body itself)."""
+    everything tied to it through ropes (fixed ends, anchors and rope doors, come loose),
+    each keeping its pose relative to the body (`warp_one` moves the body itself). A rope
+    through pulleys (`via`) is held by the world: its end in the bundle comes loose and
+    the rope stays."""
     m, d, w = env.model, env.data, env.world
     if key != "body":
         w.untie(m, d, int(key))
@@ -730,6 +785,9 @@ def warp_bundle(env, key, pose, warp_one) -> None:
             for e in range(2):
                 h = r.tied_hitch(e)
                 if h is None or h.rid != rid:
+                    continue
+                if len(r.via):                    # through world pulleys: let go, stays
+                    r.untie(m, d, e)
                     continue
                 if r not in ropes:
                     ropes.append(r)

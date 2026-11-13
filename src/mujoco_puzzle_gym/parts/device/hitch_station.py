@@ -146,6 +146,7 @@ class HitchStation(Part):
 class Anchor(Part):
     """A fixed rope hitch (R31)."""
     is_anchor = True
+    hitch_kind = "anchor"         # a fixed rope hitch (rope.py `hitch_parts`)
     stage = "device"
     fields = (
         Field("hitch_height", "float", 0.04, unit="m", min=0.01, max=0.5,

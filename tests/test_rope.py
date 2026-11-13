@@ -18,7 +18,9 @@
 - `demo:` `drag <rope> <part>`: parsed (errors for a non-rope, a part without a floor
   area, a wrong arity), the towed hitch (also down a chain of ropes), the aim beyond
   the part, done once the hitch is inside or comes loose; a short run drags the sled
-  into a zone; a drag target needs no `grab` action; a drag leg gets the path warnings.
+  into a zone; a drag target needs no `grab` action; a drag leg gets the path warnings;
+- pulleys (`via`): the tendon runs through them, ties and the static checks measure the
+  path through them, a body warp lets go of a pulley rope and leaves it.
 """
 
 import mujoco
@@ -642,3 +644,52 @@ def test_drag_leg_path_warning(asset_dir, tmp_path):
     finally:
         env.close()
     assert len(got) == 1 and "passes door 'door'" in got[0]
+
+
+# ---- pulleys (`via`) --------------------------------------------------------------------------------
+POST = {"name": "post", "type": "anchor", "pos": [-1.3, 0.0]}
+VIA = {**ROPE, "b": "post", "via": [[-1.15, 0.0, 0.5]], "length": 1.1}
+
+
+def test_via_tendon_runs_through_the_pulley(make):
+    env = make([POST, VIA])
+    rope, m, d = rope_of(env), env.model, env.data
+    assert m.ntendon == 1 and m.site(rope._via_name(0)).id >= 0
+    a, b = (d.site_xpos[k.sid] for k in rope.knots)
+    path = rope.path_len(a, b)
+    assert path == pytest.approx(float(np.linalg.norm(a - VIA["via"][0]) + np.linalg.norm(VIA["via"][0] - b)))
+    assert d.ten_length[rope._tendon] == pytest.approx(path, abs=1e-6)
+    assert path > 0.9 and float(np.linalg.norm(a - b)) < 0.35          # much longer than straight
+    run = walk(env, 3.0)                                                # the post holds: taut at 1.1 m
+    assert d.ten_length[rope._tendon] <= 1.1 + 0.01 and run["apart"][-1] < 0.6
+
+
+def test_via_ties_measure_the_path(make):
+    env = make([{"name": "src", "type": "t_rsrc", "pos": [0, 0]}, POST,
+                {**VIA, "tied": ["a"], "rest": [[-1.0, 0.5], [-1.3, 0.1]], "attach_b": "src", "length": 0.9}])
+    rope = rope_of(env)
+    env.parts["src"].value = 1.0                  # straight 0.3 m, through the pulley about 0.97 m
+    tick(env)
+    assert rope.tied == [0, None] and env.signals.get("rope.attach_failed") == 1.0
+
+
+def test_via_static_checks(make):
+    env = make([POST, VIA])
+    assert env.parts["rope"].check_static(env) == []
+    short = make([POST, {**VIA, "length": 0.9}])
+    why = short.parts["rope"].check_static(short)
+    assert any("apart along the rope through its pulleys" in w for w in why)
+    two = make([POST, {**VIA, "via": [[-1.15, 0.0, 0.5], [-1.15, 0.6, 0.5]], "length": 1.75,
+                       "hitch_radius": 1.2}])
+    why = two.parts["rope"].check_static(two)
+    assert any("hitch_radius 1.2 m is longer than its length 1.75 m less 0.60 m between its pulleys" in w
+               for w in why)
+
+
+def test_warp_leaves_a_pulley_rope_behind(make):
+    env = make([POST, VIA])
+    rope = rope_of(env)
+    env.warp("body", (0.8, 0.5, 0.0))
+    assert rope.tied == [None, 1]                      # the body's end comes loose, the rope stays
+    mujoco.mj_forward(env.model, env.data)
+    assert float(np.linalg.norm(env.data.site_xpos[rope.knots[0].sid][:2] - [0.8, 0.5])) > 1.0
