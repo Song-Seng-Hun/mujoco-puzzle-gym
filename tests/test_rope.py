@@ -212,6 +212,19 @@ def test_station_ignores_a_moving_body_and_detaches(make):
     assert not rope.on_body and rope.tied == [None, 1]
 
 
+def test_station_ties_the_loose_end_of_a_rope_on_the_body(make):
+    """`tow_yard`: the rope stays on the body after its post end comes loose; an attach
+    (or toggle) station ties that loose end to the hitch next to the pad."""
+    for mode in ("attach", "toggle"):
+        env = make([{**SLED, "pos": [-1.0, 0.25]}, {**ROPE, "b": None, "tied": ["a"], "rest": [[-1.5, 0.5], [-1.6, -0.4]]},
+                    {"name": "pad", "type": "hitch_station", "pos": [-1.0, 0.0], "mode": mode}])
+        rope = rope_of(env)
+        stand_at(env, -1.0, 0.8)
+        assert rope.tied == [0, None] and rope.on_body
+        stand_at(env, -1.0, 0.0)
+        assert rope.tied_hitch(0).name == "body" and rope.tied_hitch(1).name == "sled"
+
+
 def test_beak_ties_and_unties_a_knot(make):
     env = make([{**SLED, "pos": [0.5, 0.5]}, {**ROPE, "b": None, "tied": ["a"], "rest": [[0, 0], [-0.8, -0.2]]}])
     rope, sled = rope_of(env), env.parts["sled"]
