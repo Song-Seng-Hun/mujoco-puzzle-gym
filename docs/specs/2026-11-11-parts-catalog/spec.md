@@ -1,5 +1,5 @@
 # Spec: mujoco-puzzle-gym 마일스톤 2 (부품 카탈로그, 신호, 체크포인트, 단계별 학습)
-Status: approved 2026-11-13 (16c 2b review: R30 detach pad 0.7 × 1.0 m on a brake strip, crouch at about 0.30 m: "승인"); approved 2026-11-13 (16c 2b: R30 low bar part + `glide` step, `fast_herd` dropped, `roll_delivery` detach before placing: "승인"); approved 2026-11-13 (16c OQ7: R30 mounted collision set = official roller model's, trunk height from geometry, roller command range, station `max_speed` 0.1 m/s, `crouch_min_speed` 0.2 m/s, pad braking optional, Open question 7 closed: "승인"); approved 2026-11-13 (E3b-4: R28 laundry on 0.18 m stands, Open question 8 partly decided: "승인"); approved 2026-11-12 (E3b-3 plan: R28 dispenser parks copies off-stage like the cannon pool, receptacle `consume` and pit return for `recycle`: "승인"; E3b-2 drawer strap about 10 cm: "승인"; E3b-2 measurements: R28 `dial` pushed by spokes, `drawer` opened by a strap and in-place turn: "승인"; E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
+Status: approved 2026-11-13 (16d OQ9: R31 tow limits measured, `max_tension` 0.9 N, `snap_time` 0.2 s, duck hitch 0.04 m, drag warning 0.4 N, `rope_door` ≤ 1.5 N, `hitch_station` `max_speed` 0.1 m/s, `sled_delivery` 0.2 kg at friction 0.1, no roller tow presets, Open question 9 closed: "승인"); approved 2026-11-13 (16c 2b review: R30 detach pad 0.7 × 1.0 m on a brake strip, crouch at about 0.30 m: "승인"); approved 2026-11-13 (16c 2b: R30 low bar part + `glide` step, `fast_herd` dropped, `roll_delivery` detach before placing: "승인"); approved 2026-11-13 (16c OQ7: R30 mounted collision set = official roller model's, trunk height from geometry, roller command range, station `max_speed` 0.1 m/s, `crouch_min_speed` 0.2 m/s, pad braking optional, Open question 7 closed: "승인"); approved 2026-11-13 (E3b-4: R28 laundry on 0.18 m stands, Open question 8 partly decided: "승인"); approved 2026-11-12 (E3b-3 plan: R28 dispenser parks copies off-stage like the cannon pool, receptacle `consume` and pit return for `recycle`: "승인"; E3b-2 drawer strap about 10 cm: "승인"; E3b-2 measurements: R28 `dial` pushed by spokes, `drawer` opened by a strap and in-place turn: "승인"; E3a review: R4 wall press window 6 cm in front / thickness + 1 cm behind, OQ2 closed with head mapping: "승인"; E2b review: R16 pit has no `power`, R21 example `cannon_a.power`: "승인"; E2a review: R11 joints only on moving axes, `path` as offsets from `pos`: "승인"; E2a measurements: R11/R12 joints instead of mocap, OQ1 closed as (c): "승인"; E1 bundle-4 results (OQ11 closed, R20 overlap rule): "응"; E1 bundle-3 results (OQ5/OQ10 closed, R38 pin, R28 handle_ball, R10 field names): "승인"; E1 bundle-2 decisions R2/R4/R5/R6: "승인"; R35 order-reasoning test + OQ12 added: "승인"; R39 sensor observations added: "승인"; R37 added: 방향 "너의 추천대로 부탁해", 문안 "승인"; R38 ball/goal_net added: "승인"). Previous: approved 2026-11-11 (사용자 "전부 승인": R31-R36 + R2b + review rounds 2-4 fixes. Previous: approved after R30 ... re-review 1-7)
 View (read-only copy): (아직 없음)
 
 근거
@@ -390,24 +390,24 @@ View (read-only copy): (아직 없음)
       - 같은 시드면 같은 궤적이 나온다.
     - `roller_rink.yaml`이 `mpg check`를 통과한다.
 - R31: 견인 끈 (사용자 2026-11-11: "끈같이 오리 뒤에 물건을 이어서 질질 끌고가는 기믹을 고려한 프리셋을 만들어줘 / 끈 추가 해제 같은거 포함"). 분류 `device`.
-  - 구조: 끈 하나는 양 끝 매듭 몸체 2개(각 20 g 이상, 자유 관절. 2 g이면 구속이 물러 0.3 kg 썰매에서 끈이 3 cm 넘게 늘어난다)와 그 사이의 길이 제한 spatial tendon(`limited`, 범위 0~`length`)이다. 매듭 사이가 `length` 안이면 힘이 0(느슨함), 넘으면 팽팽해져 끌린다.
+  - 구조: 끈 하나는 양 끝 매듭 몸체 2개(각 20 g 이상, 자유 관절. 2 g이면 구속이 물러 0.3 kg 썰매에서 끈이 2.5–2.8 cm 늘어나고, 10 g이면 0.7 cm, 20 g이면 0.35 cm다. Open question 9)와 그 사이의 길이 제한 spatial tendon(`limited`, 범위 0~`length`)이다. 매듭 사이가 `length` 안이면 힘이 0(느슨함), 넘으면 팽팽해져 끌린다.
     - 매듭이 걸이에 붙고 떨어지는 것은 걸이마다 미리 만든 `connect` 구속을 `eq_active`로 켜고 끈다. 실행 중에 몸체를 만들 수 없기 때문이다.
       - 구속은 `connect`를 `site1`(매듭)과 `site2`(걸이) 두 사이트로 정의한다. 이 방식은 실행 중 사이트 위치를 써서 `eq_data`를 다시 쓸 필요가 없다(MuJoCo 4.0 probe). 몸체 기준으로 정의하면 기준점이 컴파일 때 배치로 고정되어 붙을 자리가 어긋난다. 붙일 때는 매듭을 걸이 위치로 옮기고 속도를 0으로 한 뒤 `eq_active`를 켠다. `reset()`도 기본 연결을 같은 순서로 만든다.
       - 풀린 매듭은 풀린 자리 바닥에 놓인다. 시작부터 풀린 끈은 설정의 `rest:` 위치에 놓는다. 매듭에는 `ball`처럼 위로 솟은 고리 손잡이를 달아, 부리 끝이 바닥 높이에 닿지 않아도(Open question 8) 집을 수 있게 한다. 손잡이 높이는 OQ8 측정값으로 정한다.
       - 매듭은 바닥하고만 충돌한다(오리 다리, 벽, 물체와는 충돌하지 않음). 오리 걸이에 붙은 매듭이 다리 사이에서 걸음을 흐트러뜨리지 않게 하기 위해서다.
       - 매듭은 어떤 버튼, 압력판, 구역의 `trigger`에도 세지 않는다(R4). 후보 걸이 수 × 매듭 수만큼 구속이 생기므로 방마다 걸이 수 상한을 둔다(기본 16).
-    - 걸이 종류: 오리 엉덩이 아래(`BodyAdapter.tow_site()`, 몸 이름은 `bodies/` 안에서만), `hitch: true`인 물체(R17, R28), NPC(R29), 움직일 수 있는 중계기(R34 `relay`, `movable: true`), 고정 기둥 `anchor`. 오리 걸이는 높게 두면 당길 때 몸이 뒤로 젖혀지므로 낮게 둔다.
+    - 걸이 종류: 오리 엉덩이 아래(`BodyAdapter.tow_site()`, 몸 이름은 `bodies/` 안에서만), `hitch: true`인 물체(R17, R28), NPC(R29), 움직일 수 있는 중계기(R34 `relay`, `movable: true`), 고정 기둥 `anchor`. 오리 걸이는 높게 두면 당길 때 몸이 뒤로 젖혀지므로 낮게 둔다: 서 있을 때 바닥 위 0.04 m, 두 `hip_yaw` 관절 사이 아래(Open question 9: 서서 버티는 힘 0.04 m 2.2 N, 0.08 m 1.0 N, 0.12 m 0.6 N).
     - 오리는 뒤로 걷지 못하므로(M1 어댑터) 끌기는 앞으로 걸으며 뒤의 물건을 따라오게 하는 방식이다.
   - 추가와 해제:
     - 정적 점검: `hitch_radius`와 `clip_radius`는 `length` 이하, 기본 연결의 양 끝 배치(무작위 영역 포함)는 `length` 안이어야 한다.
-    - 연결 패드 `hitch_station`: 오리가 패드 안에 있고 `max_speed` 아래일 때 신호를 받으면, 오리 걸이와 반경 `hitch_radius` 안의 가장 가까운 걸이를 끈으로 잇거나 푼다. 방식 `attach` / `detach` / `toggle`, `enable` 입력과 `cooldown`.
+    - 연결 패드 `hitch_station`: 오리가 패드 안에 있고 `max_speed` 아래일 때 신호를 받으면, 오리 걸이와 반경 `hitch_radius` 안의 가장 가까운 걸이를 끈으로 잇거나 푼다. 방식 `attach` / `detach` / `toggle`, `enable` 입력과 `cooldown`. `max_speed` 기본값은 장착대(R30)와 같은 0.1 m/s다.
     - 채널: 끈마다 입력 `attach_a`, `detach_a`, `attach_b`, `detach_b`. 어느 논리 신호로든 풀고 묶는다. 붙일 걸이는 설정의 `a`/`b`로 정하고, 비어 있으면 반경 안 가장 가까운 걸이. 붙일 걸이가 끈 반대쪽 끝에서 `length`보다 멀면 묶지 않고 `<끈>.attach_failed` 펄스를 낸다(패드와 부리 경로도 같다).
     - 부리: 풀린 매듭은 손잡이가 있어 R18로 집을 수 있다. 집은 매듭을 걸이에서 `clip_radius` 안에서 놓으면 연결된다. 연결된 매듭을 `untie_time` 동안 물고 있으면 풀린다.
-    - 끊어짐: 장력(tendon 한계 힘)이 `max_tension`을 `snap_time` 이상 넘으면 양 끝이 풀리고 `<끈>.snapped`를 낸다. `on_snap: fail | none`. `snap_time`은 출발 순간의 장력 튐(정상 상태의 약 2배)보다 길게 잡는다. 기본값은 Open question 9에서 정한다.
+    - 끊어짐: 장력(tendon 한계 힘)이 `max_tension`을 `snap_time` 이상 넘으면 양 끝이 풀리고 `<끈>.snapped`를 낸다. `on_snap: fail | none`. `snap_time`은 출발 순간의 장력 튐보다 길게 잡는다. 기본값은 `max_tension` 0.9 N, `snap_time` 0.2 s다(Open question 9: 마찰 0.2·0.2 kg 썰매를 끝까지 걸으며 끌 때 장력 중앙값 0.42–0.43 N, 95%값 0.68 N, 출발 순간 1.2–1.7 N이지만 1.5배 넘는 구간은 0.07 s 이하).
   - `length`는 실행 중 바꿀 수 있는 모델 값(tendon 범위)이다. R13 `bind`로 신호에 묶으면 감는 윈치가 된다.
     - 실제 길이는 목표값을 향해 `reel_speed`(m/s, 기본 0.05) 이하로만 움직인다. 레버 칸(R28)이 바뀌는 순간 길이가 한 번에 0.4→0.1 m로 줄면 0.3 kg 썰매에서 200 N 넘는 충격이 나기 때문이다.
     - 현재값과 목표값을 저장본에 넣는다.
-  - 끈은 tendon이라 벽과 충돌하지 않는 직선이다. 모서리에 감기지 않아 화면에서는 벽을 통과해 보이고, 모서리를 돌며 끌면 물체가 모서리에 걸린다. 정적 점검은 데모 경로에서 끌리는 물체가 문 폭보다 넓을 때와 `length`보다 급한 꺾임이 있을 때 경고한다. 질량이 Open question 9의 한도를 넘는 끌기도 경고한다.
+  - 끈은 tendon이라 벽과 충돌하지 않는 직선이다. 모서리에 감기지 않아 화면에서는 벽을 통과해 보이고, 모서리를 돌며 끌면 물체가 모서리에 걸린다. 정적 점검은 데모 경로에서 끌리는 물체가 문 폭보다 넓을 때와 `length`보다 급한 꺾임이 있을 때 경고한다. 끌리는 짐의 미끄럼 마찰 × 무게가 0.4 N을 넘는 끌기도 경고한다(Open question 9: 걷기는 꾸준한 장력 약 0.4 N까지 속도 0.8배 이상을 지킨다).
   - 신호: `<끈>.attached_a`, `<끈>.attached_b`, `<끈>.tension`(0~1, `max_tension` 기준), `<끈>.snapped`, `body.towing`.
   - 관측 항목 `tow`: 오리 걸이 연결 여부, 정규화 장력, 끌리는 걸이의 상대 위치.
   - 체크포인트와 리셋 워프는 끈 연결 상태와 `length`를 저장하고 되돌린다(R6, R14). `reset()`은 기본값으로 되돌린다.
@@ -416,16 +416,16 @@ View (read-only copy): (아직 없음)
     - 스프링 발판(R15), 디스펜서 회수(R28 `recycle`), 상자 튕겨내기(R5 `eject`)처럼 끈이 걸린 물체를 순간이동하거나 크게 밀어내는 동작은 먼저 그 물체의 끈을 푼다.
     - `set_addon`(R30)은 몸통 높이를 바꾸기 전에 오리 걸이의 끈을 먼저 푼다.
   - 점검: `demo:`에 `tow <끈> <걸이>`와 `untow <끈>` 하위 목표를 더한다.
-  - 견인 퍼즐 조립 프리셋 `puzzles/tow/`. 질량, 마찰, 장력 숫자는 Open question 9의 측정값으로 정한다.
-    - `sled_delivery`: 부리로 못 드는(`max_lift_mass` 초과) 썰매를 끌어 압력판(R5)에 올린다.
+  - 견인 퍼즐 조립 프리셋 `puzzles/tow/`. 짐은 마찰 × 무게 0.4 N 아래로 둔다(Open question 9).
+    - `sled_delivery`: 부리로 못 드는(`max_lift_mass` 초과) 썰매를 끌어 압력판(R5)에 올린다. 썰매는 0.2 kg, 미끄럼 마찰 0.1이다(끌기 속도 0.92배).
     - `drop_and_go`: 수레가 문보다 넓다. 판 위 연결 패드에서 끈을 풀어 두고 오리만 문을 지난다.
     - `chain_dropoff`: 끈으로 이어진 수레 2대. 첫 판에서 뒷수레를 떼고(채널 `detach`), 앞수레를 둘째 판까지 끈다.
     - `tethered_start`: 오리가 기둥에 묶여 시작한다. 끈 길이 안의 버튼을 눌러 끈을 풀어야 나간다.
-    - `cleat_hold`: 수동 문 `rope_door`(미끄럼 관절, 중력으로 닫힘, 구동기 없음. R9 문은 구동기로 움직여 끈으로 들 수 없다)를 천장 도르래 지점(tendon 경로 사이트)을 지나는 끈으로 들어 올린다. 바닥 고정구(`anchor`) 위 연결 패드에서 신호를 주면 같은 스텝 안에 끈 끝을 오리에서 고정구로 옮겨 문을 열어 둔다. 부리로 장력 걸린 끈 끝을 옮기지 않는다(`max_hold_force`를 넘음).
+    - `cleat_hold`: 수동 문 `rope_door`(미끄럼 관절, 중력으로 닫힘, 구동기 없음. R9 문은 구동기로 움직여 끈으로 들 수 없다)를 천장 도르래 지점(tendon 경로 사이트)을 지나는 끈으로 들어 올린다. 바닥 고정구(`anchor`) 위 연결 패드에서 신호를 주면 같은 스텝 안에 끈 끝을 오리에서 고정구로 옮겨 문을 열어 둔다. 부리로 장력 걸린 끈 끝을 옮기지 않는다(`max_hold_force`를 넘음). 문 무게는 1.5 N 이하다(Open question 9: 명령 0으로 서서 뒤로 당기는 힘 2.2 N까지 버팀).
     - `npc_leash`: 도망 NPC(R29)의 목줄 걸이에 끈을 걸어 버튼 위로 끈다. 끈이 걸려 있는 동안 그 NPC 구동기의 이득(`actuator_gainprm`, `biasprm`)을 0으로 하고(끌려오기만 함. `ctrl=0`은 속도 구동기가 브레이크처럼 버텨 오리가 멈추거나 끈이 끊어진다) 활동 영역(`leash`) 제한도 풀어 NPC가 오리를 끌고 가지 않게 한다. 이득과 활동 영역 제한은 저장하지 않고, 리셋·복원·끈 연결이 바뀔 때마다 끈 상태에서 다시 정한다(R34 부서짐 모양과 같은 방식). 리셋은 기본 끈 연결을 만든 뒤 이 계산을 한다. 활동 영역 밖에서 끈이 풀리면 NPC는 영역 안으로 돌아간다.
     - `overload`: 큐브 여러 개를 실은 수레를 그대로 끌면 끈이 끊어진다. 부리로 큐브를 덜어 낸 뒤 끈다. 큐브 하나(최대 0.05 kg)는 장력을 약 0.25 N만 줄이므로 개수와 `max_tension` 사이 폭은 Open question 9에서 20개 시드로 정한다.
     - `pit_bridge`: 상자를 구덩이에 끌어 넣고 끈을 푼 뒤 그 위를 걸어 건넌다. 상자 윗면이 바닥 높이와 맞아야 하므로 정적 점검이 크기를 확인한다. 상자는 오리 뒤를 따라오므로 데모 경로는 구덩이 가장자리를 스쳐 상자가 모서리를 잘라 빠지게 한다. 넘어짐은 이미 높이 기준이라(R10) 상자 위를 걸어도 넘어짐이 아니다.
-    - 바퀴(R30) 상태로 끄는 프리셋은 두지 않는다. 바퀴는 마찰이 거의 없어 짐을 끌면 오리가 밀릴 가능성이 크다. Open question 9 측정 뒤 다시 정한다.
+    - 바퀴(R30) 상태로 끄는 프리셋은 두지 않는다. Open question 9: 바퀴로 밀며 0.3 kg 썰매(마찰 0.5)를 끌면 속도가 0.017배로 멈춘다.
   - 예제 방 `examples/rooms/tow_yard.yaml`: 기둥에 묶인 채 시작해 버튼으로 풀고, 썰매를 연결 패드에서 이어 압력판까지 끌고, 판 위에서 풀어 열린 문을 지난다.
   - Check:
     - `tests/test_rope.py`:
@@ -463,7 +463,7 @@ View (read-only copy): (아직 없음)
     - `help_owner`: 주인 경로를 막은 문을 오리가 버튼이나 레버로 열어 줘야 주인이 지나간다.
     - `fetch`: 주인 옆 디스펜서가 공을 굴려 낸다. 오리가 물어 와서 주인에 붙은 받침(R5 `receptacle`, `attach_to: owner`)에 놓는다.
     - `find_owner`: 비슷한 NPC 여럿 가운데 마커 번호가 맞는 주인을 따라가야 한다.
-    - `leash_walk`: R31 끈으로 주인과 묶여 걷는다. 끈이 걸린 동안 주인 구동은 R31 `npc_leash`와 달리 켜져 있고, 힘 상한은 Open question 9의 끌기 한도 아래로 둔다. 너무 뒤처지면 끈이 끊어진다(`on_snap: fail`).
+    - `leash_walk`: R31 끈으로 주인과 묶여 걷는다. 끈이 걸린 동안 주인 구동은 R31 `npc_leash`와 달리 켜져 있고, 힘 상한은 Open question 9의 끌기 한도(꾸준한 장력 0.4 N) 아래로 둔다. 너무 뒤처지면 끈이 끊어진다(`on_snap: fail`).
     - `roller_walk`: 주인이 걷기보다 빠르다. 바퀴(R30)를 달아야 따라갈 수 있다. 이 프리셋에 한해 속도 경고를 끈다.
   - 점검: `demo:`에 `follow <주인>` 하위 목표를 더한다(주인 뒤 일정 거리를 유지하며 걷는 스크립트).
   - 예제 방 `examples/rooms/walkies.yaml`: 주인을 따라 산책 경로를 돌다가, `stay`에서 멈추고 `come`에 다가간 뒤 함께 문을 지난다.
@@ -750,7 +750,7 @@ flowchart LR
 
 - [x] 7. 합친 모델(발 모델 + 바퀴 몸)에서 `roller.onnx`가 공식 바퀴 모델과 같은 동작을 내는지, 그리고 `roller`의 명령 범위. E3 첫 단계에서 공식 바퀴 모델과 합친 모델을 나란히 돌려 비교한다. 다르면 애드온을 에피소드 시작 때만 정하는 방식(공식 바퀴 모델을 통째로 씀)으로 물러난다. (Claude) → 결정(2026-11-13, 사용자 "승인"): 합친 모델을 쓴다. 단 상태는 공식 바퀴 모델의 충돌 목록을 쓰면 모든 명령에서 공식 모델과 맞는다(속도 10%, 회전 0.1 rad/s 이내, 넘어짐 증가 없음; 예 vx 0.4: 0.30 → 0.29 m/s). 모드 바꾸기는 시드 20개 × 명령 3가지에서 처음 2초 넘어짐 0회, 최대 기울기 15°. `crouch`는 넘어짐 0회, 미끄러짐 최대 0.38 m. 명령 범위와 기본값은 R30에 적었다.
 - [ ] 8. 공식 정책 목록에 `alpha_ground_pick.onnx`(바닥 집기, 2.8초 한 번 동작)가 있다. R18의 용접 잡기 앞에 이 동작을 실제 집는 자세로 쓸 수 있는지 E3에서 확인한다. 같은 단계에서 머리 숙이기(R19 `head`)만으로 `mouth_tip`이 바닥 높이 물체(빨래, 바닥 다이얼)에 닿는지 잰다. 닿지 않으면 `laundry.yaml`과 바닥 다이얼은 ground_pick 동작이나 받침대 높이로 바꾼다. 확인 전에는 R18을 바꾸지 않는다. (Claude) 같은 측정으로 끈 매듭 고리 손잡이 높이(R31)와 부술 수 있는 전선의 맞는 부피 높이(R34)도 정한다. → 부분 결정(2026-11-13, 사용자 "승인"): 머리 숙이기만으로 부리 끝은 0.135 m까지 내려간다(Open question 2 측정). 그래서 `laundry.yaml`은 빨래를 0.18 m 받침대에 둔다(E3b-4 `mpg check` 18/20). `alpha_ground_pick.onnx` 사용 여부와 R31·R34 높이는 아직 열려 있다.
-- [ ] 9. 걷기 정책(`velstand`)이 오리 걸이로 짐을 끌 때 넘어지지 않고 속도를 유지하는 한도: 끌 수 있는 최대 질량과 바닥 마찰 조합, 그때의 장력(`max_tension` 기본값), 출발 순간 장력 튐의 길이(`snap_time`), 매듭 질량별 끈 늘어남, 걸이 높이, 명령 0으로 서 있을 때 뒤로 당기는 고정 짐을 얼마까지 버티는지(`cleat_hold`의 `rope_door` 무게와 연결 패드 `max_speed`를 이 값으로 정함). E3에서 질량을 올려 가며 잰다. 한도가 작으면 `sled_delivery`, `overload`, `pit_bridge`의 짐을 가볍게 다시 정한다. (Claude)
+- [x] 9. 걷기 정책(`velstand`)이 오리 걸이로 짐을 끌 때 넘어지지 않고 속도를 유지하는 한도: 끌 수 있는 최대 질량과 바닥 마찰 조합, 그때의 장력(`max_tension` 기본값), 출발 순간 장력 튐의 길이(`snap_time`), 매듭 질량별 끈 늘어남, 걸이 높이, 명령 0으로 서 있을 때 뒤로 당기는 고정 짐을 얼마까지 버티는지(`cleat_hold`의 `rope_door` 무게와 연결 패드 `max_speed`를 이 값으로 정함). E3에서 질량을 올려 가며 잰다. 한도가 작으면 `sled_delivery`, `overload`, `pit_bridge`의 짐을 가볍게 다시 정한다. (Claude) → 측정(2026-11-13, 빈 방, 시드 20개, 걸이 0.04 m, 매듭 20 g, 끝까지 걷기 vx 0.40, 짐 없이 0.222 m/s): 넘어짐은 모든 조합에서 0이고 실패는 느려짐이다. 속도 0.8배 이상을 지키는 최대 질량은 마찰 0.05에서 0.5 kg 이상, 0.1에서 0.3 kg, 0.2에서 0.2 kg, 0.5에서 0.05 kg(꾸준한 장력 약 0.4 N까지). 결정(사용자 "승인"): `max_tension` 0.9 N, `snap_time` 0.2 s, 걸이 0.04 m, 매듭 20 g 유지, 끌기 경고 0.4 N, `rope_door` 1.5 N 이하, 연결 패드 `max_speed` 0.1 m/s, `sled_delivery` 0.2 kg·마찰 0.1, 바퀴 끌기 프리셋 없음. `overload` 개수 폭, `npc_leash` 끌림, R32 `leash_walk` 힘 상한은 구현 때 시드 20개로 정한다.
 - [x] 10. 걷기 정책(`velstand`)으로 공을 밀 때 넘어지지 않는 공 질량·반지름 한도와 밀리는 속도. E1 5d 첫 단계에서 빈 방에서 질량을 올려 가며 잰다(R38). → 측정: 반지름 0.05 m 이상이면 0.3 kg까지, 0.08 m 이상이면 1 kg까지 넘어짐 없음. 작고 무거운 공은 넘어진다. 밀리는 속도 0.18–0.24 m/s. 결정: 공 기본값 반지름 0.05 m, 질량 0.05 kg, 탄성 0.5, 미끄럼 마찰 0.8, 구름 마찰 0.005. `goal_net` 입구 0.36 × 0.2 × 0.12 m.
 - [x] 11. 카메라 관측의 렌더 비용. 64×64 `rgb`·`depth`를 켰을 때 단일 환경 스텝/초와 병렬 학습 처리량이 특권 관측 대비 얼마나 떨어지는지 Mac(CPU MuJoCo)과 CI(OSMesa)에서 잰다. 기본 해상도와 결정 주기는 이 값으로 정한다(R39). → 측정(Mac M4 Max, CPU MuJoCo, 64×64, 환경 스텝마다 렌더 1회, 환경 스텝/초 단일 / 병렬 16): 특권 559 / 3,980, `rgb` 카메라 추가 150 / 761(0.19배), `depth` 추가 205 / 1,227(0.31배). PPO 학습 처리량(환경 12개): 특권 2,983, `rangefinder`+`rgbd` 196(약 1/15), 같은 설정에 `critic_obs` 189. 결정: 64×64, 10 Hz. 그림자와 반사는 끈다(`rgb` 렌더 9.5 ms → 4 ms). Linux(OSMesa)는 재지 않았다. 카메라 학습을 실제로 돌릴 때 잰다.
 - [ ] 12. 순서 추론 시험(R35)의 통과 기준: 단서 켬의 `wide` 성공률 목표와 단서 끔 대비 최소 차이. 발판 3개에서 단서 없이 고르면 이론상 약 1/3이라는 점을 기준으로, E3 16g 학습 전에 정한다.
