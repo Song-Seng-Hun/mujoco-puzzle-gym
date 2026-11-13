@@ -70,6 +70,23 @@ parts:
 
 식에 쓸 수 있는 것: 채널 이름(점이 든 `laps.count`도 채널 하나), 숫자, `and or not xor`, 비교(`< <= > >= == !=`), 괄호, 함수 `delay(x, s)`, `hold(x, s)`, `pulse(x)`, `latch(set, reset)`, `count(x)`, `timer(x)`. 산술, 속성 접근, 다른 함수 호출, 문자열은 방을 읽을 때 거절합니다. 식은 `ast`로 읽어 허용 목록을 확인하고 이 패키지가 직접 계산하므로, 남이 만든 방 파일을 열어도 코드가 실행되지 않습니다.
 
+## 신호기와 논리 부품 몸체
+
+`type: source`는 방에 놓인 상자로, 자기 채널에 매 몸 스텝 값을 보냅니다. 버튼이 없어도 회로가 돌아가게 하는 부품입니다.
+
+- 방식 네 가지: `const`(`value` 고정), `clock`(`period`마다 `duty` 비율만 켜짐, `phase`로 밀기), `pattern`(`pattern`의 값을 `step`초마다 차례로, 반복), `random`(`low`~`high` 값을 `hold`초마다 새로 뽑기).
+- `enable`이 꺼지면 `off_value`(기본 0)를 쓰고 시계가 멈춥니다. 꺼진 동안 시간이 흐르지 않으므로 다시 켜면 멈춘 위상에서 이어집니다.
+- `random`은 부품 이름과 `seed`로 정해지므로 같은 방이면 에피소드마다 같은 수열입니다(데모 해답과 `mpg check`가 재현됩니다). 에피소드마다 다르게 하려면 무작위화(R35)를 씁니다.
+- 체크포인트 저장본에 시계·패턴의 위상과 난수 상태가 들어가, 복원하면 주기를 처음부터 다시 시작하지 않습니다.
+- 프리셋: `logic/source_const`, `logic/source_clock`, `logic/source_pattern`.
+
+`body: true`를 주면 게이트·카운터·신호기가 방 안에 작은 상자로 놓입니다(신호기는 기본으로 놓입니다).
+
+- 상자 위 등이 현재 값을 보여 줘서 신호가 어디서 오는지 그림으로 보입니다.
+- 상자는 충돌합니다. 오리는 1 cm 턱까지만 넘으므로 상자는 벽처럼 길을 막고, 부품이 자기 바닥 자리를 알려 주어 길 찾기와 `demo:` 실행기가 상자를 돌아갑니다.
+- 막히는 자리는 부리로 쪼는 데도 필요합니다. 걷기 정책은 명령 0에서도 앞으로 흐르고 뒤로 걷지 못해 빈 바닥에서는 멈춰 설 수 없습니다.
+- 크기는 `size`(바닥 [x, y])와 `height`로 정합니다.
+
 ## 움직이는 장치와 설정 변경기
 
 - 플랫폼(`platform`, 프리셋 `device/moving_platform`, `device/elevator`): `pos`에서 잰 `path: [[dx, dy, z], …]`(z는 윗면 높이)를 `speed`로 따라갑니다. `mode`는 `loop`, `pingpong`, `once`이고, `run`은 `always`, `while_signal`(신호가 켜진 동안), `on_signal`(켜지는 순간마다 한 번 운행)입니다. 미끄럼 관절과 위치 구동기로 움직여서 위에 놓인 물체를 함께 나릅니다.
@@ -541,7 +558,10 @@ def majority(inputs, state, dt):
 
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
-| `pos` | vec | m | `[0.0, 0.0]` |  |  | where guides draw the counter (it has no body) |
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | where the counter stands (`body: true`) or where guides draw it |
+| `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
 | `up` | str |  | — |  |  | set to <group>.picked |
 | `down` | str |  | — |  |  | channel whose turn-ons subtract 1 |
 | `reset` | str |  | — |  |  | channel whose turn-on sets the count to start |
@@ -572,7 +592,10 @@ def majority(inputs, state, dt):
 
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
-| `pos` | vec | m | `[0.0, 0.0]` |  |  | where guides draw the counter (it has no body) |
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | where the counter stands (`body: true`) or where guides draw it |
+| `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
 | `up` | str |  | 필수 |  |  | channel whose turn-ons add 1 |
 | `down` | str |  | — |  |  | channel whose turn-ons subtract 1 |
 | `reset` | str |  | — |  |  | channel whose turn-on sets the count to start |
@@ -705,7 +728,10 @@ def majority(inputs, state, dt):
 
 | 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
 |---|---|---|---|---|---|---|
-| `pos` | vec | m | `[0.0, 0.0]` |  |  | where guides draw the gate (it has no body) |
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | where the gate stands (`body: true`) or where guides draw it |
+| `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
 | `expr` | str |  | — |  |  | safe expression over channels (R7) |
 | `op` | enum |  | — | `and`, `or`, `xor`, `not`, `delay`, `hold`, `pulse`, `timer`, `count`, `latch` |  | preset logic over `in` |
 | `seconds` | float | s | `1.0` | [0, 3600] |  | time for op delay / hold |
@@ -1043,6 +1069,28 @@ def majority(inputs, state, dt):
 | `value` | any |  | 필수 |  |  | new value (checked against the target value's schema) |
 | `revert` | bool |  | `False` |  |  | put the old value back when the signal turns off |
 
+### `source`
+
+역할 `prop`, 갱신 단계 `input`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `body` | bool |  | `True` |  |  | put the source in the room as a box with a lamp (R33) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
+| `mode` | enum |  | `const` | `const`, `clock`, `pattern`, `random` |  | const \| clock \| pattern \| random |
+| `value` | float |  | `1.0` | [-1000, 1000] | 예 | `const`: the value it sends |
+| `period` | float | s | `2.0` | [0.02, 3600] | 예 | `clock`: length of one cycle |
+| `duty` | float |  | `0.5` | [0, 1] | 예 | `clock`: share of the cycle that is on |
+| `phase` | float | s | `0.0` | [0, 3600] |  | `clock` / `pattern`: shift of the cycle at the episode start |
+| `pattern` | vec |  | — | [-1000, 1000] |  | `pattern`: the values, in order |
+| `step` | float | s | `1.0` | [0.02, 3600] |  | `pattern`: seconds per value |
+| `hold` | float | s | `1.0` | [0.02, 3600] | 예 | `random`: seconds a drawn value is held |
+| `low` | float |  | `0.0` | [-1000, 1000] |  | `random`: lowest value |
+| `high` | float |  | `1.0` | [-1000, 1000] |  | `random`: highest value |
+| `off_value` | float |  | `0.0` | [-1000, 1000] |  | what it writes while `enable` is off |
+| `seed` | int |  | `0` | [0, 2.14748e+09] |  | `random`: seed beside the part name |
+
 ### `spinner`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -1257,6 +1305,9 @@ def majority(inputs, state, dt):
 | `logic/or` | `gate` | `op: or` |
 | `logic/pulse` | `gate` | `op: pulse` |
 | `logic/receiver` | `receiver` | `band: radio`, `delay: 0.0` |
+| `logic/source_clock` | `source` | `mode: clock`, `period: 4.0`, `duty: 0.5` |
+| `logic/source_const` | `source` | `mode: const`, `value: 1.0` |
+| `logic/source_pattern` | `source` | `mode: pattern`, `pattern: [1.0, 0.0, 1.0, 0.0, 0.0]`, `step: 1.0` |
 | `logic/transmitter` | `transmitter` | `band: radio`, `delay: 0.0` |
 | `logic/xor` | `gate` | `op: xor` |
 | `npc/flee` | `npc` | `behavior: flee`, `speed: 0.08`, `sense: 0.4` |
