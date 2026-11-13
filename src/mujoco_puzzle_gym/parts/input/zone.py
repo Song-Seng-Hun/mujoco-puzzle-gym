@@ -31,6 +31,7 @@ from ._sense import candidates, in_rect
 
 RGBA_OFF = (0.3, 0.6, 0.95, 0.15)
 SPEED_TAU = 0.5      # [s] min_speed: time constant of the averaged velocity
+JUMP_SPEED = 5.0     # [m/s] min_speed: a faster step is a jump (warp, reappearing object), not motion
 RGBA_ON = (0.3, 0.95, 0.4, 0.3)
 
 
@@ -38,7 +39,7 @@ class Zone(Part):
     role = "switch"
     stage = "input"
     emits = True
-    state_keys = ("on", "accepted", "was_inside", "prev_pos", "vel", "prev_t")
+    state_keys = ("on", "accepted", "was_inside", "prev_pos", "vel", "seen", "prev_t")
     fields = (
         Field("size", "vec", [0.4, 0.4], length=2, unit="m", min=0.05, max=10.0,
               doc="box size [x, y]"),
@@ -79,6 +80,7 @@ class Zone(Part):
         self.was_inside: dict = {}
         self.prev_pos: dict = {}
         self.vel: dict = {}            # min_speed: averaged horizontal velocity per target
+        self.seen: dict = {}           # min_speed: time each target was last tracked
         self.prev_t: float | None = None
 
     def build(self, spec):
@@ -108,12 +110,17 @@ class Zone(Part):
 
     def _fast(self, key, pos, now: float) -> bool:
         """Update the averaged velocity of `key`; whether it is at least `min_speed`."""
-        prev, dt = self.prev_pos.get(key), (None if self.prev_t is None else now - self.prev_t)
+        prev, t0 = self.prev_pos.get(key), self.seen.get(key)
         v = self.vel.get(key, np.zeros(2))
-        if prev is not None and dt:
-            a = min(1.0, dt / SPEED_TAU)
-            v = v + a * ((pos[:2] - prev[:2]) / dt - v)
+        # only steps from the previous update count: a target that was out of the
+        # candidates (held, parked) has a stale position, and a warp is a jump
+        if prev is not None and t0 is not None and t0 == self.prev_t and now > t0:
+            dt = now - t0
+            step = (pos[:2] - prev[:2]) / dt
+            if float(np.hypot(*step)) <= JUMP_SPEED:
+                v = v + min(1.0, dt / SPEED_TAU) * (step - v)
         self.vel[key] = v
+        self.seen[key] = now
         return float(np.hypot(*v)) >= self.min_speed
 
     def update(self, model, data, body):

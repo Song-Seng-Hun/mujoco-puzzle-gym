@@ -83,6 +83,13 @@ def test_zone_min_speed_leave_holds_once_on(make):
     assert env.signals.get("z") == 1                     # held until it leaves
 
 
+def test_zone_min_speed_ignores_a_warp(make):
+    env = make([{**ZONE, "min_speed": 0.28}])
+    glide(env, -1.5, -1.0, 0.05)                         # standing far away
+    vals = glide(env, 0.0, 0.1, 0.05)                    # jumps into the zone, then creeps
+    assert max(vals) == 0
+
+
 def test_zone_without_min_speed_unchanged(make):
     env = make([ZONE])
     assert env.parts["z"].min_speed == 0 and not env.parts["z"].stateful
