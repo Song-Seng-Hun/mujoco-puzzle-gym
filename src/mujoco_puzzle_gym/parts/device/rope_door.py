@@ -16,8 +16,9 @@ close to the default `max_tension` 0.9 N, so give that rope its own `max_tension
 (`cleat_hold`: 1.5 N).
 
 Open and planning. `clearance` is the gap under the panel the walking body needs: the
-Microduck's highest colliding geom tops out at 0.30 m while walking (measured
-2026-11-13, aabb of its geoms, heads up or down), so the default 0.34 m leaves 4 cm.
+default walking body's highest colliding geom tops out at 0.30 m walking (measured
+2026-11-13, aabb of its geoms; head command -1 / 0 / 1: 0.300 / 0.303 / 0.295 m), so
+the default 0.34 m leaves 4 cm.
 `state()` (and channel `<name>.lift`) is the lift over `clearance`, 0..1; `<name>.open`
 is 1 once the lift reaches `clearance`. The planners treat it as a gate: in the static
 order (`mpg check`) it opens when a rope in the room can tie to it (it has no switch);
@@ -37,7 +38,7 @@ from ...schema import Field, SchemaError
 from ..base import Part
 
 PANEL_RGBA = (0.45, 0.4, 0.3, 1.0)
-CLEARANCE = 0.34      # [m] walking Microduck top 0.30 m (measured) + 4 cm
+CLEARANCE = 0.34      # [m] default walking body's top 0.30 m (measured) + 4 cm
 
 
 class RopeDoor(Part):

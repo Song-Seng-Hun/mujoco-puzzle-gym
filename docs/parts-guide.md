@@ -151,7 +151,7 @@ parts:
 | [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml) | 바퀴로 속도 구역을 지나 문을 열고, 옆바람을 지나, 제동 띠 위 장착대에서 떼고 계단을 올라 골로 | `device/addon_roller`, `input/body_zone`(`min_speed`), `trap/crosswind`, `trap/brake_strip` |
 | `puzzles/roller/speed_gate`, `timed_corridor`, `mode_switch_route`, `brake_strip`, `one_way_station`, `crosswind`, `glide_under`, `roll_delivery` | 바퀴 퍼즐 8종. 아래 [애드온 장착대](#애드온-장착대) | `device/addon_roller` |
 | [`examples/rooms/tow_yard.yaml`](../examples/rooms/tow_yard.yaml) | 기둥에 묶인 채 시작해 버튼으로 풀고, 연결 패드에서 썰매를 이어 구역까지 끌고, 풀기 패드에서 풀어 혼자 문을 지남 | `rope`, `anchor`, `hitch_station`, `input/object_zone`, `device/sliding_door` |
-| `puzzles/tow/sled_delivery`, `drop_and_go`, `chain_dropoff`, `tethered_start` | 견인 끈 퍼즐 4종. 아래 [견인 끈](#견인-끈) | `rope`, `hitch_station`, `input/object_zone` |
+| `puzzles/tow/sled_delivery`, `drop_and_go`, `chain_dropoff`, `tethered_start`, `cleat_hold`, `npc_leash` | 견인 끈 퍼즐 6종. 아래 [견인 끈](#견인-끈) | `rope`, `hitch_station`, `input/object_zone` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | 글자 지도로 그린 두 방, 계단과 경사로 | `button`, `door` |
 
 공, 바퀴, 견인 조립 프리셋은 방 하나 전체라서 그대로 `mpg check`에 넣어도 되고, `preset: puzzles/ball/bowling`으로 깔고 값을 바꿔 써도 됩니다.
@@ -341,19 +341,21 @@ curriculum: {mode: forward, order: difficulty_first}
 
 `rope`(분류 `device`)는 두 매듭 사이의 끈입니다. 매듭 사이가 `length`(기본 0.4 m) 안이면 늘어져 힘이 없고, 넘으면 당깁니다(MuJoCo 공간 힘줄, 범위 0..`length`). 매듭 하나하나는 20 g 이상의 작은 원판(`knot_mass`)이고 바닥에만 닿습니다(몸과 물체는 지나감). 매듭 위 `handle_height`(기본 0.16 m)의 고리를 부리로 잡습니다. 매듭은 버튼·압력판·구역 어느 `trigger`에도 세지 않습니다.
 
-- 걸이(hitch): 끈 끝을 묶을 수 있는 곳. 몸(`body`, 몸통 아래 바닥에서 0.04 m), `hitch: true`인 물체(그 가운데), NPC 로봇, 고정 기둥 `anchor`(`hitch_height`, 기본 0.04 m, 그려지기만 하고 몸이 지나감)입니다. 끈의 `a`, `b`가 끝의 걸이 이름이고 `tied`(기본 둘 다)가 리셋 때 묶인 끝입니다. 묶이지 않은 끝의 매듭은 `rest`([[xa, ya], [xb, yb]], 기본 `pos`에서 x로 ∓0.4 × `length`)에 놓입니다. 방의 걸이 수는 `max_hitches`(기본 16, 몸 포함)까지입니다. 끈이 있는 방에서는 `hitch: true` 물체의 마찰이 바닥보다 우선합니다(물체의 `friction`이 끌리는 짐을 정함).
+- 걸이(hitch): 끈 끝을 묶을 수 있는 곳. 몸(`body`, 몸통 아래 바닥에서 0.04 m), `hitch: true`인 물체(그 가운데), NPC 로봇, 고정 기둥 `anchor`(`hitch_height`, 기본 0.04 m, 그려지기만 하고 몸이 지나감), 끈 문 `rope_door`(판 윗변 가운데)입니다. 끈의 `a`, `b`가 끝의 걸이 이름이고 `tied`(기본 둘 다)가 리셋 때 묶인 끝입니다. 묶이지 않은 끝의 매듭은 `rest`([[xa, ya], [xb, yb]], 기본 `pos`에서 x로 ∓0.4 × `length`)에 놓입니다. 방의 걸이 수는 `max_hitches`(기본 16, 몸 포함)까지입니다. 끈이 있는 방에서는 `hitch: true` 물체의 마찰이 바닥보다 우선합니다(물체의 `friction`이 끌리는 짐을 정함).
 - 묶기와 풀기 세 길:
-  - 연결 패드 `hitch_station`: 몸통이 패드 안에 있고 `max_speed`(기본 0.1 m/s)보다 느릴 때, 신호(`in` 채널이 켜질 때, 없으면 패드에 올라설 때)가 오면 몸의 걸이에서 끈의 `hitch_radius`(기본 0.3 m) 안 가장 가까운 걸이와 몸을 잇습니다(`attach`; 그 걸이에 이미 묶인 끝은 그대로, 다른 끝이 몸으로 옴. 이미 몸에 묶이고 다른 끝이 풀린 끈은 그 끝을 묶음). `detach`는 몸 쪽 끝을 풀고, `toggle`은 맞는 쪽을 합니다(끈이 이미 몸과 무언가를 잇고 있지 않으면 묶음). `cooldown`(기본 1 s), `enable`은 애드온 장착대와 같습니다. `rope`로 끈을 고릅니다(방에 끈이 하나면 생략). 출력 `<패드>.towing`.
+  - 연결 패드 `hitch_station`: 몸통이 패드 안에 있고 `max_speed`(기본 0.1 m/s)보다 느릴 때, 신호(`in` 채널이 켜질 때, 없으면 패드에 올라설 때)가 오면 몸의 걸이에서 끈의 `hitch_radius`(기본 0.3 m) 안 가장 가까운 걸이와 몸을 잇습니다(`attach`; 그 걸이에 이미 묶인 끝은 그대로, 다른 끝이 몸으로 옴. 이미 몸에 묶이고 다른 끝이 풀린 끈은 그 끝을 묶음). `detach`는 몸 쪽 끝을 풀고, `toggle`은 맞는 쪽을 합니다(끈이 이미 몸과 무언가를 잇고 있지 않으면 묶음). `handoff`는 몸에 묶인 끈 끝을 같은 스텝 안에 패드의 `to:` 걸이(보통 고정 기둥)로 옮깁니다. 매듭을 그 걸이로 옮기고 구속을 한 번에 바꾸므로 짐을 든 끈이 느슨해지지 않습니다. 장력이 걸린 끝은 부리가 아니라 이 방식으로 옮깁니다(짐이 부리가 버티는 힘보다 큼). `cooldown`(기본 1 s), `enable`은 애드온 장착대와 같습니다. `rope`로 끈을 고릅니다(방에 끈이 하나면 생략). 출력 `<패드>.towing`.
   - 채널: 끈의 `attach_a`, `detach_a`, `attach_b`, `detach_b`가 켜지는 순간 그 끝을 `a`/`b`(없으면 매듭에서 `hitch_radius` 안 가장 가까운 걸이)에 묶거나 풉니다.
   - 부리: 매듭을 물고 걸이의 `clip_radius`(기본 0.04 m) 안에서 놓으면 묶이고, 묶인 매듭을 `untie_time`(기본 0.5 s) 동안 물고 있으면 풀립니다. 그렇게 푼 매듭은 그 자리에서 놓아도 다시 묶이지 않습니다(다시 물었다 놓으면 묶임).
-  - 묶을 때 다른 끝까지가 `length`보다 멀면 묶지 않고 `<끈>.attach_failed`를 한 스텝 냅니다(묶을 걸이가 반경 안에 없을 때도). 묶인 매듭은 걸이 자리로 옮겨진 뒤 연결 구속(`connect`)으로 붙습니다.
+  - 묶을 때 다른 끝까지가 `length`보다 멀면(끈을 따라, 도르래를 거쳐) 묶지 않고 `<끈>.attach_failed`를 한 스텝 냅니다(묶을 걸이가 반경 안에 없을 때도). 묶인 매듭은 걸이 자리로 옮겨진 뒤 연결 구속(`connect`)으로 붙습니다.
 - 길이: `length`는 실행 중 값이라 `bind`로 레버 같은 채널에 이을 수 있습니다(감는 기계). 목표가 한 번에 바뀌어도 실제 길이는 `reel_speed`(기본 0.05 m/s)로 따라갑니다. 저장본은 현재값과 목표값을 모두 담습니다.
+- 도르래: `via: [[x, y, z], ...]`는 끈이 끝 a에서 b로 차례로 지나는 월드 지점(천장 도르래, 바퀴로 그려지고 충돌 없음)입니다. `length`는 경로 전체에 걸리고, 묶기·패드·정적 점검도 경로를 따라 잽니다.
 - 끊어짐: 장력이 `max_tension`(기본 0.9 N)을 `snap_time`(기본 0.2 s) 넘게 넘으면 두 끝이 풀리고 `<끈>.snapped`가 1이 됩니다(리셋까지). `on_snap: fail`이면 끊어질 때 실패입니다.
 - 채널: `<끈>.attached_a`, `.attached_b`(묶인 동안 1), `.tension`(`max_tension` 대비 0..1, 한 스텝 평균), `.snapped`, `.attach_failed`, `body.towing`(몸에 묶인 끈이 있으면 1; 방의 첫 끈이 씀). 관측 항목 `tow`: 몸에 묶였는지, 장력(`max_tension` 대비 0..1), 다른 끝(묶였으면 그 걸이, 아니면 매듭)의 몸 기준 위치(x, y). 4칸. 관측 `beak`의 물체 종류에서 매듭은 10입니다.
-- NPC를 묶으면 끈이 걸린 동안 그 로봇의 구동 이득이 0이고 목줄(`leash`) 한계가 풀려 끌려 다닙니다. 미끄러져 계속 가지 않게 평면 이동 관절에 감쇠(1.0 N·s/m)를 겁니다(몸이 서면 1초 안에 멈춤, 걸을 때 장력 평균 0.20 N). 풀리면 구동이 돌아오고, 목줄 상자 밖이면 안으로 걸어 돌아간 뒤 한계를 다시 겁니다. 리셋·저장본 복원·묶기 변화 때마다 끈 상태에서 다시 계산합니다.
-- 순간이동: 몸을 워프하면 끈으로 이어진 묶음(물체, 매듭, NPC, 다시 거기 이어진 것)을 같은 상대 자세로 함께 옮깁니다. 묶음 안의 고정 끝(`anchor`)은 먼저 풉니다. 물체만 워프되거나, 스프링이 물체를 차거나, 디스펜서가 복제품을 거두거나, 받는 부품이 물체를 뱉으면 그 물체의 끈을 먼저 풉니다. 애드온을 바꾸면(`set_addon`) 몸 쪽 끝을 먼저 풉니다.
-- 점검(`mpg check` `parts` 단계): `hitch_radius`, `clip_radius`가 `length` 이하인지, 리셋 때 기본으로 묶인 두 끝이 무작위 범위를 넣어도 `length` 안인지(실패). 끄는 짐(마찰 × 무게)이 0.4 N을 넘으면, 그리고 `demo:`의 `tow`와 `untow` 사이 길에 끄는 물체보다 좁은 문이나 `length` 안에서 90°보다 꺾이는 곳이 있으면 경고합니다. 이 길에는 `drag` 구간과, 리셋 때 몸과 물체·NPC를 잇는 끈이면 시작부터의 길도 들어갑니다. `demo:`가 구덩이로 끌어 넣는 상자(`drag <끈> <구덩이>`)는 높이가 구덩이 깊이(가장자리에서 0.5 m 아래 받침면까지)와 1 cm 안으로 같아 윗면이 바닥과 맞아야 합니다(실패). 아직 그만큼 높은 부품은 없습니다(알려진 한계).
-- 해답의 `demo:`: `tow <끈> <걸이>`(그 끈을 몸과 걸이에 잇는 연결 패드로 걸어가 섬; 패드를 이미 썼으면 내려섰다 다시 올라섬), `untow <끈>`(풀기 패드로), `drag <끈> <부품>`: 끌리는 걸이는 끈에서 몸 반대쪽 끝입니다(끈이 사슬로 이어지면 사슬에서 더 먼 끝). 몸은 걸이(단계가 시작할 때 자리)에서 부품 가운데를 지나는 선 위, 부품 가운데 너머의 점으로 걸어갑니다. 너머 거리는 끈 길이나 몸과 걸이 사이 거리(사슬) 중 긴 쪽보다 0.25 m 더 멀고, 벽 앞에서 멈춥니다. 걸이가 부품 바닥 영역 안으로 5 cm 들어오거나, 가는 길에 풀리면(그 부품의 `detach_*` 채널) 끝납니다. 부품은 바닥 영역이 있어야 합니다(압력판, 구역, 패드, 구덩이). `drag` 단계가 채우는 센서는 `grab` 행동을 요구하지 않습니다.
+- NPC를 묶으면 끈이 걸린 동안 그 로봇의 구동 이득이 0이고 목줄(`leash`) 한계가 풀려 끌려 다닙니다. 미끄러져 계속 가지 않게 평면 이동 관절에 감쇠(1.0 N·s/m)를 겁니다(몸이 서면 1초 안에 멈춤, 걸을 때 장력 평균 0.20 N). 풀리면 구동이 돌아오고, 목줄 상자 밖이면 안으로 걸어 돌아간 뒤 한계를 다시 겁니다. 리셋·저장본 복원·묶기 변화 때마다 끈 상태에서 다시 계산합니다(저장하지 않음). 다른 끝이 풀려 있어도 끈 끝이 하나라도 걸려 있으면 묶인 것으로 봅니다. 계획: 끈이 NPC에 묶일 수 있으면(끈의 `a`/`b`가 그 NPC이거나 패드로 묶을 빈 끝이 있으면) NPC가 켜는 센서(`trigger: npc`나 `any`, `objects` 없음)는 로봇의 목줄 밖에 있어도 스위치로 칩니다. 몸이 로봇을 끌고 가기 때문입니다.
+- 끈 문 `rope_door`(역할 gate): 벽 틈의 판이 구동기 없는 수직 미끄럼 관절에 달려 중력으로 닫힙니다(`width`, `axis`, `thickness`, `height`는 미닫이 문과 같고, 몸·물체와 충돌하며 벽과는 충돌하지 않음). 걸이가 판 윗변 가운데라서, 바로 위 도르래를 지나는 끈의 반대쪽 끝을 멀리 당기면 문이 들립니다. `mass`는 기본 0.05 kg, 최대 0.15 kg(1.47 N). `clearance`(기본 0.34 m; 걷는 Microduck의 꼭대기가 0.30 m, 잰 값)만큼 들리면 열린 것입니다: 채널 `<문>.lift`(`clearance` 대비 들린 정도 0..1, 상태값과 같음), `<문>.open`. 정적 순서는 끈이 묶일 수 있으면 열 수 있는 문으로 보고, `demo:` 걸음은 다른 문처럼 0.3이 아니라 다 들렸을 때만 지납니다. 묶일 수 있는 끈이 없으면 `parts` 단계가 실패합니다. 끈이 판과 20 g 매듭의 무게를 지므로 그 끈에 따로 `max_tension`을 줍니다(`cleat_hold`: 1.5 N).
+- 순간이동: 몸을 워프하면 끈으로 이어진 묶음(물체, 매듭, NPC, 다시 거기 이어진 것)을 같은 상대 자세로 함께 옮깁니다. 묶음 안의 고정 끝(`anchor`, `rope_door`)은 먼저 풉니다. 도르래(`via`)를 지나는 끈은 함께 옮길 수 없어서, 묶음 쪽 끝을 풀고 끈은 남깁니다. 물체만 워프되거나, 스프링이 물체를 차거나, 디스펜서가 복제품을 거두거나, 받는 부품이 물체를 뱉으면 그 물체의 끈을 먼저 풉니다. 애드온을 바꾸면(`set_addon`) 몸 쪽 끝을 먼저 풉니다.
+- 점검(`mpg check` `parts` 단계): `hitch_radius`, `clip_radius`가 `length`(첫 도르래와 마지막 도르래 사이 경로를 뺀 값) 이하인지, 리셋 때 기본으로 묶인 두 끝이 무작위 범위를 넣어도 끈을 따라 `length` 안인지(실패). 끄는 짐(마찰 × 무게)이 0.4 N을 넘으면, 그리고 `demo:`의 `tow`와 `untow` 사이 길에 끄는 물체보다 좁은 문이나 `length` 안에서 90°보다 꺾이는 곳이 있으면 경고합니다. 이 길에는 `drag` 구간과, 리셋 때 몸과 물체·NPC를 잇는 끈이면 시작부터의 길도 들어갑니다. `demo:`가 구덩이로 끌어 넣는 상자(`drag <끈> <구덩이>`)는 높이가 구덩이 깊이(가장자리에서 0.5 m 아래 받침면까지)와 1 cm 안으로 같아 윗면이 바닥과 맞아야 합니다(실패). 아직 그만큼 높은 부품은 없습니다(알려진 한계).
+- 해답의 `demo:`: `tow <끈> <걸이>`(그 끈을 몸과 걸이에 잇는 연결 패드로 걸어가 섬; 패드를 이미 썼으면 내려섰다 다시 올라섬), `untow <끈>`(풀기·토글·`handoff` 패드로), `drag <끈> <부품>`: 끌리는 걸이는 끈에서 몸 반대쪽 끝입니다(끈이 사슬로 이어지면 사슬에서 더 먼 끝). 몸은 걸이(단계가 시작할 때 자리)에서 부품 가운데를 지나는 선 위, 부품 가운데 너머의 점으로 걸어갑니다. 너머 거리는 끈 길이나 몸과 걸이 사이 거리(사슬) 중 긴 쪽보다 0.25 m 더 멀고, 벽 앞에서 멈춥니다. 걸이가 부품 바닥 영역 안으로 5 cm 들어오거나, 가는 길에 풀리면(그 부품의 `detach_*` 채널) 끝납니다. 부품은 바닥 영역이 있어야 합니다(압력판, 구역, 패드, 구덩이). `drag` 단계가 채우는 센서는 `grab` 행동을 요구하지 않습니다.
 - 잰 값(2026-11-13): 0.2 kg 썰매(마찰 0.1)를 0.4 m 끈으로 끌고 걸으면 썰매가 약 0.39 m 뒤를 따르고 장력 0.1–0.43 N. 0.3 kg(마찰 0.5, 짐 1.47 N)은 걷기 시작하자 끊어집니다. 기둥에 묶인 0.3 kg 썰매(마찰 0.5)의 `length` 목표를 0.4 → 0.1 m로 한 번에 바꾸면 최대 장력이 `reel_speed` 0.05/0.1/0.5/2.0 m/s에서 1.86/2.11/5.06/13.7 N입니다(2.0에서는 썰매가 기둥을 지나침). 몸의 걸이 자리는 Open question 9의 0.04 m(엉덩이 관절 축 가운데 아래, 몸통 기준 (0.007, 0, −0.0756) m)입니다.
 - 견인 조립 프리셋 `puzzles/tow/`(각각 `demo:`가 있는 방 하나 전체, task는 `move`만, 짐은 0.4 N 아래). 끌고 간 짐은 압력판이 아니라 물체 구역(`input/object_zone`)에 둡니다. 압력판의 4 mm 솟은 가장자리가 끌리는 상자를 막기 때문입니다(0.1 m·0.2 kg 큐브, 마찰 0.1은 가장자리에서 끈이 끊어짐, 최대 2.8 N; 0.15 kg은 최대 2.0 N으로 넘어감).
 
@@ -363,10 +365,13 @@ curriculum: {mode: forward, order: difficulty_first}
 | `puzzles/tow/drop_and_go` | 수레(0.15 kg)에 묶인 채 시작합니다. 문은 수레가 구역 안에 있는 동안만 열립니다. 끌어 넣고 구역 끝 풀기 패드에 서서 풀고 혼자 지납니다. 수레를 끈 채 걸으면 구역에서 끌려 나와 문이 닫힙니다 |
 | `puzzles/tow/chain_dropoff` | 사슬로 이은 수레 2대(끈 `front`: 오리–`cart_a`, `rear`: `cart_a`–`cart_b`). 구역 `drop_b`(길 북쪽)는 `cart_b`만 세고 그것을 풉니다(`detach_b`), `drop_a`(남쪽)는 `cart_a`에 같은 일을 합니다. 두 구역이 수레를 다 받는 동안 문이 열립니다. 똑바로 걸으면 수레가 두 구역을 비껴갑니다 |
 | `puzzles/tow/tethered_start` | 기둥에 묶여 시작합니다(0.6 m 끈, `on_snap: fail`). 끈이 닿는 버튼이 기둥 쪽 끝을 풉니다. 그냥 걸어 나가면 끈이 끊어져 실패합니다 |
+| `puzzles/tow/cleat_hold` | 끈 문 윗변에서 천장 도르래(`via`)를 지나 오리에게 온 끈에 묶여 시작합니다. 멀리 걸어가면 문이 들리고, `handoff` 패드에서 끈 끝이 바닥 고정 기둥으로 옮겨져 문이 열린 채 남습니다. 돌아와 문 밑을 지납니다. 묶인 채 돌아오면 문이 오리 앞에서 내려옵니다. 끈 `max_tension` 1.5 N |
+| `puzzles/tow/npc_leash` | 도망 로봇이 작은 우리(`leash`) 안에만 있어 몰기로는 못 꺼냅니다. 우리 옆 연결 패드가 오리와 로봇을 잇습니다. 구역까지 끌면 구역이 로봇 쪽 끝을 풀고(`detach_b`) 한 번 열림 문이 열립니다. 로봇은 우리로 돌아가고, 오리는 풀린 끝을 끌며 문을 지납니다 |
 
 - 예제 [`examples/rooms/tow_yard.yaml`](../examples/rooms/tow_yard.yaml): 기둥에 묶인 채 시작해(`on_snap: fail`) 버튼으로 기둥 쪽 끝을 풀면 풀린 끝이 뒤에 끌려옵니다. 연결 패드가 그 끝을 썰매(0.2 kg, 마찰 0.1)에 묶습니다. 썰매를 구역까지 끌고 구역 끝 풀기 패드에 서서 푼 뒤, 썰매가 구역에 있는 동안 열린 문을 지납니다. `demo: [press button, tow rope sled, drag rope zone, untow rope, goto goal]`.
 - 잰 값(2026-11-13, `mpg check`, 시드 20개): `sled_delivery` 20/20(평균 19.5 s), `drop_and_go` 20/20(17.4 s), `chain_dropoff` 20/20(25.6 s), `tethered_start` 20/20(20.5 s), `tow_yard` 20/20(40 s 판에서 31.2 s). 끈 단계를 빼면 풀리지 않습니다(각 시드 20개): `sled_delivery`를 `demo: [goto goal]`로 0/20, `drop_and_go`에서 `untow`를 빼면 0/20, `chain_dropoff`에서 뒷수레 끌기를 빼면 0/20, `tethered_start`와 `tow_yard`에서 버튼을 빼면 0/20(끈이 끊어짐), `tow_yard`에서 `untow`를 빼면 0/20. 골을 향해 똑바로 걷기(방향 유지, 문 무시)는 프리셋 4종과 `tow_yard` 모두 0/20입니다. 두 구역을 길 위에 두었던 `chain_dropoff`는 똑바로 걷기로 14/20 풀려서 구역을 길에서 비켜 두었습니다.
-- 알려진 한계: 매듭 고리 높이 0.16 m는 정해 둔 값이고 Open question 8(R31 높이)은 아직 열려 있습니다. 중계기(R34) 걸이는 아직 없습니다. 끊어진 끈은 리셋까지 다시 쓰지 못합니다. 스프링이 몸을 차는 경우에는 끈을 풀지 않습니다. `pit_bridge`는 만들지 않았습니다: 구덩이에는 0.5 m 아래 받침면까지 바닥이 없고, 가장 큰 상자(큐브)는 0.3 m이며, 계획은 상자가 들어가도 구덩이를 구멍으로 봅니다. `drop_and_go`의 수레(0.12 m)는 문보다 넓지 않습니다: 해답이 걸어 지나는 가장 좁은 벽 틈이 약 0.40 m(0.40 m는 지나고 0.36 m는 못 지남, 각 시드 3개)로, 손잡이를 단 가장 큰 큐브(0.33 m)보다 넓기 때문입니다. 그래서 구역과 그 문이 풀기를 강제합니다. `cleat_hold`, `npc_leash`, `overload`, `rope_door`, 끈 `via:` 도르래, 패드의 `handoff` 방식은 2부 뒷부분(2b)에서 합니다. `drag` 단계는 곧은 선을 따라 겨누므로, 끌리는 물체에서 목표를 지나는 길을 곧게 두세요.
+- 잰 값(2026-11-13, `mpg check`, 시드 20개): `cleat_hold` 20/20(평균 17.4 s), `npc_leash` 20/20(20.3 s). 골로 똑바로 걷기는 둘 다 0/20. `cleat_hold`를 `demo: [goto goal]`로 0/20, `handoff` 패드 없이(고정 기둥까지 걸었다가 골로) 0/20: 묶인 채 돌아오면 문이 내려옵니다(문 앞 0.84–0.88 m에서 들린 높이 0.27–0.30 m, `clearance` 0.34 m 아래; 그대로 똑바로 걸으면 0.2 m 안에서 닫혀 있음). 들어 올리는 동안 끈 장력은 평균 0.73 N(판과 매듭 0.69 N, 95%값 0.89 N), 걷는 속도 0.217 m/s(그냥 걸을 때의 0.98배). 0.95–2.5 N 튐이 0.9 N 위에 머무는 시간은 최대 0.08 s. `handoff` 때 문이 고정 기둥까지의 더 짧은 경로만큼 약 5 cm 내려앉고(튐 3.5–4.5 N, 0.03 s) 그 뒤 0.381 m에 매달립니다. `max_tension` 1.5 N, `snap_time` 0.2 s에서 한 번도 끊어지지 않았습니다. 오리 꼭대기는 들린 판 밑을 9.7 cm 띄우고 지납니다(시드 3개, 닿음 없음). `npc_leash`를 `demo: [goto goal]`로 0/20, 끌기 대신 몰기로 0/20(구역이 우리 밖).
+- 알려진 한계: 매듭 고리 높이 0.16 m는 정해 둔 값이고 Open question 8(R31 높이)은 아직 열려 있습니다. 중계기(R34) 걸이는 아직 없습니다. 끊어진 끈은 리셋까지 다시 쓰지 못합니다. 스프링이 몸을 차는 경우에는 끈을 풀지 않습니다. `pit_bridge`는 만들지 않았습니다: 구덩이에는 0.5 m 아래 받침면까지 바닥이 없고, 가장 큰 상자(큐브)는 0.3 m이며, 계획은 상자가 들어가도 구덩이를 구멍으로 봅니다. `drop_and_go`의 수레(0.12 m)는 문보다 넓지 않습니다: 해답이 걸어 지나는 가장 좁은 벽 틈이 약 0.40 m(0.40 m는 지나고 0.36 m는 못 지남, 각 시드 3개)로, 손잡이를 단 가장 큰 큐브(0.33 m)보다 넓기 때문입니다. 그래서 구역과 그 문이 풀기를 강제합니다. `overload`와 `pit_bridge`는 2c부에서 합니다. `drag` 단계는 곧은 선을 따라 겨누므로, 끌리는 물체에서 목표를 지나는 길을 곧게 두세요.
 
 ## 파이썬 플러그인
 
@@ -745,7 +750,8 @@ def majority(inputs, state, dt):
 |---|---|---|---|---|---|---|
 | `size` | vec | m | `[0.3, 0.3]` | [0.2, 2] |  | pad size [x, y] |
 | `rope` | str |  | — |  |  | the rope it ties (default: the room's only rope) |
-| `mode` | enum |  | `attach` | `attach`, `detach`, `toggle` |  | attach, detach or toggle |
+| `mode` | enum |  | `attach` | `attach`, `detach`, `toggle`, `handoff` |  | attach, detach, toggle or handoff |
+| `to` | str |  | — |  |  | handoff: the hitch the body's rope end moves to (an anchor, usually) |
 | `cooldown` | float | s | `1.0` | [0, 60] |  | time after a change before the station works again |
 | `max_speed` | float | m/s | `0.1` | [0.01, 1] |  | the body must be slower than this (horizontal) |
 
@@ -998,6 +1004,22 @@ def majority(inputs, state, dt):
 | `attach_b` | str |  | — |  |  | channel: on its rising edge end b ties |
 | `detach_b` | str |  | — |  |  | channel: on its rising edge end b comes loose |
 | `max_hitches` | int |  | `16` | [1, 64] |  | most hitches a room with ropes may have |
+| `via` | any |  | — |  |  | [[x, y, z], ...]: world points (ceiling pulleys) the rope passes in order from a to b; `length` limits the whole path |
+
+### `rope_door`
+
+역할 `gate`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `width` | float | m | `0.5` | [0.1, 2] |  | opening the panel spans |
+| `axis` | enum |  | `y` | `x`, `y` |  | direction the panel lies along |
+| `thickness` | float | m | `0.04` | [0.01, 0.2] |  |  |
+| `height` | float | m | `0.25` | [0.05, 1] |  |  |
+| `mass` | float | kg | `0.05` | [0.01, 0.15] |  | panel mass; its weight (at most 1.47 N) hangs on the rope |
+| `clearance` | float | m | `0.34` | [0.1, 1] |  | gap under the panel the body needs (open: lifted this far) |
+| `travel` | float | m | `0.45` | [0.1, 1.5] |  | most it lifts |
+| `damping` | float | N*s/m | `0.3` | [0, 10] |  | slide joint damping |
 
 ### `setter`
 
@@ -1194,6 +1216,7 @@ def majority(inputs, state, dt):
 | `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
+| `device/rope_door` | `rope_door` | `width: 0.5`, `axis: y`, `mass: 0.05` |
 | `device/setter` | `setter` | `revert: False` |
 | `device/sliding_door` | `door` | `mode: follow`, `width: 0.5`, `axis: y` |
 | `device/spring_pad` | `spring` | `size: [0.2, 0.2]`, `velocity: [0.0, 0.0, 1.5]`, `trigger: object` |
@@ -1263,7 +1286,9 @@ def majority(inputs, state, dt):
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
 - `puzzles/tow/chain_dropoff`
+- `puzzles/tow/cleat_hold`
 - `puzzles/tow/drop_and_go`
+- `puzzles/tow/npc_leash`
 - `puzzles/tow/sled_delivery`
 - `puzzles/tow/tethered_start`
 <!-- mpg parts --markdown: end -->
