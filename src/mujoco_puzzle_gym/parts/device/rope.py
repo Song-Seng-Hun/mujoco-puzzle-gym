@@ -96,6 +96,7 @@ import mujoco
 import numpy as np
 
 from ...schema import Field, SchemaError
+from ...signals import is_on
 from ..base import Part
 
 BODY_HITCH = "body"
@@ -614,7 +615,7 @@ class Rope(Part):
         self.cur = target if abs(target - self.cur) <= step else self.cur + math.copysign(step, target - self.cur)
         model.tendon_range[self._tendon] = [0.0, self.cur]
         for key, ch in self.channels.items():
-            on = self.bus.on(ch)
+            on = is_on(self.read(ch))                # `read`, so a cut wire (R34) stops it
             if on and not self.edges[key]:
                 end = ENDS.index(key[-1])
                 if key.startswith("attach"):
