@@ -85,13 +85,19 @@ def free_mask(grid: Grid, walls: list[Segment], parts: dict[str, Any], on: set[s
     return free
 
 
+def gate_passable(part: Any, passable: float) -> bool:
+    """Whether gate `part` is passable now: its `state()` reached `passable`, or its own
+    higher `passable_state` (a rope door: lifted clear of the head, R31)."""
+    return part.role == "gate" and part.state() >= max(passable, getattr(part, "passable_state", 0.0))
+
+
 def live_free(grid: Grid, walls: list[Segment], parts: dict[str, Any], passable: float,
               inflate: float = 0.0) -> np.ndarray:
-    """Free cells from the parts' state now: gates whose `state()` reached `passable`
-    are open, holes (`hole_now`) are blocked. Used by the `demo:` executor."""
+    """Free cells from the parts' state now: gates passable now (`gate_passable`) are
+    open, holes (`hole_now`) are blocked. Used by the `demo:` executor."""
     segs = list(walls)
     for p in parts.values():
-        segs += p.blockers(p.role == "gate" and p.state() >= passable)
+        segs += p.blockers(gate_passable(p, passable))
     free = ~grid.blocked(segs, inflate)
     for p in parts.values():
         if (hole := p.hole_now(grid)) is not None:

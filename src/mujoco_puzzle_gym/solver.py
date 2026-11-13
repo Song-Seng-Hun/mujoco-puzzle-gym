@@ -493,12 +493,12 @@ class ScriptedSolver:
         """(free cells now, distance field to `part`'s target area), cached by the
         gates open and the holes there now."""
         from .env import GATE_PASSABLE
-        from .logic import live_free
+        from .logic import gate_passable, live_free
 
         env = self.env
         parts = env.parts.values()
         key = (part.name, part.target_key(),
-               tuple(p.name for p in parts if p.role == "gate" and p.state() >= GATE_PASSABLE),
+               tuple(p.name for p in parts if gate_passable(p, GATE_PASSABLE)),
                tuple(p.name for p in parts if p.hole_now(env.grid) is not None))
         if key not in self._live:
             inflate = env.body.footprint_radius + CLEARANCE

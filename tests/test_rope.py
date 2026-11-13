@@ -693,3 +693,43 @@ def test_warp_leaves_a_pulley_rope_behind(make):
     assert rope.tied == [None, 1]                      # the body's end comes loose, the rope stays
     mujoco.mj_forward(env.model, env.data)
     assert float(np.linalg.norm(env.data.site_xpos[rope.knots[0].sid][:2] - [0.8, 0.5])) > 1.0
+
+
+# ---- rope door ------------------------------------------------------------------------------------
+DOOR = {"name": "door", "preset": "device/rope_door", "pos": [0.6, 0.0]}
+LIFT = {**ROPE, "a": "door", "b": "body", "length": 1.5, "via": [[0.6, 0.0, 0.85]], "max_tension": 1.5}
+HANDOFF = {"name": "pad", "type": "hitch_station", "pos": [-0.55, 0.0], "mode": "handoff", "to": "post"}
+CLEAT_POST = {"name": "post", "type": "anchor", "pos": [-0.4, 0.0]}
+
+
+def test_rope_door_falls_shut_and_blocks(make):
+    from mujoco_puzzle_gym.logic import gate_passable
+
+    env = make([DOOR])
+    door, d = env.parts["door"], env.data
+    assert door.role == "gate" and not door.liftable and door.check_static(env)    # no rope: never opens
+    assert env.model.body_mass[door._bid] == pytest.approx(0.05)
+    d.qpos[door._qadr] = 0.3
+    body_steps(env, 1.5)
+    assert door.lift(d) < 0.002 and door.state() == 0.0
+    assert env.signals.get("door.open") == 0.0 and env.signals.get("door.lift") == 0.0
+    assert len(door.blockers(False)) == 1 and door.blockers(True) == []
+    d.qpos[door._qadr] = 0.2                           # half way: not passable for the live planners
+    tick(env)
+    assert 0.3 < door.state() < 1.0 and not gate_passable(door, 0.3)
+    d.qpos[door._qadr] = 0.36
+    tick(env)
+    assert door.state() == 1.0 and gate_passable(door, 0.3) and env.signals.get("door.open") == 1.0
+    with pytest.raises(RoomError, match="mass"):
+        make([{**DOOR, "mass": 0.2}])
+
+
+def test_rope_door_is_liftable_with_a_rope_and_a_fixed_hitch(make):
+    env = make([DOOR, CLEAT_POST, LIFT], spawn=(0.25, 0.0))
+    door, rope = env.parts["door"], rope_of(env)
+    assert door.liftable and door.check_static(env) == [] and rope.check_static(env) == []
+    assert rope.tied_hitch(0).kind == "door" and rope.tied_hitch(0).fixed
+    plain = make([DOOR, {**LIFT, "via": None, "length": 0.5}], spawn=(0.25, 0.0))
+    plain.warp("body", (-0.8, 0.5, 0.0))               # a door end is fixed: it comes loose, the rope goes along
+    assert rope_of(plain).tied == [None, 0]             # end b stays on the body (hitch 0)
+
