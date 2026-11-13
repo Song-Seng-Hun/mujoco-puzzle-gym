@@ -267,7 +267,7 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
     in `order` that a grabbable object sets off and the body cannot, or a held device
     (`grab_handle`, R28) in `order`; `head`: a wall button in
     `order` (or a `press` sub-goal) whose top edge is below the level beak tip; `crouch`:
-    a `glide` sub-goal (R30)."""
+    a `glide` sub-goal or a low bar the order stage lets a gliding body pass (R30)."""
     demo = list(getattr(env.room, "demo", []) or [])
     objs = [p for p in env.parts.values() if isinstance(p, Grabbable)]
     why = []
@@ -280,7 +280,9 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
             why.append(f"{sorted(set(need))} need the beak grab but the task actions {env.actions} "
                        "have no `grab`")
     if "crouch" not in env.actions:
-        bars = sorted({e[1] for e in demo if e[0] == "glide"})
+        bars = {e[1] for e in demo if e[0] == "glide"}
+        bars |= {p.name for p in env.parts.values() if getattr(p, "glide_ok", False)}  # passable only gliding
+        bars = sorted(bars)
         if bars:
             why.append(f"`glide` under {bars} needs the crouch but the task actions {env.actions} "
                        "have no `crouch`")

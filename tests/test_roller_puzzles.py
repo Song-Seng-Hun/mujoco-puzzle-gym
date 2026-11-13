@@ -247,6 +247,12 @@ def test_glide_needs_the_crouch_action(asset_dir, tmp_path):
     assert res["static"]["ok"], res
 
 
+def test_a_passable_bar_needs_the_crouch_without_a_glide_step(asset_dir, tmp_path):
+    room = bar_room(tmp_path, demo=None)             # grid answer only: the bar still needs a glide
+    res = check(room, static_only=True)
+    assert not res["actions"]["ok"] and "crouch" in res["actions"]["reason"]
+
+
 def test_glide_act_phases(asset_dir, tmp_path):
     env = PuzzleEnv(room=bar_room(tmp_path, demo=["glide bar"]), task={"actions": ["move", "crouch"]})
     env.reset(seed=0, options={"layout": env.sample_layout(None)})
