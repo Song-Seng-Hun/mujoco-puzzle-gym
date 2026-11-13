@@ -297,7 +297,8 @@ class Receptacle(Part):
         self.hung.remove(name)
 
     def _eject(self, model, data, rid: int) -> None:
-        """Lift the object above the walls and throw it outward."""
+        """Lift the object above the walls and throw it outward (tow ropes on it come loose, R31)."""
+        self.world.untie(model, data, rid)
         if self.shape == "hook":
             self._unhang(data, self.world.objects[rid].name)
         d = data.xpos[rid][:2] - self.xy

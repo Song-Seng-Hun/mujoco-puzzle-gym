@@ -68,7 +68,7 @@ if TYPE_CHECKING:
 BODY_PREFIX = "part/"
 
 #: Which body kinds each `trigger` value counts (R4, R5). Shells and rope knots
-#: never count (they have their own kinds).
+#: ("knot", R31) never count (they have their own kinds).
 TRIGGERS: dict[str, frozenset[str]] = {
     "body": frozenset({"body"}),
     "object": frozenset({"object"}),
@@ -106,6 +106,17 @@ class World:
     beak_site: int = -1
     #: Far end of a held tool (the stick, R28): presses wall buttons as the beak tip does.
     tool_tip: Any = None
+    #: Tow ropes (R31, parts/device/rope.py) in room order; empty in rooms without one.
+    ropes: list = field(default_factory=list)
+    #: `env.floor_height(xy)` -> (top or None over a hole, rim): where a loose knot rests.
+    floor_height: Any = None
+
+    def untie(self, model: mujoco.MjModel, data: mujoco.MjData, root_id: int) -> None:
+        """Untie every rope end on the free body `root_id` (R31): call it before teleporting
+        or launching that body (spring, dispenser recycle, receptacle eject, a warp of an
+        object). Nothing happens in rooms without ropes."""
+        for r in self.ropes:
+            r.untie_body(model, data, root_id)
 
     def kind_of(self, model: mujoco.MjModel, body_id: int) -> str | None:
         return self.kinds.get(int(model.body_rootid[body_id]))
@@ -272,6 +283,10 @@ class Part:
     # ---- runtime ----------------------------------------------------------
     def reset(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
         pass
+
+    def after_reset(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
+        """Called by the env reset after every part's `reset` and `mj_forward`: work that
+        needs the other parts in their start places (a rope ties its default ends, R31)."""
 
     def update(self, model: mujoco.MjModel, data: mujoco.MjData, body: BodyState) -> None:
         """Called after every body step (50 Hz for the default body)."""

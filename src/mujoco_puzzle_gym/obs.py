@@ -64,6 +64,22 @@ def addon(env):
     return out
 
 
+@register_obs("tow", replace=True)
+def tow(env):
+    """Tow rope (R31): the body's hitch tied (0/1), that rope's tension (0..1 of its
+    `max_tension`) and its other end relative to the body (its hitch when tied, else
+    its knot; heading frame, 2); 4 values, zeros while no rope is tied to the body
+    (first such rope, room order)."""
+    for r in env.world.ropes:
+        if not r.on_body:
+            continue
+        e = 1 - r.tied.index(r._body_h)
+        far = r._end_point(env.data, e)
+        t = float(np.clip(r.tension / float(r.cfg["max_tension"]), 0.0, 1.0))
+        return np.array([1.0, t, *_to_body_frame(env, far[:2])])
+    return np.zeros(4)
+
+
 @register_obs("part_pos", replace=True)
 def part_pos(env):
     """Privileged: every part's position relative to the body, heading frame (2 per part;
@@ -179,7 +195,7 @@ def npcs(env):
 
 #: Object kinds the `beak` term numbers (1 = first); 0 = nothing held. New kinds
 #: go at the end so the numbers of the old ones stay.
-GRAB_KINDS = ("cube", "laundry", "key", "handle_ball", "egg", "stick", "lever", "pull_cord", "drawer")
+GRAB_KINDS = ("cube", "laundry", "key", "handle_ball", "egg", "stick", "lever", "pull_cord", "drawer", "knot")
 
 
 @register_obs("beak", replace=True)

@@ -39,6 +39,11 @@ is passable, an opening trapdoor as a hole):
   strength along the line through the bar's centre and send `crouch` once the
   trunk is GLIDE_CROUCH before the line; done GLIDE_PAST beyond it (R30; the
   task needs the `crouch` action).
+- `tow <rope> <hitch>`: done once the rope ties the body and the hitch; else walk
+  onto the rope's attach (or toggle) hitch station nearest the hitch and stand until
+  it ties (no such station: stand, a channel ties it) (R31);
+- `untow <rope>`: done once the rope is off the body; else the same with a detach
+  (or toggle) station.
 `press` on a wall button (and a wall button in the grid answer) walks up to
 the plate with the beak tip at its height, or with a held stick's far end
 (R28). Head and grab values are kept between steps (a held object stays held
@@ -120,6 +125,7 @@ class ScriptedSolver:
         self._addon_from: str | None = None    # addon: the body's mode when the sub-goal began
         self._glide: dict | None = None        # glide: travel direction and phase
         self._crouch = False                   # glide: send `crouch` this step
+        self._tow_off = False                  # tow / untow: stepping off a used station pad
 
     @property
     def in_demo(self) -> bool:
@@ -305,6 +311,39 @@ class ScriptedSolver:
             return STAND.copy()
         return self._walk_to(station)
 
+    def tow_act(self, rope, hitch: str | None) -> np.ndarray | None:
+        """`tow` (hitch given) / `untow` (None) with rope `rope` (R31); None once done."""
+        from .parts.input._sense import in_rect
+
+        env = self.env
+        h = rope._index.get(hitch) if hitch is not None else None
+        if hitch is None:
+            if not rope.on_body:
+                return None
+            modes = ("detach", "toggle")
+        else:
+            if rope.on_body and h in rope.tied:
+                return None
+            modes = ("attach", "toggle")
+        sts = [p for p in env.parts.values() if getattr(p, "rope", None) is rope and getattr(p, "mode", None) in modes]
+        if not sts:
+            return STAND.copy()
+        if h is not None:
+            hp = env.data.site_xpos[rope.hitches[h].sid][:2]
+            sts.sort(key=lambda p: float(np.linalg.norm(p.xy - hp)))
+        st = sts[0]
+        inside = in_rect(env.body_state.pos[:2], st.xy, st.half)
+        if inside and not st.inputs and not st.armed:      # used: entering arms it again
+            self._tow_off = True
+        if self._tow_off:
+            act = self.carrier._walk_off(st.xy, float(max(st.half)) + env.body.footprint_radius + CLEARANCE)
+            if act is not None:
+                return act
+            self._tow_off = False
+        if in_rect(env.body_state.pos[:2], st.xy, np.maximum(st.half - ADDON_MARGIN, 0.02)):
+            return STAND.copy()
+        return self._walk_to(st)
+
     def glide_act(self, bar) -> np.ndarray | None:
         """Run up to low bar `bar` on wheels and crouch under it (R30); None once the
         trunk is GLIDE_PAST beyond the bar's centre line."""
@@ -438,6 +477,8 @@ class ScriptedSolver:
             return self.addon_act(env.parts[entry[1]])
         if cmd == "glide":
             return self.glide_act(env.parts[entry[1]])
+        if cmd in ("tow", "untow"):
+            return self.tow_act(env.parts[entry[1]], entry[2] if cmd == "tow" else None)
         part = env.parts[entry[1]]
         if part.satisfied():
             return None

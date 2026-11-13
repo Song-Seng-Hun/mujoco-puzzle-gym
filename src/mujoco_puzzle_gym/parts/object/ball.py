@@ -104,7 +104,10 @@ class FreeObject(Part):
         self.put(data, [*self.xy, self.floor_z + self._rest_z()])
 
     def park(self, model, data, xyz) -> None:
-        """Off stage at `xyz`: collisions off, gravity compensated (call mj_forward after)."""
+        """Off stage at `xyz`: collisions off, gravity compensated (call mj_forward after).
+        Tow ropes (R31) tied to it come loose first."""
+        if self.world is not None and self._bid >= 0:
+            self.world.untie(model, data, int(model.body_rootid[self._bid]))
         self.put(data, xyz)
         for g, _, _ in self._bits:
             model.geom_contype[g] = model.geom_conaffinity[g] = 0

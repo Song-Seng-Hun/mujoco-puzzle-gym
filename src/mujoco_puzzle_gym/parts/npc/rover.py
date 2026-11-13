@@ -30,6 +30,11 @@ warning: the body could not catch a fleeing robot.
 
 Snapshots (R6) hold the joints in the MuJoCo state, the leash limits
 (`jnt_range`, snapshot.MODEL_FIELDS) and the rule memory in `state_keys`.
+
+Tow ropes (R31, parts/device/rope.py) tie to the robot's centre (`hitch_offset`).
+While one is tied (`set_towed`) its motors have zero gains (it is dragged only) and
+its leash limits are off; untied outside its leash it heads straight back in, limits
+off until it is inside. The rope sets this on every reset, restore and tie change.
 """
 
 from __future__ import annotations
@@ -56,6 +61,7 @@ LEASH_LOOK = 0.03      # [m] a direction is in the leash if this far along it is
 LEASH_SOLREF = [0.01, 1.0]   # stiff leash limits (2 physics steps): a hard shove stays inside
 RAY_RANGE = 1.0        # [m] ray length (free distance compared between the sides)
 MOVING = 0.01          # [m/s]
+LOOSE_BOX = 1.0e3      # [m] slide limits while a tow rope holds it (R31): none in effect
 DUCK_SPEED = 0.16      # [m/s] walking body speed (spec R29 "about 0.16 m/s")
 BODY_RGBA = (0.3, 0.45, 0.85, 1.0)
 WHEEL_RGBA = (0.15, 0.15, 0.15, 1.0)
@@ -235,17 +241,54 @@ class Npc(Part):
         self._v = [int(model.jnt_dofadr[j]) for j in self._j]
         self._act = [model.actuator(f"{self.body_name}/motor_{a}").id for a in ("x", "y", "yaw")]
         self._colliding = (model.geom_contype != 0) | (model.geom_conaffinity != 0)
+        self._gain0 = model.actuator_gainprm[self._act].copy()
+        self._bias0 = model.actuator_biasprm[self._act].copy()
         gids = np.nonzero(model.geom_bodyid == self._bid)[0]
         self._bits = [(int(g), int(model.geom_contype[g]), int(model.geom_conaffinity[g])) for g in gids]
 
     def place(self, model, xy):
         super().place(model, xy)
+        self._leash_limits(model)
+
+    def _leash_limits(self, model) -> None:
         if self.leash is not None:
+            xy = model.body_pos[self._bid][:2]                # = self.xy (place), also mid-restore
             for i in range(2):
-                model.jnt_range[self._j[i]] = [self.leash[i] - self.xy[i], self.leash[i + 2] - self.xy[i]]
+                model.jnt_range[self._j[i]] = [self.leash[i] - xy[i], self.leash[i + 2] - xy[i]]
+
+    # ---- tow rope (R31) ------------------------------------------------------------------
+    towed = False
+    returning = False
+
+    def hitch_offset(self) -> list[float]:
+        """Rope hitch (R31): the chassis centre, in the body frame."""
+        return [0.0, 0.0, CLEAR + float(self.half[2])]
+
+    def set_towed(self, model, data, towed: bool) -> None:
+        """A rope is tied to it (`towed`) or not: motor gains zero / back, leash limits
+        off / back (off until it is inside again when it is outside its leash)."""
+        self.towed = bool(towed)
+        if self.towed:
+            model.actuator_gainprm[self._act] = 0.0
+            model.actuator_biasprm[self._act] = 0.0
+        else:
+            model.actuator_gainprm[self._act] = self._gain0
+            model.actuator_biasprm[self._act] = self._bias0
+        self.returning = bool(self.leash is not None and not self.towed
+                              and not self._in_leash(model.body_pos[self._bid][:2]
+                                                     + data.qpos[self._q[:2]]))   # qpos: also mid-restore
+        if self.leash is not None and (self.towed or self.returning):
+            for i in range(2):
+                model.jnt_range[self._j[i]] = [-LOOSE_BOX, LOOSE_BOX]
+        else:
+            self._leash_limits(model)
 
     def reset(self, model, data):
         self.parked = False
+        if self.towed:                                       # a rope held it last episode (R31)
+            model.actuator_gainprm[self._act] = self._gain0
+            model.actuator_biasprm[self._act] = self._bias0
+        self.towed = self.returning = False
         model.body_pos[self._bid, 2] = self.floor_z          # no z joint: stand on raised floor
         for i in range(3):
             data.qpos[self._q[i]] = data.qvel[self._v[i]] = data.ctrl[self._act[i]] = 0.0
@@ -264,7 +307,10 @@ class Npc(Part):
     # ---- off stage (a dispenser's copy, R28) ------------------------------------------
     def park(self, model, data, xyz) -> None:
         """Stand still at `xyz` (no vertical joint: at a floor height) with collisions and
-        motors off; the dispenser skips its `update` while parked."""
+        motors off; the dispenser skips its `update` while parked. Ropes tied to it come
+        loose first (R31)."""
+        if self.world is not None:
+            self.world.untie(model, data, int(model.body_rootid[self._bid]))
         model.body_pos[self._bid] = xyz
         for i in range(3):
             data.qpos[self._q[i]] = data.qvel[self._v[i]] = data.ctrl[self._act[i]] = 0.0
@@ -376,7 +422,16 @@ class Npc(Part):
         dt = self.bus.dt
         target = np.zeros(2)
         self.acting = False
-        if self.enabled() and body is not None:
+        if self.returning:                                   # untied outside its leash (R31)
+            L = self.leash
+            if self._in_leash(me):
+                self.returning = False
+                self._leash_limits(model)
+            else:
+                inner = np.clip(me, L[:2] + LEASH_LOOK, L[2:] - LEASH_LOOK)
+                d = inner - me
+                target = d / max(float(np.linalg.norm(d)), 1e-9) * float(self.live["speed"])
+        elif self.enabled() and body is not None and not self.towed:
             intent = behaviors.RULES[self.behavior](self, me, np.asarray(body.pos[:2], dtype=float), dt)
             self.acting = intent.acting
             want = intent.away
