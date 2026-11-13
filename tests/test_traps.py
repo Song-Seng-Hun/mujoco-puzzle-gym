@@ -247,6 +247,34 @@ def test_deep_pit_is_a_hole_again_when_the_box_leaves(tmp_path):
     env.close()
 
 
+def test_a_wide_deep_pit_is_not_filled_by_a_box_that_does_not_fit(tmp_path):
+    """Review fix: the filler must fit the opening (`fits`), or the part it does not cover
+    would read as floor. A 0.62 x 0.31 m pit with the 0.3 m box in its west half stays a
+    hole: no fill, the open east half has no floor height, and the planner keeps it out."""
+    wide = {**DEEP, "size": [0.62, 0.31]}
+    env = open_room(tmp_path, [wide, {**FILLER, "pos": [0.8, 0.0]}, ROPE], name="pitwide")
+    pit = env.parts["pit"]
+    assert pit.cubes == [] and not pit.fillable                   # no cube fits this opening
+    put_box(env, [-0.155, 0.0, -0.3 + env.parts["box"].size / 2])     # flush in the west half
+    body_steps(env, 0.6)
+    assert pit.filler_top() is None
+    assert pit.hole_now(env.grid) is not None
+    assert env.floor_height((0.25, 0.0))[0] is None and env.floor_height((-0.155, 0.0))[0] is None
+    env.close()
+
+
+def test_a_wide_deep_pit_with_on_fall_reset_still_resets(tmp_path):
+    """The fall rule treats it as open too: `on_fall: reset` respawns instead of failing."""
+    wide = {**DEEP, "size": [0.62, 0.31], "on_fall": "reset"}
+    env = open_room(tmp_path, [wide, {**FILLER, "pos": [0.8, 0.0]}, ROPE], name="pitwidereset")
+    pit = env.parts["pit"]
+    put_box(env, [-0.155, 0.0, -0.3 + env.parts["box"].size / 2])
+    body_steps(env, 0.6)
+    _, _, terminated, _, info = drop_in(env)
+    assert info["respawned"] and not terminated and not pit.failed()
+    env.close()
+
+
 def test_deep_pit_box_too_short_does_not_fill(tmp_path):
     env = deep_pit_env(tmp_path, "pitshort", box={"size": 0.2})
     assert env.parts["pit"].filler_top() is None and env.parts["pit"].hole_now(env.grid) is not None

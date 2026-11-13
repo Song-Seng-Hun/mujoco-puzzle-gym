@@ -24,7 +24,9 @@ wins over a hitch object's, priority 2, so a box in it stays put when walked on)
 tilted at most FILL_TILT, with its top at the floor height within FILL_TOL fills the
 pit: the pit's cells are floor (the fall height is measured from the cube's top,
 `height_at`) and the live planner no longer sees a hole (`hole_now`). When the cube
-leaves, the pit is a hole again. "Filled" is read from the physics state each time
+leaves, the pit is a hole again. Only a cube that fits the opening (`fits`) can fill it,
+so a pit wider than every cube in the room stays a hole: a small cube in it leaves the
+rest open, and the fall rule, `hole_now` and `fell` keep treating it as open. "Filled" is read from the physics state each time
 (not stored), so snapshots and same-seed runs need nothing extra. The static order
 (`hole_mask`) counts a pit with `depth` as fillable, not a hole, when the room has a
 cube with `hitch: true` that a rope can tie to and that fits it (`fits`: height
@@ -76,7 +78,7 @@ class Pit(FloorPart, Trap):
         self.open = not self.inputs
         self.fell = False
         self.depth = None if self.cfg.get("depth") is None else float(self.cfg["depth"])
-        self.cubes: list = []          # cubes that can fill it (`add_room_parts`, depth only)
+        self.cubes: list = []          # cubes that fit the opening (`add_room_parts`, depth only)
         self.fillable = False          # planning: a tiable hitch cube fits (module docstring)
         self._data = None
 
@@ -89,10 +91,10 @@ class Pit(FloorPart, Trap):
         ropes = [p for p in parts.values() if isinstance(p, Rope)]
         for p in parts.values():
             if isinstance(p, Pit) and p.depth is not None:
-                p.cubes = cubes
-                p.fillable = any(c.cfg["hitch"] and p.fits(c.extent()) is None
-                                 and any(c.name in r.ends_cfg or None in r.ends_cfg for r in ropes)
-                                 for c in cubes)
+                p.cubes = [c for c in cubes if p.fits(c.extent()) is None]   # only these can fill it
+                p.fillable = any(c.cfg["hitch"] and any(c.name in r.ends_cfg or None in r.ends_cfg
+                                                        for r in ropes)
+                                 for c in p.cubes)
 
     @property
     def full_depth(self) -> float:
@@ -170,7 +172,10 @@ class Pit(FloorPart, Trap):
             self.fell = True
 
     def filler_top(self) -> float | None:
-        """Top height [m] of a cube filling the pit now (module docstring), else None."""
+        """Top height [m] of a cube filling the pit now (module docstring), else None.
+
+        Only `self.cubes` are candidates: cubes that fit the opening (`fits`), so a cube
+        smaller than the pit never makes the part it does not cover read as floor."""
         if not self.cubes or self._data is None:
             return None
         data, cos_max = self._data, np.cos(np.radians(FILL_TILT))
