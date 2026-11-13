@@ -335,6 +335,26 @@ A `dispenser` is a cabinet that hands out one item each time its signal turns on
 - Examples: [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): put the wheels on at the station, roll down a corridor too long to walk in time, through the timed door (7.5 s), take the wheels off at the detach station at its end and walk up the steps to the goal. [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml): speed zone -> one-shot door -> crosswind (0.3 N) -> detach station on a brake strip -> steps -> goal.
 - Known limits: no braking on the station pad itself (lay a brake strip). Switching while moving and climbing slopes or steps on wheels are not measured. The step warning stays quiet only when a detach pad blocks the whole way (a gap beside the pad warns). The walking body turns in place slowly (0.15 rad in 3 s), so detaching in the inflated cells next to a wall can leave the solver stuck (make corridors wide). `fast_herd` (herding a flee NPC on wheels) was dropped: the flee NPC moves only within its `sense` (0.4 m), so walking herds it 20/20 even at NPC speeds 0.25-0.30 m/s. It comes back with a new NPC behaviour. `roll_delivery`: the head command is fixed on wheels, so objects are placed on feet (placing on wheels 0/20); a full-width detach pad without the brake strip let the rolling duck drift into the side wall and lose the key (14/20).
 
+## Tow rope
+
+`rope` (category `device`) is a rope between two knots. While the knots are within `length` (default 0.4 m) of each other it is slack and pulls nothing; beyond that it pulls (a MuJoCo spatial tendon, range 0..`length`). Each knot is a small disc of at least 20 g (`knot_mass`) that touches only the floor (the body and objects pass through it). The beak grabs the ring `handle_height` (default 0.16 m) above the knot. Knots count for no `trigger` of buttons, pressure plates or zones.
+
+- Hitches: places a rope end ties to. The body (`body`, 0.04 m above the floor under the trunk), objects with `hitch: true` (their centre), NPC robots, and the fixed post `anchor` (`hitch_height`, default 0.04 m; drawn only, the body walks through it). The rope's `a` and `b` name the ends' hitches and `tied` (default both) the ends tied at reset. A loose end's knot lies at `rest` ([[xa, ya], [xb, yb]], default ∓0.4 × `length` along x from `pos`). A room has at most `max_hitches` hitches (default 16, the body included). In a room with a rope, a `hitch: true` object's friction wins over the floor's (the object's `friction` sets the load).
+- Three ways to tie and untie:
+  - Hitch station `hitch_station`: with the trunk on the pad, slower than `max_speed` (default 0.1 m/s), the signal (its `in` channels turning on, or without them stepping onto the pad) ties the body to the nearest hitch within the rope's `hitch_radius` (default 0.3 m) of the body's hitch (`attach`; an end already tied to that hitch stays and the other end moves to the body). `detach` unties the body's end, `toggle` does whichever applies. `cooldown` (default 1 s) and `enable` work as on the addon station. `rope` picks the rope (may be left out when the room has one). Output `<pad>.towing`.
+  - Channels: the rope's `attach_a`, `detach_a`, `attach_b`, `detach_b` tie or untie that end when they turn on, to `a`/`b` (or, without one, the nearest hitch within `hitch_radius` of the knot).
+  - Beak: letting go of a held knot within `clip_radius` (default 0.04 m) of a hitch ties it; holding a tied knot for `untie_time` (default 0.5 s) unties it.
+  - When the other end is farther than `length`, nothing is tied and `<rope>.attach_failed` is on for one step (also when no hitch is in range). A tied knot is moved onto its hitch, then held there by a `connect` constraint.
+- Length: `length` is a run-time value, so `bind` can tie it to a channel such as a lever (a winch). When the target jumps, the actual length follows at `reel_speed` (default 0.05 m/s). Snapshots keep both the current and the target value.
+- Snapping: when the tension stays above `max_tension` (default 0.9 N) for more than `snap_time` (default 0.2 s), both ends come loose and `<rope>.snapped` turns 1 (until reset). With `on_snap: fail`, snapping fails the episode.
+- Channels: `<rope>.attached_a`, `.attached_b` (1 while tied), `.tension` (N, mean over a step), `.snapped`, `.attach_failed`, `body.towing` (1 while any rope is tied to the body; written by the room's first rope). Obs item `tow`: tied to the body, tension (0..1 of `max_tension`), the other end (its hitch when tied, else its knot) relative to the body (x, y). 4 values. In obs `beak`, the knot's object kind is 10.
+- A tied NPC robot has zero drive gains and no `leash` limits while the rope holds it, so it is dragged. Once untied its drive comes back; outside its leash box it walks back in, then the limits apply again. This is recomputed from the rope state on reset, snapshot restore and every tie change.
+- Teleports: warping the body takes the bundle joined to it by ropes (objects, knots, NPCs, and what is tied to those) along at the same relative pose. Fixed ends in the bundle (`anchor`) are untied first. When only an object is warped, a spring kicks an object, a dispenser takes a copy back, or a receiver ejects an object, that object's rope is untied first. Changing the addon (`set_addon`) unties the body's end first.
+- Check (`mpg check` `parts` stage): `hitch_radius` and `clip_radius` at most `length`, and the two ends tied at reset within `length` even with the random ranges (failures). Warnings: a towed load (friction × weight) above 0.4 N, and on the `demo:` way between `tow` and `untow` a door narrower than the towed object or a bend sharper than 90° within `length`.
+- Demo steps: `tow <rope> <hitch>` (walk to the hitch station that ties that rope between the body and the hitch and stand; if the pad was already used, step off and on again), `untow <rope>` (to a detaching pad). There is no step yet for dragging something to a place.
+- Measured (2026-11-13): dragging a 0.2 kg sled (friction 0.1) on a 0.4 m rope, the sled follows about 0.39 m behind at 0.1–0.43 N. A 0.3 kg sled (friction 0.5, 1.47 N load) snaps the rope as soon as the body walks. With a 0.3 kg sled (friction 0.5) tied to a post, jumping the `length` target 0.4 → 0.1 m gives peak tensions of 1.86/2.11/5.06/13.7 N at `reel_speed` 0.05/0.1/0.5/2.0 m/s (at 2.0 the sled overshoots the post). The body's hitch is Open question 9's 0.04 m (below the middle of the hip joint axes, (0.007, 0, −0.0756) m in the trunk frame).
+- Known limits: the knot ring height 0.16 m is a chosen value; Open question 8 (the R31 height) is still open. Relay (R34) hitches do not exist yet. A snapped rope stays unusable until reset. A spring kicking the body does not untie the rope.
+
 ## Python plugins
 
 A new part inherits `Part` and is registered with `register_part`. Write its values in `fields` as `Field`s, and range checks and the `mpg parts` table come with them. A gate function is registered with `register_logic` and called from a room as `logic: <name>`.
@@ -390,6 +410,15 @@ Role `prop`, update stage `device`.
 | `mode` | enum |  | `attach` | `attach`, `detach`, `toggle` |  | attach, detach or toggle |
 | `cooldown` | float | s | `1.0` | [0, 60] |  | time after a switch before the station switches again |
 | `max_speed` | float | m/s | `0.1` | [0.01, 1] |  | the body must be slower than this (horizontal) to switch |
+
+### `anchor`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `hitch_height` | float | m | `0.04` | [0.01, 0.5] |  | where the rope ties, above the floor (the body's hitch is at 0.04 m) |
+| `height` | float | m | `0.08` | [0.02, 0.5] |  | drawn post height |
 
 ### `ball`
 
@@ -537,6 +566,7 @@ Role `prop`, update stage `device`.
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
 | `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
@@ -617,6 +647,7 @@ Role `prop`, update stage `input`.
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `radius` | float | m | `0.022` | [0.01, 0.06] |  | egg radius (x, y) |
 | `height` | float | m | `0.06` | [0.02, 0.15] |  | egg height (z) |
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a knob: +x, -x, +y, -y |
@@ -689,10 +720,23 @@ Role `prop`, update stage `device`.
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `radius` | float | m | `0.03` | [0.015, 0.1] |  |  |
 | `roll_friction` | float | m | `0.002` | [0, 0.05] |  | rolling friction (low: it rolls on once let go) |
 | `handles` | list |  | `['-x']` |  |  | faces with a ring handle: +x, -x, +y, -y |
 | `ring` | float | m | `0.012` | [0.005, 0.04] |  | ring radius |
+
+### `hitch_station`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.3, 0.3]` | [0.2, 2] |  | pad size [x, y] |
+| `rope` | str |  | — |  |  | the rope it ties (default: the room's only rope) |
+| `mode` | enum |  | `attach` | `attach`, `detach`, `toggle` |  | attach, detach or toggle |
+| `cooldown` | float | s | `1.0` | [0, 60] |  | time after a change before the station works again |
+| `max_speed` | float | m/s | `0.1` | [0.01, 1] |  | the body must be slower than this (horizontal) |
 
 ### `key`
 
@@ -704,6 +748,7 @@ Role `prop`, update stage `device`.
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `head` | float | m | `0.04` | [0.02, 0.1] |  | side of the square head (the marker sits on it) |
 | `shaft` | float | m | `0.05` | [0.01, 0.2] |  | shaft length along +x |
 | `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the ring sticks out of the head's -x end |
@@ -728,6 +773,7 @@ Role `prop`, update stage `device`.
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `size` | vec | m | `[0.12, 0.1]` | [0.04, 0.4] |  | cloth [x, y] |
 | `thickness` | float | m | `0.006` | [0.002, 0.03] |  |  |
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | top edges with a hem the beak grabs: +x, -x, +y, -y |
@@ -916,6 +962,32 @@ Role `sensor`, update stage `input`.
 | `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
 | `consume` | bool |  | `False` |  |  | an accepted object vanishes and stays counted (a dispenser copy goes back, R28) |
 
+### `rope`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `length` | float | m | `0.4` | [0.05, 5] | yes | most distance between the knots (tendon range); bind it for a winch |
+| `reel_speed` | float | m/s | `0.05` | [0.001, 2] |  | the length moves to a new `length` at most this fast |
+| `a` | str |  | — |  |  | hitch of end a: a part name or `body` (the walking body) |
+| `b` | str |  | — |  |  | hitch of end b |
+| `tied` | list |  | — |  |  | ends tied at reset, e.g. [a]; default: the ends with a hitch |
+| `rest` | any |  | — |  |  | [[xa, ya], [xb, yb]]: where loose ends lie at reset; default: pos -+ 0.4 length along x |
+| `max_tension` | float | N | `0.9` | [0.01, 100] |  | above this for `snap_time` the rope snaps (both ends come loose) |
+| `snap_time` | float | s | `0.2` | [0, 10] |  |  |
+| `on_snap` | enum |  | `none` | `none`, `fail` |  | fail: snapping fails the episode |
+| `hitch_radius` | float | m | `0.3` | [0.01, 5] |  | channels and hitch stations tie to the nearest hitch this close (no `a` / `b`) |
+| `clip_radius` | float | m | `0.04` | [0.005, 1] |  | a knot the beak lets go this close to a hitch ties to it |
+| `untie_time` | float | s | `0.5` | [0.05, 10] |  | holding a tied knot this long unties it |
+| `knot_mass` | float | kg | `0.02` | [0.02, 0.5] |  |  |
+| `handle_height` | float | m | `0.16` | [0.03, 0.3] |  | knot ring height above the floor (the beak grabs it) |
+| `attach_a` | str |  | — |  |  | channel: on its rising edge end a ties |
+| `detach_a` | str |  | — |  |  | channel: on its rising edge end a comes loose |
+| `attach_b` | str |  | — |  |  | channel: on its rising edge end b ties |
+| `detach_b` | str |  | — |  |  | channel: on its rising edge end b comes loose |
+| `max_hitches` | int |  | `16` | [1, 64] |  | most hitches a room with ropes may have |
+
 ### `setter`
 
 Role `prop`, update stage `device`.
@@ -961,6 +1033,7 @@ Role `prop`, update stage `device`.
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `length` | float | m | `0.2` | [0.08, 0.5] |  | rod length along +x |
 | `width` | float | m | `0.016` | [0.006, 0.04] |  | square rod side |
 | `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the handle sticks out of the -x end |

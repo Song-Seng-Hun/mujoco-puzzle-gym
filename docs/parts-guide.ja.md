@@ -335,6 +335,26 @@ curriculum: {mode: forward, order: difficulty_first}
 - 例: [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): ステーションで車輪を付け、歩きでは間に合わない長い廊下を転がって時間制ドア(7.5秒)を抜け、廊下の端の外すステーションで外し、段を歩いて上りゴールへ。[`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml): 速度区域 → 一度きりのドア → 横風(0.3 N) → ブレーキ帯の上の外すステーション → 段 → ゴール。
 - 既知の限界: ステーションのパッド自体のブレーキはありません(ブレーキ帯を敷く)。動きながらの切り替えと、車輪で坂や段を上ることは測っていません。段の警告は、外すパッドが道を全部ふさぐときだけ出ません(パッドの横にすき間があれば警告)。歩く体のその場回転は遅い(3秒で0.15 rad)ので、転がって壁際の膨らませたマスで外すと解答が詰まることがあります(廊下を広く)。`fast_herd`(逃げるNPCを車輪で追い込む)はやめました: 逃げるNPCは`sense`(0.4 m)の中でしか動かないので、NPCの速さ0.25–0.30 m/sでも歩きで20/20追い込めます。新しいNPCの行動と一緒に見直します。`roll_delivery`: 車輪の状態では頭の命令が固定されるので、物は足で置きます(車輪で置くのは0/20)。ブレーキ帯なしの廊下幅いっぱいの外すパッドでは、転がるアヒルが横の壁へ流れて鍵を落としました(14/20)。
 
+## 牽引ロープ
+
+`rope`(分類`device`)は二つの結び目をつなぐロープです。結び目どうしが`length`(既定0.4 m)以内ならたるんで力がなく、超えると引きます(MuJoCoの空間テンドン、範囲0..`length`)。結び目は20 g以上の小さな円板(`knot_mass`)で、床にだけ触れます(体と物は通り抜けます)。結び目の上`handle_height`(既定0.16 m)の輪をくちばしでつかみます。結び目はボタン・圧力板・区域のどの`trigger`にも数えません。
+
+- 掛け所(hitch): ロープの端を結べる所。体(`body`、胴体の下の床から0.04 m)、`hitch: true`の物(その中心)、NPCロボット、固定の柱`anchor`(`hitch_height`、既定0.04 m。描くだけで体は通り抜けます)。ロープの`a`、`b`が端の掛け所の名前、`tied`(既定は両方)がリセット時に結ばれている端です。結ばれていない端の結び目は`rest`([[xa, ya], [xb, yb]]、既定は`pos`からxに∓0.4 × `length`)に置かれます。部屋の掛け所は`max_hitches`(既定16、体を含む)までです。ロープのある部屋では`hitch: true`の物の摩擦が床より優先されます(物の`friction`が引く荷の重さを決めます)。
+- 結ぶ・ほどく三つの道:
+  - 連結パッド`hitch_station`: 胴体がパッドの上にあり`max_speed`(既定0.1 m/s)より遅いとき、信号(`in`チャンネルがオンになる瞬間、なければパッドに乗る瞬間)が来ると、体の掛け所からロープの`hitch_radius`(既定0.3 m)以内で一番近い掛け所と体をつなぎます(`attach`。その掛け所にすでに結ばれた端はそのまま、もう一方の端が体に来ます)。`detach`は体側の端をほどき、`toggle`は合う方をします。`cooldown`(既定1 s)と`enable`はアドオンステーションと同じです。`rope`でロープを選びます(部屋にロープが一本なら省略可)。出力`<パッド>.towing`。
+  - チャンネル: ロープの`attach_a`、`detach_a`、`attach_b`、`detach_b`がオンになる瞬間、その端を`a`/`b`(なければ結び目から`hitch_radius`以内で一番近い掛け所)に結ぶかほどきます。
+  - くちばし: 結び目をくわえて掛け所の`clip_radius`(既定0.04 m)以内で放すと結ばれ、結ばれた結び目を`untie_time`(既定0.5 s)くわえ続けるとほどけます。
+  - 結ぶとき、もう一方の端までが`length`より遠ければ結ばず、`<ロープ>.attach_failed`を1ステップ出します(範囲内に掛け所がないときも)。結ばれた結び目は掛け所の位置に移されてから連結拘束(`connect`)で付きます。
+- 長さ: `length`は実行中の値なので、`bind`でレバーなどのチャンネルにつなげます(巻き上げ機)。目標が一度に変わっても、実際の長さは`reel_speed`(既定0.05 m/s)で追います。スナップショットは現在値と目標値を両方保存します。
+- 切れる: 張力が`max_tension`(既定0.9 N)を`snap_time`(既定0.2 s)より長く超えると両端がほどけ、`<ロープ>.snapped`が1になります(リセットまで)。`on_snap: fail`なら切れた時点で失敗です。
+- チャンネル: `<ロープ>.attached_a`、`.attached_b`(結ばれている間1)、`.tension`(N、1ステップの平均)、`.snapped`、`.attach_failed`、`body.towing`(体に結ばれたロープがあれば1。部屋の最初のロープが書きます)。観測項目`tow`: 体に結ばれているか、張力(`max_tension`に対する0..1)、もう一方の端(結ばれていればその掛け所、なければ結び目)の体基準の位置(x、y)。4個。観測`beak`の物の種類では結び目は10です。
+- NPCを結ぶと、ロープがかかっている間そのロボットの駆動ゲインが0になり、リード(`leash`)の制限が外れて引きずられます。ほどけると駆動が戻り、リードの箱の外にいれば中へ歩いて戻ってから制限をかけ直します。リセット・スナップショットの復元・結び目の変化のたびにロープの状態から計算し直します。
+- ワープ: 体をワープすると、ロープでつながった一団(物、結び目、NPC、さらにそれにつながったもの)を同じ相対姿勢で一緒に移します。一団の中の固定端(`anchor`)は先にほどきます。物だけがワープされたとき、スプリングが物を蹴ったとき、ディスペンサーが複製を回収したとき、受ける部品が物を吐き出したときは、その物のロープを先にほどきます。アドオンを替える(`set_addon`)ときは体側の端を先にほどきます。
+- 点検(`mpg check`の`parts`段階): `hitch_radius`と`clip_radius`が`length`以下か、リセット時に既定で結ばれた両端がランダム範囲を入れても`length`以内か(失敗)。引く荷(摩擦 × 重さ)が0.4 Nを超えるとき、また`demo:`の`tow`と`untow`の間の道に引く物より狭い扉や、`length`以内で90°より急な曲がりがあるときは警告します。
+- 解答の`demo:`: `tow <ロープ> <掛け所>`(そのロープを体と掛け所につなぐ連結パッドへ歩いて立つ。パッドをすでに使っていれば降りてまた乗る)、`untow <ロープ>`(ほどくパッドへ)。引いて目的地まで行く段階はまだありません。
+- 測定値(2026-11-13): 0.2 kgのそり(摩擦0.1)を0.4 mのロープで引いて歩くと、そりは約0.39 m後ろを付いて来て張力は0.1–0.43 N。0.3 kg(摩擦0.5、荷1.47 N)は歩き出すとすぐ切れます。柱に結んだ0.3 kgのそり(摩擦0.5)で`length`の目標を0.4 → 0.1 mに一度に変えると、最大張力は`reel_speed` 0.05/0.1/0.5/2.0 m/sで1.86/2.11/5.06/13.7 Nです(2.0ではそりが柱を通り過ぎます)。体の掛け所はOpen question 9の0.04 m(股関節の軸の中間の下、胴体基準(0.007, 0, −0.0756) m)です。
+- 既知の限界: 結び目の輪の高さ0.16 mは決めた値で、Open question 8(R31の高さ)はまだ開いています。中継器(R34)の掛け所はまだありません。切れたロープはリセットまで使えません。スプリングが体を蹴ったときはロープをほどきません。
+
 ## Pythonプラグイン
 
 新しい部品は`Part`を継承し、`register_part`で登録します。値を`fields`に`Field`として書けば、範囲の検査と`mpg parts`の表が自動でついてきます。ゲートの関数は`register_logic`で登録し、部屋では`logic: <名前>`で呼びます。
@@ -390,6 +410,15 @@ def majority(inputs, state, dt):
 | `mode` | enum |  | `attach` | `attach`, `detach`, `toggle` |  | attach, detach or toggle |
 | `cooldown` | float | s | `1.0` | [0, 60] |  | time after a switch before the station switches again |
 | `max_speed` | float | m/s | `0.1` | [0.01, 1] |  | the body must be slower than this (horizontal) to switch |
+
+### `anchor`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `hitch_height` | float | m | `0.04` | [0.01, 0.5] |  | where the rope ties, above the floor (the body's hitch is at 0.04 m) |
+| `height` | float | m | `0.08` | [0.02, 0.5] |  | drawn post height |
 
 ### `ball`
 
@@ -537,6 +566,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
 | `handle_size` | float | m | `0.015` | [0.005, 0.1] |  | how far a handle sticks out of its face |
@@ -617,6 +647,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `radius` | float | m | `0.022` | [0.01, 0.06] |  | egg radius (x, y) |
 | `height` | float | m | `0.06` | [0.02, 0.15] |  | egg height (z) |
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a knob: +x, -x, +y, -y |
@@ -689,10 +720,23 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `radius` | float | m | `0.03` | [0.015, 0.1] |  |  |
 | `roll_friction` | float | m | `0.002` | [0, 0.05] |  | rolling friction (low: it rolls on once let go) |
 | `handles` | list |  | `['-x']` |  |  | faces with a ring handle: +x, -x, +y, -y |
 | `ring` | float | m | `0.012` | [0.005, 0.04] |  | ring radius |
+
+### `hitch_station`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.3, 0.3]` | [0.2, 2] |  | pad size [x, y] |
+| `rope` | str |  | — |  |  | the rope it ties (default: the room's only rope) |
+| `mode` | enum |  | `attach` | `attach`, `detach`, `toggle` |  | attach, detach or toggle |
+| `cooldown` | float | s | `1.0` | [0, 60] |  | time after a change before the station works again |
+| `max_speed` | float | m/s | `0.1` | [0.01, 1] |  | the body must be slower than this (horizontal) |
 
 ### `key`
 
@@ -704,6 +748,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `head` | float | m | `0.04` | [0.02, 0.1] |  | side of the square head (the marker sits on it) |
 | `shaft` | float | m | `0.05` | [0.01, 0.2] |  | shaft length along +x |
 | `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the ring sticks out of the head's -x end |
@@ -728,6 +773,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `size` | vec | m | `[0.12, 0.1]` | [0.04, 0.4] |  | cloth [x, y] |
 | `thickness` | float | m | `0.006` | [0.002, 0.03] |  |  |
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | top edges with a hem the beak grabs: +x, -x, +y, -y |
@@ -916,6 +962,32 @@ def majority(inputs, state, dt):
 | `peg` | float | m | `0.06` | [0.02, 0.3] |  | hook: peg tip out from the post |
 | `consume` | bool |  | `False` |  |  | an accepted object vanishes and stays counted (a dispenser copy goes back, R28) |
 
+### `rope`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `length` | float | m | `0.4` | [0.05, 5] | 可 | most distance between the knots (tendon range); bind it for a winch |
+| `reel_speed` | float | m/s | `0.05` | [0.001, 2] |  | the length moves to a new `length` at most this fast |
+| `a` | str |  | — |  |  | hitch of end a: a part name or `body` (the walking body) |
+| `b` | str |  | — |  |  | hitch of end b |
+| `tied` | list |  | — |  |  | ends tied at reset, e.g. [a]; default: the ends with a hitch |
+| `rest` | any |  | — |  |  | [[xa, ya], [xb, yb]]: where loose ends lie at reset; default: pos -+ 0.4 length along x |
+| `max_tension` | float | N | `0.9` | [0.01, 100] |  | above this for `snap_time` the rope snaps (both ends come loose) |
+| `snap_time` | float | s | `0.2` | [0, 10] |  |  |
+| `on_snap` | enum |  | `none` | `none`, `fail` |  | fail: snapping fails the episode |
+| `hitch_radius` | float | m | `0.3` | [0.01, 5] |  | channels and hitch stations tie to the nearest hitch this close (no `a` / `b`) |
+| `clip_radius` | float | m | `0.04` | [0.005, 1] |  | a knot the beak lets go this close to a hitch ties to it |
+| `untie_time` | float | s | `0.5` | [0.05, 10] |  | holding a tied knot this long unties it |
+| `knot_mass` | float | kg | `0.02` | [0.02, 0.5] |  |  |
+| `handle_height` | float | m | `0.16` | [0.03, 0.3] |  | knot ring height above the floor (the beak grabs it) |
+| `attach_a` | str |  | — |  |  | channel: on its rising edge end a ties |
+| `detach_a` | str |  | — |  |  | channel: on its rising edge end a comes loose |
+| `attach_b` | str |  | — |  |  | channel: on its rising edge end b ties |
+| `detach_b` | str |  | — |  |  | channel: on its rising edge end b comes loose |
+| `max_hitches` | int |  | `16` | [1, 64] |  | most hitches a room with ropes may have |
+
 ### `setter`
 
 役割`prop`、更新段階`device`。
@@ -961,6 +1033,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `length` | float | m | `0.2` | [0.08, 0.5] |  | rod length along +x |
 | `width` | float | m | `0.016` | [0.006, 0.04] |  | square rod side |
 | `handle_size` | float | m | `0.015` | [0.005, 0.05] |  | how far the handle sticks out of the -x end |
