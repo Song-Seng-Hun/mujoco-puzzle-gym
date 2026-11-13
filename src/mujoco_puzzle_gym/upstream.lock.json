@@ -17,7 +17,7 @@
     "meshes": "CC BY-NC-SA 4.0 (https://creativecommons.org/licenses/by-nc-sa/4.0/) - robot/assets/*.stl",
     "mjcf_and_code": "Apache-2.0 - robot/*.xml (see LICENSE)",
     "policies": "Apache-2.0 - policies/*",
-    "attribution": "3D models (c) Pollen Robotics, https://github.com/pollen-robotics/microduck_rl, licensed CC BY-NC-SA 4.0. Walk policy velstand.onnx from https://huggingface.co/pollen-robotics/microduck-policies (Apache-2.0). Files are downloaded unmodified; mujoco-puzzle-gym edits the MJCF only in memory (BAM actuator setup). Unofficial project, not affiliated with Pollen Robotics."
+    "attribution": "3D models (c) Pollen Robotics, https://github.com/pollen-robotics/microduck_rl, licensed CC BY-NC-SA 4.0. Walk policy velstand.onnx and roller policies roller.onnx, roller_crouch.onnx from https://huggingface.co/pollen-robotics/microduck-policies (Apache-2.0). Files are downloaded unmodified; mujoco-puzzle-gym edits the MJCF only in memory (BAM actuator setup). Unofficial project, not affiliated with Pollen Robotics."
   },
   "files": [
     {
@@ -320,6 +320,62 @@
       "remote": "manifest.json",
       "size": 2638,
       "sha256": "5c6a73f95f388f131aaef570f6113f0d36b84a72d5755662cd57e67adf7fd24c"
+    },
+    {
+      "path": "robot/robot_groundcontact_rollers_backlash.xml",
+      "source": "github",
+      "remote": "src/mjlab_microduck/robot/microduck/robot_groundcontact_rollers_backlash.xml",
+      "size": 37780,
+      "sha256": "400fe547140354899774f72634a66fc446a96ab317e894c2a6fac5aa706a9967"
+    },
+    {
+      "path": "robot/assets/roller_blade.stl",
+      "source": "github",
+      "remote": "src/mjlab_microduck/robot/microduck/assets/roller_blade.stl",
+      "size": 1048484,
+      "sha256": "cbdc755394d5046640db6045dd241921654ec17a313db9de8e851c14b918472f"
+    },
+    {
+      "path": "robot/assets/tire.stl",
+      "source": "github",
+      "remote": "src/mjlab_microduck/robot/microduck/assets/tire.stl",
+      "size": 352884,
+      "sha256": "8aa460566e99afcccccd5c0507c883d3f6d1901e28ddd492cf0c7edc41067b54"
+    },
+    {
+      "path": "robot/assets/rim.stl",
+      "source": "github",
+      "remote": "src/mjlab_microduck/robot/microduck/assets/rim.stl",
+      "size": 115284,
+      "sha256": "b3c9cc8ea50a1406d289060dc007894e009471f15b59baf443a5545bfc242c6f"
+    },
+    {
+      "path": "robot/assets/ankle_l_v1.stl",
+      "source": "github",
+      "remote": "src/mjlab_microduck/robot/microduck/assets/ankle_l_v1.stl",
+      "size": 235984,
+      "sha256": "cf4407956caf05b2e9bb2c75764fa365d217f44efb5d365ed18ccfa62db3436f"
+    },
+    {
+      "path": "robot/assets/ankle_r_v1.stl",
+      "source": "github",
+      "remote": "src/mjlab_microduck/robot/microduck/assets/ankle_r_v1.stl",
+      "size": 235784,
+      "sha256": "0ddd5d3135cde74bddbfbaf6469f50ac02ba44681b796853a052bf0d23751d1d"
+    },
+    {
+      "path": "policies/roller.onnx",
+      "source": "huggingface",
+      "remote": "roller.onnx",
+      "size": 793685,
+      "sha256": "cf05651d2708a2f9364212e86b866c97a70ace8131c492500105e8f28bf99afd"
+    },
+    {
+      "path": "policies/roller_crouch.onnx",
+      "source": "huggingface",
+      "remote": "roller_crouch.onnx",
+      "size": 793685,
+      "sha256": "a1a084be240469c76ac9d3fa44d4792f16d4b1da60398b3ecd3cfc5e2244d990"
     }
   ]
 }
