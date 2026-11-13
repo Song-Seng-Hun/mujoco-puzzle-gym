@@ -1,0 +1,18 @@
+# Glide under (R30): a low bar (`device/low_bar`, underside 0.228 m) spans the
+# corridor; walking or rolling upright the duck's head hits it. Put the wheels
+# on at the station, run up straight at full push (1.5 m to the crouch point)
+# and crouch about 0.3 m before the bar: the head drops 7 cm and the duck
+# glides under at 0.35 m/s or more. The task needs the `crouch` action
+# (examples/task_glide_under.yaml).
+name: glide_under
+size: [5.0, 1.5]
+wall: {thickness: 0.06, height: 0.25}
+spawn: {pos: [-2.2, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: station, preset: device/addon_roller, pos: [-1.8, 0.0]}
+  - {name: bar, preset: device/low_bar, pos: [0.0, 0.0], length: 1.44}
+  - {name: goal, type: goal, pos: [1.6, 0.0], radius: 0.15, random: [0.05, 0.1]}
+demo:
+  - addon station
+  - glide bar
+  - goto goal

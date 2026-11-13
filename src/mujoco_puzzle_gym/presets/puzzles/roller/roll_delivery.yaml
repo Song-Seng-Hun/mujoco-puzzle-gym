@@ -1,0 +1,51 @@
+# Roll delivery (R30, R28): take the key from its stand, put the wheels on at
+# the station while holding it, press the button and roll down the corridor:
+# the button holds the first door open for 7.5 s after the body leaves it
+# (walking needs about 10 s for the 2.4 m, rolling about 5.5 s). Behind it,
+# the detach station (a 0.7 x 1.0 m pad on a brake strip of the same size, so
+# the rolling duck stops on it) takes the wheels off; on feet, put the key into
+# the basket, which opens the door to the goal. The head command is fixed on
+# wheels, so the key is placed on feet. The task needs `head` and `grab`
+# (examples/task_roll_delivery.yaml, 60 s episodes).
+name: roll_delivery
+cell: 0.1
+legend:
+  "P": {type: floor, height: 0.18}
+map: |
+  ##############################################################################
+  #.............................................#........................#.....#
+  #.............................................#........................#.....#
+  #............................................................................#
+  #............................................................................#
+  #..........P.................................................................#
+  #............................................................................#
+  #............................................................................#
+  #......................................................................#.....#
+  #......................................................................#.....#
+  #......................................................................#.....#
+  #......................................................................#.....#
+  #......................................................................#.....#
+  #......................................................................#.....#
+  #......................................................................#.....#
+  #.............................................#........................#.....#
+  #.............................................#........................#.....#
+  ##############################################################################
+spawn: {pos: [-3.45, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
+parts:
+  - {name: key, preset: beak/key, pos: [-2.75, 0.35]}
+  - {name: station, preset: device/addon_roller, pos: [-2.1, 0.0]}
+  - {name: button, preset: input/floor_momentary, pos: [-1.65, 0.0], size: [0.25, 1.58]}
+  - {name: timer, preset: logic/hold, in: [button], seconds: 7.5}
+  - {name: door, preset: device/sliding_door, pos: [0.75, 0.0], width: 1.16, in: [timer]}
+  - {name: brake, preset: trap/brake_strip, pos: [1.55, 0.0], size: [0.7, 1.0]}
+  - {name: wheels_off, preset: device/addon_roller, mode: detach, pos: [1.55, 0.0], size: [0.7, 1.0]}
+  - {name: basket, preset: beak/basket, pos: [2.45, 0.0]}
+  - {name: exit, preset: device/sliding_door, pos: [3.25, 0.35], in: [basket.ok]}
+  - {name: goal, type: goal, pos: [3.55, 0.35], radius: 0.12, random: [0.02, 0.05]}
+demo:
+  - grab key
+  - addon station
+  - press button
+  - addon wheels_off
+  - place key basket
+  - goto goal
