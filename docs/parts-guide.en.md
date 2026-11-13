@@ -92,6 +92,7 @@ Traps (the `trap` group) push the body, knock it over or let it fall. Each one a
 | pit `pit` | `trap/pit` | none. Falling in means `on_fall: fail` (the episode fails) or `reset` (back to the start or a checkpoint). With `in`, a lid covers it while off |
 | cannon `cannon` | `trap/cannon`, `trap/cannon_turret` | shell launch speed [m/s] |
 | slippery and sticky floor | `trap/slippery_floor`, `trap/sticky_floor` | friction of a floor tile (`floor_tile`) |
+| brake strip `brake_strip` | `trap/brake_strip` | none. While the body is on the strip, the wheel joints' `frictionloss` (default 0.01 N m) and `damping` (default 0). See [Addon station](#addon-station) |
 
 - The solve order and the solver treat a pit, the sweep of a spinning bar or pendulum, and the reach of a pusher as holes and walk around them.
 - A cannon fires `burst` shells every `period` seconds (with `fire: edge`, once per rising edge). `aim` is `fixed` (`yaw` + `aim_yaw`, `aim_pitch`), `at_body` (where the body is now), `lead` (where it is going) or `signal` (`aim_yaw` and `aim_pitch` bound to channels with `bind`). `spread` is the half angle of a cone around the aim. `<name>.fired` is on for one step when it fires; `<name>.hits` counts hits on the body.
@@ -145,10 +146,12 @@ All of these pass the solver stage of `mpg check` at least 18 times out of 20.
 | [`examples/rooms/cube_socket.yaml`](../examples/rooms/cube_socket.yaml) | Carry the key (marker 7) off its stand into the socket with its number to open the door. `--task examples/task_cube_socket.yaml` | `beak/key`, `input/socket`, `device/sliding_door` |
 | [`examples/rooms/wall_button.yaml`](../examples/rooms/wall_button.yaml) | Press a wall button with the beak to open the door | `beak/wall_button_beak_mid`, `device/sliding_door` |
 | [`examples/rooms/laundry.yaml`](../examples/rooms/laundry.yaml) | Put the laundry from two stands into the basket (2 pieces) to open the door. `--task examples/task_laundry.yaml` (60 s episodes) | `beak/laundry`, `beak/basket`, `device/sliding_door` |
-| [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | Put the wheels on at the station and roll to the goal at the far end of the rink | `device/addon_roller` |
+| [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml) | Put the wheels on, cross the button and roll down the long corridor through the timed door (7.5 s), take the wheels off at the station at its end and walk up the steps to the goal | `device/addon_roller`, `input/floor_momentary`, `logic/hold`, `device/sliding_door` |
+| [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml) | On wheels, cross the speed zone to open the door, roll through a crosswind, take the wheels off at the station on a brake strip and walk up the steps to the goal | `device/addon_roller`, `input/body_zone` (`min_speed`), `trap/crosswind`, `trap/brake_strip` |
+| `puzzles/roller/speed_gate`, `timed_corridor`, `mode_switch_route`, `brake_strip`, `one_way_station`, `crosswind` | Six roller puzzles. See [Addon station](#addon-station) | `device/addon_roller` |
 | [`examples/rooms/two_rooms_map.yaml`](../examples/rooms/two_rooms_map.yaml), [`stairs_map.yaml`](../examples/rooms/stairs_map.yaml) | Two rooms, and stairs and a ramp, drawn as text maps | `button`, `door` |
 
-The ball assembly presets are whole rooms, so you can pass one to `mpg check` as is, or lay it down with `preset: puzzles/ball/bowling` and change values.
+The ball and roller assembly presets are whole rooms, so you can pass one to `mpg check` as is, or lay it down with `preset: puzzles/ball/bowling` and change values.
 
 ## Two-phase check
 
@@ -310,8 +313,22 @@ A `dispenser` is a cabinet that hands out one item each time its signal turns on
 - `crouch` action: with `crouch` in task `actions` (order `head`, `grab`, `crouch`) the action gets one more value; above 0.5 it runs `roller_crouch.onnx` for 3.5 s. It is ignored unless on wheels at `env.crouch_min_speed` (default 0.2 m/s) or faster. While crouching the fall check reads the tilt only. Measured: trunk down to 0.067 m, 0.41-0.54 m glide over the 3.5 s, no fall in 28 crouches.
 - Solver `demo:`: `addon <station>` (walk to the middle of the pad, stand until the mode changes). The grid solver does not use stations.
 - Measured (2026-11-13, 20 seeds): attach standing, then command 0/0.3/0.4 for 2 s, stop, detach, command 0 for 2 s, walk 3 s: 0 falls, max tilt 9.3/13.8/14.1 deg after attaching, 10.6 deg or less after detaching. No falls on a 1 cm step tile either (test, 10 seeds).
-- Example [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): the station next to the start puts the wheels on, and the duck rolls to the goal at the far end of the rink.
-- Known limits: no braking on the pad (wheel joint friction 0.0015 stops the duck at command 0 by itself). Switching while moving and climbing slopes or steps on wheels are not measured, and the static check does not yet warn about a route that meets steps on wheels. The roller puzzle presets (`puzzles/roller/`) and the `roller_route` example come next.
+- Speed zone: give a zone sensor (`zone`) `min_speed` [m/s] and it counts a target only while it moves at least that fast. The speed is the step-to-step motion smoothed over about 0.5 s (a low-pass of the velocity vector), so the gait's side-to-side sway drops out. Measured (2026-11-13, 3 seeds): 0.20-0.25 m/s walking flat out, 0.32-0.53 m/s pushing flat out on wheels. The roller presets use 0.28. With `rearm: leave` or a `direction`, the speed counts at the turn-on only. Without it (the default) the zone works as before.
+- Brake strip `brake_strip` (preset `trap/brake_strip`): while the trunk is over the strip and the strip acts (trap rule: `in`, `enable`, `enabled`), the four wheel joints get the strip's `frictionloss` and `damping`; when the body leaves, they go back to the built values (0.0015, 0). These are model values, so snapshots and reset restore them. With several strips, the largest values of the strips under the body count. On feet the wheels do not touch the floor, so it does nothing. In a room without a station the check warns. Measured (rolling in at 0.29-0.48 m/s, 5 seeds): `frictionloss` 0.01 stops the duck 0.08-0.12 m past the edge (0.4-0.6 s) with no push, 0.12-0.13 m while it keeps pushing, no falls. At 0.004 a push keeps rolling; 0.03, or any `damping` of 0.002 or more, tips it over from 0.44 m/s (the stop is too sudden). A duck stopped on a 0.01 strip cannot roll off it on wheels, so lay the strip under a detach station or at the end of a run.
+- Step warning (`mpg check` stage `parts`, not a failure): the room's first station floods the floor from each attach or toggle pad (every switch on, the other detach and toggle pads blocked). If it reaches floor at another height (step cells of a letter map, floor tiles with a height, more than 3 mm), that is a way onto steps on wheels, and the check warns: the roller policy does not climb steps. Lay a detach pad across the way.
+- Roller assembly presets `puzzles/roller/` (each a whole room with `demo:`, `mpg check` 20/20). Times are success means.
+
+| Preset | What it does | Numbers |
+|---|---|---|
+| `puzzles/roller/speed_gate` | Only a run-up on wheels through the speed zone opens the one-shot door | `min_speed` 0.28 m/s. 20/20 (10.3 s), walking only 0/20 |
+| `puzzles/roller/timed_corridor` | The button at the start keeps the door at the end of a long corridor (2.4 m) open for 7.5 s after the body leaves it | Button to door: walking 10.1-10.4 s, rolling 5.2-5.7 s (10 seeds). 20/20 (16.5 s), walking only 0/20 |
+| `puzzles/roller/mode_switch_route` | Roll the flat, take the wheels off at the detach station (0.7 m pad) before the steps, walk up the steps (1 cm each) to the goal | 20/20 (15.5 s). Corridor 1.2 m wide (at 0.8 m the rolling duck drifted to the wall and got stuck in 2/6) |
+| `puzzles/roller/brake_strip` | The short detach pad (0.3 m) before the steps lies on a brake strip, so the duck rolling in stops on the pad | 20/20 (16.7 s). Without the strip (friction 0.0015) 18/20, 16-35 s |
+| `puzzles/roller/one_way_station` | An attach-only station at the west end, a detach-only station across the room before the steps, a speed-zone door between them: use them in order | 20/20 (24.1 s) |
+| `puzzles/roller/crosswind` | A timed corridor with a crosswind (`yaw` 90) across it | Default 0.5 N 20/20 (12.9 s). 20 seeds: 0.75 N 18/20, 1.0 N 12/20 (falls), 2 N 0/10 |
+
+- Examples: [`examples/rooms/roller_rink.yaml`](../examples/rooms/roller_rink.yaml): put the wheels on at the station, roll down a corridor too long to walk in time, through the timed door (7.5 s), take the wheels off at the detach station at its end and walk up the steps to the goal. [`examples/rooms/roller_route.yaml`](../examples/rooms/roller_route.yaml): speed zone -> one-shot door -> crosswind (0.3 N) -> detach station on a brake strip -> steps -> goal.
+- Known limits: no braking on the station pad itself (lay a brake strip). Switching while moving and climbing slopes or steps on wheels are not measured. The step warning stays quiet only when a detach pad blocks the whole way (a gap beside the pad warns). The walking body turns in place slowly (0.15 rad in 3 s), so detaching in the inflated cells next to a wall can leave the solver stuck (make corridors wide). `glide_under`, `fast_herd` and `roll_delivery` wait for measurements.
 
 ## Python plugins
 
@@ -382,6 +399,17 @@ Role `prop`, update stage `device`.
 | `roll_friction` | float | m | `0.005` | [0, 0.05] |  | rolling friction (0.005: a 0.5 m/s ball stops in about 0.2 m) |
 | `roll_damping` | float | N m s/rad | `0.0` | [0, 1] |  | damping on the rotational dofs |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
+
+### `brake_strip`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `enabled` | int |  | `1` | [0, 1] | yes | 0 turns the trap off (setters, difficulty steps) |
+| `size` | vec | m | `[0.3, 0.6]` | [0.05, 5] |  | strip size [x, y] |
+| `frictionloss` | float | N m | `0.01` | [0, 1] | yes | wheel joint friction while the body is on the strip |
+| `damping` | float | N m s/rad | `0.0` | [0, 1] | yes | wheel joint damping while the body is on the strip |
 
 ### `button`
 
@@ -1035,6 +1063,7 @@ Role `switch`, update stage `input`.
 | `direction` | vec |  | — |  |  | count only entries moving this way |
 | `rearm` | enum |  | `always` | `always`, `leave` |  |  |
 | `leave_margin` | float | m | `0.05` | [0, 1] |  | rearm leave: how far outside the box a target must go |
+| `min_speed` | float | m/s | — | [0, 2] |  | count a target only while its horizontal speed (averaged ~0.5 s) is at least this |
 
 ### Part presets
 
@@ -1109,6 +1138,7 @@ Role `switch`, update stage `input`.
 | `object/ball` | `ball` | `radius: 0.05`, `mass: 0.05`, `elasticity: 0.5` |
 | `object/bowling_pin` | `pin` | `radius: 0.02`, `height: 0.12`, `mass: 0.03` |
 | `object/heavy_ball` | `ball` | `radius: 0.08`, `mass: 0.5`, `elasticity: 0.2` |
+| `trap/brake_strip` | `brake_strip` | `size: [0.3, 0.6]`, `frictionloss: 0.01`, `damping: 0.0` |
 | `trap/cannon` | `cannon` | `aim: at_body` |
 | `trap/cannon_turret` | `cannon` | `fire: edge`, `aim: signal`, `spread: 0.0`, `burst: 1` |
 | `trap/crosswind` | `wind` | `size: [0.6, 1.0]`, `height: 0.4`, `yaw: 90.0`, `power: 1.0` |
@@ -1126,4 +1156,10 @@ Role `switch`, update stage `input`.
 - `puzzles/ball/color_sort`
 - `puzzles/ball/mini_soccer`
 - `puzzles/coins/coin_lock`
+- `puzzles/roller/brake_strip`
+- `puzzles/roller/crosswind`
+- `puzzles/roller/mode_switch_route`
+- `puzzles/roller/one_way_station`
+- `puzzles/roller/speed_gate`
+- `puzzles/roller/timed_corridor`
 <!-- mpg parts --markdown: end -->
