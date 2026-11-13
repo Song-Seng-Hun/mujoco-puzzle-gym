@@ -11,6 +11,12 @@ body's trunk) is in the box `size` x `height` above the floor at `pos`.
 - `rearm: leave`: once on for a target, the zone stays on until that target is
   outside the box grown by `leave_margin` on every side. Standing in the zone
   or wobbling on its edge then makes one pass one turn-on (lap counters).
+- `min_speed` [m/s] (R30 speed gate): a target counts only while it moves at
+  least this fast horizontally. The speed is the step-to-step motion averaged
+  over about `SPEED_TAU` s (a low-pass of the velocity vector), so the walking
+  gait's sway does not count: at full speed it stays at 0.20-0.25 m/s, while
+  rolling on the roller addon gives 0.32-0.53 m/s. With `rearm: leave` or a
+  `direction` the speed counts at the turn-on only. None or 0: no speed rule.
 With `enable` off the output holds (targets are still tracked).
 """
 
@@ -24,6 +30,7 @@ from ..base import TRIGGERS, Part
 from ._sense import candidates, in_rect
 
 RGBA_OFF = (0.3, 0.6, 0.95, 0.15)
+SPEED_TAU = 0.5      # [s] min_speed: time constant of the averaged velocity
 RGBA_ON = (0.3, 0.95, 0.4, 0.3)
 
 
@@ -31,7 +38,7 @@ class Zone(Part):
     role = "switch"
     stage = "input"
     emits = True
-    state_keys = ("on", "accepted", "was_inside", "prev_pos")
+    state_keys = ("on", "accepted", "was_inside", "prev_pos", "vel", "prev_t")
     fields = (
         Field("size", "vec", [0.4, 0.4], length=2, unit="m", min=0.05, max=10.0,
               doc="box size [x, y]"),
@@ -42,6 +49,8 @@ class Zone(Part):
         Field("rearm", "enum", "always", choices=("always", "leave")),
         Field("leave_margin", "float", 0.05, unit="m", min=0.0, max=1.0,
               doc="rearm leave: how far outside the box a target must go"),
+        Field("min_speed", "float", None, unit="m/s", min=0.0, max=2.0,
+              doc="count a target only while its horizontal speed (averaged ~0.5 s) is at least this"),
     )
 
     def __init__(self, name, cfg):
@@ -57,10 +66,11 @@ class Zone(Part):
             raise ValueError(f"part {name!r}: direction must not be [0, 0]")
         self.rearm = c["rearm"]
         self.leave_margin = float(c["leave_margin"])
+        self.min_speed = float(c["min_speed"] or 0.0)
         if self.names or "body" not in TRIGGERS[self.trigger]:
             self.role = "sensor"
         self.needs_body("walk" if self.role == "switch" else "beak_grab")
-        self.stateful = self.rearm == "leave" or self.direction is not None
+        self.stateful = self.rearm == "leave" or self.direction is not None or self.min_speed > 0
         self._clear()
 
     def _clear(self):
@@ -68,6 +78,8 @@ class Zone(Part):
         self.accepted: dict = {}
         self.was_inside: dict = {}
         self.prev_pos: dict = {}
+        self.vel: dict = {}            # min_speed: averaged horizontal velocity per target
+        self.prev_t: float | None = None
 
     def build(self, spec):
         body = super().build(spec)
@@ -94,20 +106,37 @@ class Zone(Part):
     def _inside(self, pos, margin: float = 0.0) -> bool:
         return in_rect(pos, self.xy, self.half, margin) and -margin <= pos[2] <= self.height + margin
 
+    def _fast(self, key, pos, now: float) -> bool:
+        """Update the averaged velocity of `key`; whether it is at least `min_speed`."""
+        prev, dt = self.prev_pos.get(key), (None if self.prev_t is None else now - self.prev_t)
+        v = self.vel.get(key, np.zeros(2))
+        if prev is not None and dt:
+            a = min(1.0, dt / SPEED_TAU)
+            v = v + a * ((pos[:2] - prev[:2]) / dt - v)
+        self.vel[key] = v
+        return float(np.hypot(*v)) >= self.min_speed
+
     def update(self, model, data, body):
+        now = float(data.time)
         for key, pos in candidates(self, data, body, self.trigger, self.names):
             inside = self._inside(pos)
+            fast = self._fast(key, pos, now) if self.min_speed > 0 else True
             if self.accepted.get(key):
-                keep = self._inside(pos, self.leave_margin) if self.rearm == "leave" else inside
-                self.accepted[key] = keep
+                if self.rearm == "leave":
+                    self.accepted[key] = self._inside(pos, self.leave_margin)
+                else:
+                    self.accepted[key] = inside and (fast or self.direction is not None)
+            elif inside and self.direction is None:
+                # without a direction an accepted target stays accepted while inside,
+                # so "inside, not accepted" is an entry (or, with min_speed, a speed-up)
+                self.accepted[key] = fast
             elif inside and not self.was_inside.get(key, False):
                 prev = self.prev_pos.get(key)
-                if self.direction is None:
-                    self.accepted[key] = True
-                elif prev is not None:
-                    self.accepted[key] = float((pos[:2] - prev[:2]) @ self.direction) > 0
+                if prev is not None:
+                    self.accepted[key] = fast and float((pos[:2] - prev[:2]) @ self.direction) > 0
             self.was_inside[key] = inside
             self.prev_pos[key] = pos
+        self.prev_t = now
         if not self.enabled():
             return
         on = any(self.accepted.values())
