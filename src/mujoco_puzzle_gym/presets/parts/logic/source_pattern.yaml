@@ -1,0 +1,6 @@
+# Signal source (R33): the values of `pattern`, one every `step` seconds, repeating.
+# Set: pos, pattern; optional step, phase, enable.
+type: source
+mode: pattern
+pattern: [1.0, 0.0, 1.0, 0.0, 0.0]
+step: 1.0

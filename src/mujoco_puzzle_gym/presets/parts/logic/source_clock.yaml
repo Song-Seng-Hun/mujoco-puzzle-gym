@@ -1,0 +1,6 @@
+# Signal source (R33): on for `duty` of every `period` seconds. Set: pos; optional
+# period, duty, phase, enable.
+type: source
+mode: clock
+period: 4.0
+duty: 0.5

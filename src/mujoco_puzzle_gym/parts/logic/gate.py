@@ -15,8 +15,8 @@ Exactly one of:
   (fn(inputs, state, dt) -> float); room.yaml never holds code. Set
   `stateful: true` when its output does not depend on this step's input.
 
-The gate has no MuJoCo body. With `enable` off its output holds and its time
-functions stop.
+The gate has no MuJoCo body unless `body: true` puts one in the room (R33,
+`logic/base.py`). With `enable` off its output holds and its time functions stop.
 """
 
 from __future__ import annotations
@@ -27,18 +27,17 @@ from ...expr import OPS, ExprError, compile_expr, op_expr
 from ...registry import get_logic
 from ...schema import Field, SchemaError
 from ...signals import is_on
-from ..base import Part
+from .base import BodiedLogic
 
 MODES = ("expr", "op", "sequence", "logic")
 
 
-class Gate(Part):
+class Gate(BodiedLogic):
     stage = "logic"
     emits = True
-    has_body = False
     fields = (
         Field("pos", "vec", [0.0, 0.0], length=2, unit="m",
-              doc="where guides draw the gate (it has no body)"),
+              doc="where the gate stands (`body: true`) or where guides draw it"),
         Field("expr", "str", None, doc="safe expression over channels (R7)"),
         Field("op", "enum", None, choices=OPS, doc="preset logic over `in`"),
         Field("seconds", "float", 1.0, unit="s", min=0.0, max=3600.0,
@@ -97,6 +96,7 @@ class Gate(Part):
     # ---- runtime -------------------------------------------------------------------
     def reset(self, model, data):
         self._reset_state()
+        self.paint(model)
 
     def _sequence(self) -> tuple[float, float]:
         rising = []
@@ -128,6 +128,7 @@ class Gate(Part):
             self.value, wrong = self._sequence()
             self.write(self.value, self.outputs[0])
             self.write(wrong, self.outputs[-1])
+            self.paint(model)
             return
         if self.mode == "logic":
             vals = {ch: self.read(ch) for ch in self.inputs}
@@ -136,6 +137,7 @@ class Gate(Part):
             self.value = self.expr.eval(self.read, self.bus.dt)
         for ch in self.outputs:
             self.write(self.value, ch)
+        self.paint(model)
 
     def state(self):
         return float(is_on(self.value))
@@ -162,3 +164,4 @@ class Gate(Part):
         if self.expr is not None:
             self.expr.set_state(copy.deepcopy(st["expr"]))
         self.plugin_state = copy.deepcopy(st["plugin"])
+        self.paint(model)

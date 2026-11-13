@@ -9,7 +9,7 @@ from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
 from .input import Button, Checkpoint, Laser, PressurePlate, Receptacle, Target, Zone
-from .logic import Counter, Gate, Receiver, Transmitter
+from .logic import Counter, Gate, Receiver, Source, Transmitter
 from .npc import Npc
 from .object import Ball, Cube, Pin
 from .switch import Switch
@@ -22,6 +22,7 @@ register_part("gate", Gate, replace=True)
 register_part("counter", Counter, replace=True)
 register_part("transmitter", Transmitter, replace=True)
 register_part("receiver", Receiver, replace=True)
+register_part("source", Source, replace=True)
 register_part("button", Button, replace=True)
 register_part("zone", Zone, replace=True)
 register_part("laser", Laser, replace=True)
