@@ -1,13 +1,36 @@
-# Example room (R30, R24 "addon station"): the roller station next to the start
-# puts the wheels on (stand on the pad); the duck then rolls down the rink to
-# the goal at the far end. `demo:` tells the scripted solver to use the station.
+# Example room (R30, R24 "addon station"): put the wheels on at the station,
+# press the button and roll down the long corridor: the button holds the door
+# at its end open for 7.5 s after the body leaves it (`logic/hold`), and a
+# walking duck needs about 10 s for the 2.5 m (rolling about 5.5 s). Behind
+# the door the detach station (a 0.7 m pad across the corridor) takes the
+# wheels off; walk up the steps (1 cm each) to the goal. `demo:` tells the
+# scripted solver to use the stations.
 name: roller_rink
-size: [3.0, 1.2]
-wall: {thickness: 0.06, height: 0.25}
-spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.05, 0.1, 0.3]}
+cell: 0.15
+step_height: 0.01
+map: |
+  #####################################
+  #.......................#.....123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.............................123333#
+  #.......................#.....123333#
+  #####################################
+spawn: {pos: [-2.45, 0.0], yaw: 0.0, random: [0.03, 0.05, 0.2]}
 parts:
-  - {name: station, preset: device/addon_roller, pos: [-0.75, 0.0]}
-  - {name: goal, type: goal, pos: [1.15, 0.0], radius: 0.15, random: [0.05, 0.3]}
+  - {name: station, preset: device/addon_roller, pos: [-2.05, 0.0]}
+  - {name: button, preset: input/floor_momentary, pos: [-1.6, 0.0], size: [0.25, 1.48]}
+  - {name: timer, preset: logic/hold, in: [button], seconds: 7.5}
+  - {name: door, preset: device/sliding_door, pos: [0.9, 0.0], width: 1.16, in: [timer]}
+  - {name: wheels_off, preset: device/addon_roller, mode: detach, pos: [1.35, 0.0], size: [0.7, 1.48]}
+  - {name: goal, type: goal, pos: [2.35, 0.0], radius: 0.12, random: [0.05, 0.1]}
 demo:
   - addon station
+  - press button
+  - addon wheels_off
   - goto goal
