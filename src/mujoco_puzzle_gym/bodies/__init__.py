@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .base import BodyAdapter, BodyState, Capabilities, Pose, SubstepFn, flat_floor_spec
+from .base import ADDON_MODES, BodyAdapter, BodyState, Capabilities, Pose, SubstepFn, flat_floor_spec
 
 DEFAULT_BODY = "microduck"
 
@@ -14,4 +14,4 @@ def make_body(name: str = DEFAULT_BODY, **kwargs) -> BodyAdapter:
     raise ValueError(f"unknown body {name!r}")
 
 
-__all__ = ["BodyAdapter", "BodyState", "Capabilities", "Pose", "SubstepFn", "flat_floor_spec", "make_body", "DEFAULT_BODY"]
+__all__ = ["ADDON_MODES", "BodyAdapter", "BodyState", "Capabilities", "Pose", "SubstepFn", "flat_floor_spec", "make_body", "DEFAULT_BODY"]
