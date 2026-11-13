@@ -4,8 +4,10 @@ task is saved as `task.resolved.yaml` next to a run.
 
     room: switch_door.yaml        # relative to the task file
     env: {hz: 10, episode_seconds: 40, command_scale: 1.0}   # scale > 1: unclipped
-                                                            # commands (broken tests)
-    actions: [move]               # R19: add `head` and / or `grab` (one action value each)
+                                                            # commands (broken tests);
+                                  # optional crouch_min_speed (R30, default 0.2 m/s)
+    actions: [move]               # R19: add `head`, `grab` and / or `crouch` (R30), one
+                                  # action value each, in that order
     plugins: [my_terms]           # modules imported first (here and in every worker)
     obs: [gravity, ang_vel, lin_vel, part_pos, part_state]   # items may take
                                   # parameters: {item: coins, k: 5} (R39, obs.py)
@@ -39,7 +41,7 @@ from . import curriculum
 from .registry import REWARDS, load_builtins
 
 RESOLVED_NAME = "task.resolved.yaml"
-ACTIONS = ("move", "head", "grab")
+ACTIONS = ("move", "head", "grab", "crouch")
 HZ_RANGE = (5.0, 25.0)
 
 DEFAULTS: dict[str, Any] = {
@@ -131,7 +133,10 @@ def validate(task: dict[str, Any]) -> None:
     acts = task["actions"]
     if (not isinstance(acts, list) or not acts or acts[0] != "move" or len(set(acts)) != len(acts)
             or any(a not in ACTIONS for a in acts) or acts[1:] != [a for a in ACTIONS[1:] if a in acts]):
-        raise TaskError(f"`actions` must be [move] plus head and / or grab in that order, got {acts!r}")
+        raise TaskError(f"`actions` must be [move] plus any of head, grab, crouch in that order, got {acts!r}")
+    mins = task["env"].get("crouch_min_speed")
+    if mins is not None and (isinstance(mins, bool) or not isinstance(mins, (int, float)) or mins < 0):
+        raise TaskError(f"env.crouch_min_speed must be a number >= 0 [m/s], got {mins!r}")
     from .obs import ObsItemError, check_items
 
     try:

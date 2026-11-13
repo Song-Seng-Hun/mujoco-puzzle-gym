@@ -1,6 +1,7 @@
 """Device parts (R9, R11-R15, R38): doors, trapdoor, platform, pillar, turntable,
-conveyor, setter, warp pad, spring, goal net."""
+conveyor, setter, warp pad, spring, goal net, addon station (R30)."""
 
+from .addon_station import AddonStation
 from .conveyor import Conveyor
 from .door import Door
 from .goal_net import GoalNet
@@ -13,5 +14,5 @@ from .trapdoor import Trapdoor
 from .turntable import Turntable
 from .warp import Warp
 
-__all__ = ["Conveyor", "Door", "GoalNet", "Pillar", "Platform", "Setter", "Spring", "SwingDoor",
+__all__ = ["AddonStation", "Conveyor", "Door", "GoalNet", "Pillar", "Platform", "Setter", "Spring", "SwingDoor",
            "Trapdoor", "Turntable", "Warp"]

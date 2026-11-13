@@ -54,6 +54,16 @@ def _obs_parts(env):
     return [p for n, p in env.parts.items() if not n.startswith(LOOK_PREFIX)]
 
 
+@register_obs("addon", replace=True)
+def addon(env):
+    """The body's addon mode, one-hot over (none, roller) (R30, 2)."""
+    from .bodies import ADDON_MODES
+
+    out = np.zeros(len(ADDON_MODES))
+    out[ADDON_MODES.index(env.body.addon)] = 1.0
+    return out
+
+
 @register_obs("part_pos", replace=True)
 def part_pos(env):
     """Privileged: every part's position relative to the body, heading frame (2 per part;
