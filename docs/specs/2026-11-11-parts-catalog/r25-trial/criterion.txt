@@ -1,0 +1,29 @@
+R25 fresh-worker trial — criterion, written 2026-11-14 BEFORE launching the worker.
+
+Task given to the worker (spec R25 Check, verbatim intent): build one room with
+  (1) a button-order lock, (2) three checkpoint flags, (3) a warp to the next room.
+
+What the worker gets: the repository path and `skills/mujoco-puzzle-gym/SKILL.md`. Nothing else.
+No part names, no preset names, no YAML, no answers to questions. It is a fresh general-purpose
+agent, not a fork of this session, so it carries none of this conversation.
+
+PASS if, with no help from me after launch:
+  - `mpg check <room>.yaml` exits 0, i.e. every static stage (values, channels, demo, body, parts,
+    overlap, order) passes AND the dynamic stages pass (stability, scripted solver >= 18/20 seeds).
+  - The room really has all three features: a lock that requires a button order, exactly three
+    parts of type/role checkpoint, and a warp whose destination is another room (stage/room).
+
+FAIL if any of:
+  - the check does not pass,
+  - the worker asks me a question it needed answered to continue (recorded as "needed help"),
+  - the room is missing one of the three features, or fakes it (e.g. no real order requirement),
+  - the worker edits anything inside the repository working tree (it may only write under its
+    scratch directory and may let `mpg check` write to the gitignored `runs/`).
+
+Recorded either way: the worker's room file, the full `mpg check` output, and its own work log
+(what it read, what failed, what it changed) under this directory. Whatever it got stuck on is a
+gap in AGENTS.md / SKILL.md / the guides, and is a finding for PR #42 before it merges.
+
+Environment facts the worker is told (setup is not part of the test): the venv and the pinned
+assets are already installed, so it must not run ./install.sh; `uv run mpg ...` works from the
+repository root.

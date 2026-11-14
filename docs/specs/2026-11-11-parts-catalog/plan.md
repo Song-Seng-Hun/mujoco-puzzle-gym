@@ -601,7 +601,34 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - `laundry` task는 60 s 판이다(`four_flags`처럼). 40 s로는 두 번 나르기에 79/100.
      - R24의 `mpg demo <방>`(스크립트 해답 영상 명령)은 아직 없다. 영상은 시험의 그리기 도우미(`render_solution`)로 만든다.
    - 알려진 한계: `laundry.yaml`과 `cube_socket.yaml`의 해답은 시드 100개에서 90% 안팎이라 `mpg check` 18/20·19/20의 여유가 적다(둘레 자리 84–94%). 실패는 해답·몸의 한계(제자리 반시계 돌기, 나르다 놓친 물체가 바닥에 떨어지면 다시 못 잡음)이고 배치로는 더 줄이지 못했다. 낮은 벽 버튼은 누른 뒤 벽에서 물러나기가 85–88%다.
+   - (b) 구현 기록 (2026-11-14, 브랜치 `feat/m2-docs-17b`, 4d-3 머지 뒤 main `3751e25` 위): 상위 가이드에 R35를 적고, 에이전트 입구 두 개를 새로 만들었다.
+     - 가이드: `docs/guide.md`·`guide.en.md`·`guide.ja.md` 세 벌에 같은 네 곳. (1) 「주요 기능」에 "에피소드마다 다른 방" 항목(배선·종류·개수·방까지 뽑기, `holdout`) + parts-guide 절 링크. (2) 「학습 설정」의 task.yaml 아래에 보상 항목 목록(`progress`와 `progress_free`의 차이), `randomize:`의 층과 0의 뜻, 관측 `part_links`(`hidden: true`면 전부 0)·`part_used`·`randomized`, `target_pos`를 일부러 빼는 이유. (3) 명령 표 `mpg eval` 줄에 `--randomize nominal|train|wide`. (4) 예제 방 목록에 `shuffle_switches`·`order_cue`·`order_blind`.
+     - `AGENTS.md`(새 파일, 저장소 루트, 영어): 저장소가 하는 일과 에이전트 고리(build → check → train → diagnose → eval), 문서 지도 표(세 언어와 "한국어가 원본, 셋을 함께 고친다"), 설치, **프리셋으로 방 짜는 순서 5단계**(`mpg parts --markdown`으로 고르기 → 방 YAML → `in:`/`expr:` 배선 → `--static` 뒤 전체 `check` 18/20 → 그다음 task.yaml), 그리고 걸리는 규칙 다섯(`runs/` 밖 pickle 거부와 `--trust`, 값 표는 생성물이고 `tests/test_guide.py`가 막는다, 빠른/`-m slow`/`-m network` 구분, `--community` 한도, 숫자는 재서 기록한다), spec 문서 구조.
+     - `skills/mujoco-puzzle-gym/SKILL.md`(새 파일, 압축 영어, frontmatter `name`·`description`): 저장소만 받은 작업자가 바로 쓸 수 있게 AGENTS.md로 보낸 뒤, 읽을 문서를 일 종류로 갈라 주고, 설치부터 `check`까지의 명령 블록과 방 짜는 순서, "없는 부품·프리셋·필드를 만들지 않는다"를 포함한 지켜야 할 것 여섯을 담았다.
+     - 시험: `tests/test_guide.py`에 R25 몫 두 개. 입구 두 파일이 있고 그 안에서 `docs/guide.md`와 `parts-guide.md`를 가리키는지, 그리고 문서 11개(`AGENTS.md`, `SKILL.md`, `README.md`, guide 3종, parts-guide 3종, `parts.md`, `community.md`)의 상대 링크가 모두 실존하는지 — `#앵커`가 붙은 링크는 그 문서의 제목을 GitHub 방식으로 슬러그화해 맞춘다.
+     - 잰 값: 빠른 시험 1262 passed/1 skipped(138초; 전 1250 passed/1 skipped에서 링크 시험 12개 늘었다). 링크 점검에 걸린 상대 링크 수는 `AGENTS.md` 16개(앵커 1), `guide.md` 13개(앵커 5), `SKILL.md` 1개이고, 기존 문서에서 깨진 링크는 없었다.
+     - spec 고침 (사용자 "ㅇㅇ", 2026-11-14): R25 문구가 사실과 달랐다. "M1의 `AGENTS.md`와 `skills/mujoco-puzzle-gym/SKILL.md`에서 가이드로 연결"이라고 적혀 있었지만 두 파일은 저장소에도 git 이력 전체에도 없었다(`git log --all -- AGENTS.md 'skills/**'`가 빈 결과). R25를 "두 파일을 만들어 가이드로 연결하고 README에서도 갈 수 있게 한다"로 고치고, 처음 문안과 고친 이유를 그 줄에 괄호로 남겼다. Status 줄에 승인 조항을 앞에 더했다.
+     - README 입구 링크 (같은 승인): `README.md`·`docs/README.en.md`·`docs/README.ja.md`의 「더 보기」에 `AGENTS.md` 한 줄. README는 사람용이라 기본은 넣지 않았는데, 사람이 저장소를 에이전트에게 넘길 때 찾을 곳이 없었다. 링크 점검 시험의 문서 목록도 11개에서 13개로 늘렸다(영·일 README가 `../AGENTS.md`를 가리키게 되었으므로).
+     - 계획·spec과 다른 점(보고만): (1) 위 spec 고침은 계획에 없었다(사용자 승인 뒤에 했다). (2) `parts-guide`(한·영·일)의 「에피소드 무작위화」가 R35를 이미 다 담고 있어(홀드아웃·뽑기 모드·`rooms` 후보·`part_links`/`part_used`·순서 추론 예제) "가이드 완성"은 상위 `guide.md` 세 벌에만 했다. (3) 계획에 없던 「주요 기능」 항목 하나를 더했다(기능 목록이 R35를 아예 안 적고 있었다). (4) 링크 점검 시험 범위를 계획의 "AGENTS.md·SKILL.md"에서 문서 11개로 넓혔다(같은 코드로 앵커까지 보게 되어 비용이 같다).
+     - 남은 일: R25의 본검사는 18단계(처음 보는 작업자에게 스킬과 저장소만 주고 방을 만들게 하기)다. 이 단계는 그 입구를 만든 것까지다.
+
 18. 처음 보는 작업자 시험(R25).
+   - 구현 기록 (2026-11-14, 브랜치 `feat/m2-docs-17b`, 17단계 (b)와 같은 PR #42. 사용자 "응" → 시험, "승인" → 드러난 문서 구멍을 #42에 반영): **통과**. 기록은 [`r25-trial/`](r25-trial/)에 보관한다(`criterion.txt`, `result.md`, 작업자의 `worklog.md`, 방 파일들).
+     - 설정: #42가 머지되기 전에 그 브랜치 체크아웃에서 돌렸다. 시험 대상이 #42의 문서이고, 막히는 곳이 나오면 머지 전에 고칠 수 있기 때문이다. 작업자는 **fresh general-purpose 에이전트**(fork가 아니라 이 대화를 모른다)이고 받은 것은 저장소 경로와 "먼저 `skills/mujoco-puzzle-gym/SKILL.md`를 읽어라"뿐이다. 부품·프리셋 이름도, YAML 예시도, 질문에 대한 답도 주지 않았다. 설치는 시험 대상이 아니라 "venv와 자산은 이미 있다"만 알려줬다. 판정 기준은 돌리기 전에 `criterion.txt`에 적었다.
+     - 과제(spec R25 Check): 버튼 순서 잠금 + 체크포인트 깃발 3개 + 다음 방으로 가는 워프가 든 방 하나, `mpg check` 종료 코드 0.
+     - 결과(데스크가 재실행해 확인, 작업자 보고를 그대로 쓰지 않음): `mpg check --seeds 20` → `ok: True`, 종료 코드 0, 정적 전 단계 통과, `solver` **20/20**(필요 18), 평균 32.78초, 깃발 저장본 3개. 작업자가 보고한 숫자와 일치했다. 세 요건은 YAML에서 직접 확인: `flag_1/2/3`(`input/checkpoint_flag`, `order: 1/2/3`), `type: gate` `sequence: [btn_a, btn_b, btn_c]` + `latch: true` → `device/sliding_door`, `to: next_stage` 워프 + `stages: [r25_vault.yaml]`(골은 금고 방).
+     - 음성 대조(데스크가 더함, `neg_wrong_order.yaml`): `demo:`의 누르는 순서만 거꾸로 → `solver` **0/10**, 모든 시드가 `demo_step 6`에서 `to_vault`를 목표로 40초 초과. 버튼 셋을 다 눌러도 문이 닫혀 있으니 순서 잠금은 실제로 순서를 요구한다.
+     - 작업자는 질문을 하나도 하지 않았다(8분, 도구 39회, 165k 토큰). 막힌 곳은 한 번: 경로 8.3 m가 40초 기본 판을 넘겨 `solver` 0/20. 90초 task로 때웠다가 "커스텀 task 없이 통과하는 방이 더 튼튼하다"며 방을 2.2 × 1.6으로 줄여 해결했다. 저장소 작업 트리는 건드리지 않았다(`git status` 빈 결과).
+     - 드러난 문서 구멍 6개와 이번에 쓴 것(코드 주장 네 개는 데스크가 소스에서 확인했다):
+       1. `stages:`가 사실상 미문서화였다(`guide.md` 0회, `parts-guide.md`는 무작위화 절에서 "`stages:`와 같은 기구"로 두 번 스쳐 감. 규칙은 `room.py` 모듈 독스트링, 작동 예는 `tests/test_warp.py`뿐). → parts-guide 세 벌에 `## 단계 방 `stages:`` 절을 새로 썼다(구역·`to: next_stage`·이름 유일성·골 요건·`randomize: {rooms:}`와 함께 못 씀·`to:`의 세 형태). 넣은 두 파일 예시는 실제로 `--static`을 통과하는 것만 적었다(처음 쓴 예시는 `size:`가 없어 거절당해 고쳤다).
+       2. `sequence:` 게이트 출력은 `latch: true`가 없으면 한 스텝 펄스다(`gate.py:118` `self.done = self.latch`). → 순서 잠금 항목에 적었다.
+       3. 정적 `order`는 순서 게이트를 입력 전체의 AND로 본다(`gate.py:152` `plan_values`가 `all(...)`). 그래서 `order`가 통과해도 해답이 순서를 틀리고, "누르는 순서를 `demo:`에 적어야 한다"가 적힌 데 없었다. → 순서 잠금 항목과 점검 절에 적었다.
+       4. oneshot 버튼이면 순서를 맞힐 기회가 한 판에 한 번뿐이고, 길에서 뒤 순서 버튼을 먼저 밟으면 오류 없이 `solver`만 0이 된다. → 순서 잠금 항목에 적었다.
+       5. 체크포인트 깃발은 `order`에 들어가지 않는다(데스크 실행에서 `order`는 `['btn_a','btn_b','btn_c','vault_door','to_vault','vault_goal']`). → 점검 절과 guide 세 벌에 "`order` 통과는 해답 성공의 증거가 아니다"로 적었다.
+       6. 판 길이와 경로 길이를 잇는 안내가 없고, 길이 길 때의 실패가 "망가진 방"처럼 읽힌다. 신호는 `demo_step` == `demo:` 단계 수 + `seconds` == 판 길이. → 점검 절, guide 세 벌, `AGENTS.md`에 적었다.
+     - 사소해서 안 고친 것: `mpg build`가 gitignore된 `build/`에 쓴다.
+     - 잰 값: 빠른 시험 1264 passed/1 skipped(135초). 링크 점검이 새 절의 앵커 셋(`#단계-방-stages`, `#stage-rooms-stages`, `#ステージ部屋-stages`)까지 보고 통과했다.
+     - 계획·spec과 다른 점(보고만): (1) 시험을 머지 전 브랜치에서 돌렸다(위 이유). (2) R25 Check의 "작업 기록을 보관한다"를 지키려고 기록을 스크래치패드가 아니라 저장소 `r25-trial/`에 넣었다(작업자가 저장한 62 kB 부품 카탈로그 사본은 뺐다). (3) 과제 문구는 spec의 "버튼 순서 잠금 + 체크포인트 3개 + 워프로 다음 방"을 그대로 썼고, spec이 적은 방 이름이나 부품은 따로 없었다.
 
 ## Risks
 - 플랫폼·스프링·워프 위의 몸은 걷기 정책의 학습 분포 밖이라 넘어질 수 있다. 측정한 뒤 프리셋 기본값을 낮추고, 가이드에 안전 범위를 적는다.
