@@ -66,6 +66,9 @@ if TYPE_CHECKING:
     from ..signals import SignalBus
 
 BODY_PREFIX = "part/"
+CUE_HALF = 0.1        # [m] cue mat half side for a part with no `half` (R35)
+CUE_MARGIN = 0.03     # [m] how far the cue mat sticks out past the part
+CUE_OFF_RGBA = (0.55, 0.55, 0.58, 1.0)   # a candidate that is not wired this episode
 
 #: Which body kinds each `trigger` value counts (R4, R5). Shells and rope knots
 #: ("knot", R31) never count (they have their own kinds).
@@ -197,6 +200,9 @@ class Part:
         #: cut wire stops this reader while other readers of the channel are untouched.
         self.cut: dict[str, float] = {}
         self.pending_snapshot = False          # checkpoint asks the env for a snapshot
+        #: Cue mat (R35 `shuffle: {links: ...}`): the room sets the slot before `build`.
+        self.cue_slot: int | None = None
+        self._cue = -1
         self._bid = -1
         self._schema = schema = self.full_schema()
         self.live: dict[str, Any] = {k: copy.deepcopy(cfg[k]) for k, f in schema.items()
@@ -259,11 +265,20 @@ class Part:
         """Add this part's body (named `body_name`) at `base_xy`; subclasses add geoms."""
         if not self.has_body:
             return None
-        return spec.worldbody.add_body(name=self.body_name, pos=[*self.base_xy, 0.0])
+        body = spec.worldbody.add_body(name=self.body_name, pos=[*self.base_xy, 0.0])
+        if self.cue_slot is not None:         # R35 cue mat: flat, never collides
+            half = np.asarray(getattr(self, "half", (CUE_HALF, CUE_HALF)), dtype=float)
+            half = half[:2] if half.size >= 2 else np.array([CUE_HALF, CUE_HALF])
+            body.add_geom(name=self.body_name + "/cue", type=mujoco.mjtGeom.mjGEOM_BOX,
+                          size=[*(np.abs(half) + CUE_MARGIN), 0.001], pos=[0, 0, 0.0005],
+                          rgba=CUE_OFF_RGBA, contype=0, conaffinity=0)
+        return body
 
     def bind(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
         if self.has_body:
             self._bid = model.body(self.body_name).id
+            if self.cue_slot is not None:
+                self._cue = model.geom(self.body_name + "/cue").id
 
     def place(self, model: mujoco.MjModel, xy) -> None:
         """Move the part (randomised layouts). Call `mj_forward` afterwards."""
@@ -323,6 +338,13 @@ class Part:
             when = "at episode start" if episode else "while running"
             raise SchemaError(f"part {self.name!r}: {key!r} cannot change {when}")
         self.live[key] = f.check(f"part {self.name!r}", value)
+
+    def paint_cue(self, model: mujoco.MjModel, rgba) -> None:
+        """Colour this part's cue mat (R35): the flat plate under a part that takes part
+        in a link shuffle. Parts paint their own geoms for their state (a pressed plate
+        turns green), so the cue has a geom of its own that nothing else touches."""
+        if self._cue >= 0:
+            model.geom_rgba[self._cue] = rgba
 
     def room_value(self, key: str) -> Any:
         """The value the room file gave, before any run-time change: what a drawn value

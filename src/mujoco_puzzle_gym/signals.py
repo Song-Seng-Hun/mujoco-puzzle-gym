@@ -130,11 +130,16 @@ def _stage_order(names: list[str], edges: dict[str, list[str]], index: dict[str,
     return out
 
 
-def wire(parts: dict[str, "Part"]) -> SignalBus:
+def wire(parts: dict[str, "Part"], bus: SignalBus | None = None) -> SignalBus:
     """Check the channels of `parts` (room order) and give every part the shared bus.
 
     Also sets each part's `sources` to the parts writing its `in` channels (the
     room-grid planner reads them).
+
+    With `bus`, the same bus is wired again in place (R35 `shuffle`: an episode
+    draws which part feeds a reader, so the evaluation order and the sources are
+    recomputed at every reset). Channel values of channels that are still there
+    are kept; a wiring the checks refuse raises `SignalError` as at load time.
     """
     writers: dict[str, str] = {}
     for name, part in parts.items():
@@ -167,7 +172,12 @@ def wire(parts: dict[str, "Part"]) -> SignalBus:
     order: list[str] = []
     for stage in STAGES:
         order += _stage_order([n for n in parts if parts[n].stage == stage], edges, index)
-    bus = SignalBus([parts[n] for n in order], writers)
+    if bus is None:
+        bus = SignalBus([parts[n] for n in order], writers)
+    else:
+        bus.order = [parts[n] for n in order]
+        bus.writers = writers
+        bus.values = {ch: bus.values.get(ch, 0.0) for ch in writers}
     for name, part in parts.items():
         part.bus = bus
         srcs: list[Any] = []

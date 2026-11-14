@@ -83,6 +83,7 @@ from .parts.base import Part, World
 from .obs import make_items
 from .registry import REWARDS
 from .room import Room, RoomError
+from .signals import SignalError, wire
 from .schema import SchemaError
 from .task import TaskError, load_task
 
@@ -206,8 +207,11 @@ class PuzzleEnv(gym.Env):
 
     # ---- snapshots (R6) -------------------------------------------------------
     def save_snapshot(self, **meta) -> snapshot.Snapshot:
+        """The state plus the wiring this episode drew (R35): a checkpoint restored into
+        another episode has to be read with the wiring it was recorded with."""
         return snapshot.save(self.model, self.data, self.parts, self.signals, self.body,
-                             held=sorted(self.world.held), zone=self.zone, **meta)
+                             held=sorted(self.world.held), zone=self.zone,
+                             links=dict(getattr(self, "layout", {}).get("links") or {}), **meta)
 
     # ---- floor (R10) ----------------------------------------------------------
     def floor_height(self, xy) -> tuple[float | None, float]:
@@ -379,6 +383,7 @@ class PuzzleEnv(gym.Env):
         """Reasons a drawn layout is thrown away (R35): no goal order from the drawn
         places, a broken `min_gap`, or a part refusing a drawn value."""
         why = self.randomizer.gap_reasons(self.room, layout)
+        why += self._apply_links(layout, probe=True)
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
         if layout.get("values"):
@@ -390,6 +395,21 @@ class PuzzleEnv(gym.Env):
         if layout.get("values"):
             why += [r for p in self.parts.values() for r in p.check_static(self)]
         return why
+
+    def _apply_links(self, layout: dict[str, Any], probe: bool = False) -> list[str]:
+        """Set the wiring this episode drew (R35 `shuffle: {links: ...}`) and wire the bus
+        again. A probe reports a wiring the signal checks refuse instead of raising, so
+        the draw is thrown away."""
+        if not self.randomizer.links:
+            return []
+        self.randomizer.apply_links(self.parts, layout)
+        try:
+            wire(self.parts, self.signals)
+        except SignalError as exc:
+            if not probe:
+                raise
+            return [str(exc)]
+        return []
 
     def _apply_values(self, layout: dict[str, Any], probe: bool = False) -> list[str]:
         """Set the drawn run-time values (R35 physics layer) on their parts. A probe
@@ -413,8 +433,10 @@ class PuzzleEnv(gym.Env):
                    mode: str | None = None) -> None:
         layout = layout or self.sample_layout(rng, mode or self.randomize_mode)
         self.layout = layout
+        self._apply_links(layout)                                # R35: the drawn wiring
         snapshot.load_model_values(self.model, self._model0)
         mujoco.mj_resetData(self.model, self.data)
+        self.randomizer.paint_cues(self.model, self.parts, layout)   # R35: the link cue
         self.world.held.clear()
         self.world.grab = -1.0
         self.world.requests.clear()

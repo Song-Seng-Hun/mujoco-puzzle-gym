@@ -161,7 +161,7 @@ def test_zero_pins_a_layer_to_the_nominal_value(tmp_path):
 @pytest.mark.parametrize("raw, bad", [
     ({"layout": -1.0}, "must be a number >= 0"),
     ({"nonsense": 1.0}, "unknown layer"),
-    ({"structure": True}, "not available yet"),
+    ({"look": True}, "not available yet"),
     ({"rooms": 1.0}, "not available yet"),
     ([1.0], "must be a mapping"),
 ])

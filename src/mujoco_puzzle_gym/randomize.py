@@ -53,15 +53,20 @@ from typing import Any
 
 import numpy as np
 
+from .parts.base import CUE_OFF_RGBA
+
 #: Randomization layers (R35). `structure`, `look` and `rooms` are declared by the
 #: spec but not implemented yet.
 LAYERS = ("layout", "structure", "physics", "body", "look", "rooms")
-DONE_LAYERS = ("layout", "physics", "body")
+DONE_LAYERS = ("layout", "structure", "physics", "body")
 MODES = ("nominal", "train", "wide")
 KINDS = ("range", "region", "candidates")
 DEFAULT_MAX_RESAMPLE = 20
 HOLDOUT_SCALE = 1.5          # `range` wide band: 1 .. this times the half-range
 REGION_TRIES = 50            # `region` attempts to satisfy `min_gap` within one draw
+#: Colours a drawn link is painted with (R35 cue), one per `shuffle: {links: ...}` entry.
+CUE_RGBA = ((0.95, 0.55, 0.15, 1.0), (0.30, 0.75, 0.95, 1.0), (0.65, 0.40, 0.90, 1.0),
+            (0.35, 0.85, 0.45, 1.0))
 
 
 class RandomizeError(ValueError):
@@ -208,6 +213,54 @@ class Candidates(Sampler):
             if _same(o, drawn):
                 return np.array([2.0 * i / max(len(opts) - 1, 1) - 1.0])
         return np.zeros(1)
+
+
+@dataclass
+class Places(Sampler):
+    """`shuffle: {places: [...]}`: the listed parts swap their nominal places.
+
+    The parts must be of one type, so a policy cannot tell them apart by shape."""
+
+    names: list[str] = field(default_factory=list)
+
+    def permute(self, rng, pos: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+        order = list(rng.permutation(len(self.names)))
+        return {self.names[i]: pos[self.names[j]].copy() for i, j in enumerate(order)}
+
+
+@dataclass
+class LinkSource(Sampler):
+    """`shuffle: {links: <reader>, from: [...]}`: which part feeds `reader` this episode.
+
+    The reader keeps the rest of its `in` channels; the drawn source's channel
+    replaces whichever candidate the room wired. `hidden: true` leaves the cue
+    (the matching colour and the `part_links` observation) off, which `mpg check`
+    warns about: the room then needs memory or search to solve."""
+
+    reader: str = ""
+    options: list[str] = field(default_factory=list)
+    holdout: list[str] = field(default_factory=list)
+    hidden: bool = False
+    nominal: str = ""                     # the source the room file wired
+
+    def pick(self, rng, mode: str) -> str:
+        opts = self.holdout if mode == "wide" else self.options
+        return str(opts[int(rng.choice(len(opts)))])
+
+    def wide_ok(self) -> bool:
+        return bool(self.holdout)
+
+    def width(self) -> int:
+        return len(self.options) + len(self.holdout)
+
+    def bits(self, drawn: str | None) -> np.ndarray:
+        """The cue in the observation: a one-hot over the candidates, zeros when the
+        cue is hidden or nothing was drawn."""
+        out = np.zeros(self.width())
+        opts = [*self.options, *self.holdout]
+        if not self.hidden and drawn in opts:
+            out[opts.index(drawn)] = 1.0
+        return out
 
 
 def _same(a, b) -> bool:
@@ -398,6 +451,13 @@ class Randomizer:
         self.max_resample = _max_resample(room)
         self.strength = strengths(task)
         self.entries: list[Entry] = []
+        block = room.raw.get("randomize")
+        if block is not None:
+            if not isinstance(block, dict) or set(block) - {"shuffle"}:
+                raise RandomizeError("the room's `randomize:` takes only `shuffle:`; a part's "
+                                     "own `randomize:` goes on that part")
+            for sampler in parse_shuffle(block.get("shuffle"), parts):
+                self.entries.append(Entry("room", sampler.where, sampler))
         spawn = (room.raw.get("spawn") or {}).get("randomize")
         if spawn is not None:
             if not isinstance(spawn, dict):
@@ -439,8 +499,10 @@ class Randomizer:
                     raise RandomizeError(f"{where}: this value is driven by a `bind`, which would "
                                          f"overwrite the drawn value every body step")
                 self.entries.append(Entry(name, target, parse_value(where, raw[target], f)))
-        self.values = sorted({(e.owner, e.target) for e in self.entries if e.owner != "spawn"
-                              and e.target != "pos"})
+        self.values = sorted({(e.owner, e.target) for e in self.entries
+                              if e.owner not in ("spawn", "room") and e.target != "pos"})
+        #: `shuffle: {links: ...}` entries, in declaration order (the `part_links` item).
+        self.links = [e.sampler for e in self.entries if isinstance(e.sampler, LinkSource)]
 
     # ---- drawing ------------------------------------------------------------------
     def __bool__(self) -> bool:
@@ -488,7 +550,8 @@ class Randomizer:
         pos = {n: p.base_xy.copy() for n, p in parts.items()}
         values: dict[str, dict[str, Any]] = {}
         if mode == "nominal":
-            return {"spawn": tuple(spawn), "parts": pos, "values": values, "mode": mode}
+            return {"spawn": tuple(spawn), "parts": pos, "values": values, "links": {},
+                    "mode": mode}
         if mode == "train":            # M1 `random:` shorthand: no evaluation-only band,
             d = rng.uniform(-room.spawn_random, room.spawn_random)   # so `wide` leaves it alone
             spawn = [spawn[0] + d[0], spawn[1] + d[1], spawn[2] + d[2]]
@@ -496,10 +559,19 @@ class Randomizer:
                 if np.any(p.random):
                     pos[n] = p.base_xy + rng.uniform(-p.random, p.random)
         ctx = Clearance(room.walls(), {"spawn": np.array(spawn[:2]), **pos})
+        links: dict[str, str] = {}
         for e in self.entries:
             scale = float(self.strength.get(e.sampler.layer, 0.0))
             if scale <= 0.0 or (mode == "wide" and not e.sampler.wide_ok()):
                 continue          # `wide`: a sampler with no evaluation-only value stays nominal
+            if isinstance(e.sampler, Places):
+                swapped = e.sampler.permute(rng, pos)
+                pos.update(swapped)
+                ctx.taken.update(swapped)
+                continue
+            if isinstance(e.sampler, LinkSource):
+                links[e.sampler.reader] = e.sampler.pick(rng, mode)
+                continue
             if e.owner == "spawn":
                 if e.target == "pos":
                     xy = e.sampler.draw(rng, np.array(spawn[:2]), scale, mode, ctx, "spawn")
@@ -517,7 +589,45 @@ class Randomizer:
                 values.setdefault(e.owner, {})[e.target] = \
                     e.sampler.draw(rng, nominal, scale, mode, ctx)
         return {"spawn": tuple(float(v) for v in spawn), "parts": pos, "values": values,
-                "mode": mode}
+                "links": links, "mode": mode}
+
+    def apply_links(self, parts: dict[str, Any], layout: dict[str, Any]) -> None:
+        """Set each shuffled reader's `in` to the source this episode drew (R35). The
+        caller wires the bus again afterwards, which checks the drawn wiring."""
+        for sampler in self.links:
+            drawn = (layout.get("links") or {}).get(sampler.reader) or sampler.nominal
+            cand = {_channel_of(parts[n]) for n in (*sampler.options, *sampler.holdout)}
+            want = _channel_of(parts[drawn])
+            reader = parts[sampler.reader]
+            reader.inputs = [want if ch in cand else ch for ch in reader.inputs]
+
+    def paint_cues(self, model, parts: dict[str, Any], layout: dict[str, Any]) -> None:
+        """Mark a drawn link on the cue mats (R35): the reader and the source it reads
+        this episode get the entry's colour, every other candidate the off colour. The
+        mats are always there and the same size, so only the colour carries the cue; a
+        `hidden: true` entry leaves them all off."""
+        for i, sampler in enumerate(self.links):
+            drawn = (layout.get("links") or {}).get(sampler.reader) or sampler.nominal
+            rgba = CUE_RGBA[i % len(CUE_RGBA)]
+            for name in (sampler.reader, *sampler.options, *sampler.holdout):
+                part = parts.get(name)
+                if part is None:
+                    continue
+                lit = not sampler.hidden and name in (sampler.reader, drawn)
+                part.paint_cue(model, rgba if lit else CUE_OFF_RGBA)
+
+    def link_observation(self, layout: dict[str, Any]) -> np.ndarray:
+        """Obs item `part_links` (R35): per shuffled reader a one-hot over its candidate
+        sources, so a policy can see which part feeds it. Hidden entries give zeros."""
+        drawn = layout.get("links") or {}
+        rows = [s.bits(drawn.get(s.reader) or s.nominal) for s in self.links]
+        return np.concatenate(rows) if rows else np.zeros(0)
+
+    def hidden_cues(self) -> list[str]:
+        """Live link shuffles whose cue is off (`mpg check` warns: the room then needs
+        memory or search, so a feed-forward policy has a success-rate ceiling)."""
+        return [e.sampler.where for e in self._live()
+                if isinstance(e.sampler, LinkSource) and e.sampler.hidden]
 
     def observation(self, layout: dict[str, Any], parts: dict[str, Any]) -> np.ndarray:
         """Obs item `randomized` (R35): the drawn run-time values, normalized. Fixed
@@ -563,6 +673,91 @@ def _spawn_yaw(where: str, spec: Any) -> Sampler:
         hold = [float(v) for v in spec["holdout"]] if "holdout" in spec else []
         return Candidates(where, "layout", opts, _weights(where, spec, len(opts)), hold)
     raise RandomizeError(f"{where}: `region` draws a position, not a heading")
+
+
+def assign_cues(block: Any, parts: dict[str, Any]) -> None:
+    """Give every part a link shuffle names a cue mat slot (R35). Called while the room
+    loads, before the scene is built, so the mats are in the model; the declaration is
+    checked later by `parse_shuffle`, which gives the real messages."""
+    if not isinstance(block, dict):
+        return
+    for i, e in enumerate(block.get("shuffle") or []):
+        if not isinstance(e, dict) or "links" not in e:
+            continue
+        names = [e.get("links"), *(e.get("from") or []), *(e.get("holdout") or [])]
+        for n in names:
+            if isinstance(n, str) and n in parts and parts[n].cue_slot is None:
+                parts[n].cue_slot = i
+
+
+def parse_shuffle(raw: Any, parts: dict[str, Any]) -> list[Sampler]:
+    """The room's `randomize: {shuffle: [...]}` entries (R35 structure layer)."""
+    if not isinstance(raw, list) or not raw:
+        raise RandomizeError("`randomize: {shuffle: [...]}` is a list of "
+                             "{places: [...]} or {links: <part>, from: [...]} entries")
+    out: list[Sampler] = []
+    for i, e in enumerate(raw):
+        where = f"randomize.shuffle[{i}]"
+        if not isinstance(e, dict) or ("places" in e) == ("links" in e):
+            raise RandomizeError(f"{where}: write {{places: [...]}} or "
+                                 f"{{links: <part>, from: [...]}}, got {e!r}")
+        if "places" in e:
+            extra = sorted(set(e) - {"places"})
+            if extra:
+                raise RandomizeError(f"{where}: `places` takes no other key, got extra {extra}")
+            names = e["places"]
+            if (not isinstance(names, list) or len(names) < 2
+                    or len(set(names)) != len(names)
+                    or any(not isinstance(n, str) for n in names)):
+                raise RandomizeError(f"{where}: `places` is a list of at least two different "
+                                     f"part names, got {names!r}")
+            for n in names:
+                if n not in parts:
+                    raise RandomizeError(f"{where}: `places` names {n!r}, which is not a part")
+                if np.any(parts[n].random) or (parts[n].cfg.get("randomize") or {}).get("pos"):
+                    raise RandomizeError(f"{where}: {n!r} already draws its own place; a part "
+                                         f"either swaps places or draws one, not both")
+            kinds = {type(parts[n]).type_name for n in names}
+            if len(kinds) != 1:
+                raise RandomizeError(f"{where}: `places` swaps parts of one type, got "
+                                     f"{sorted(kinds)}; a policy would tell them apart")
+            out.append(Places(where, "structure", list(names)))
+            continue
+        extra = sorted(set(e) - {"links", "from", "holdout", "hidden"})
+        if extra:
+            raise RandomizeError(f"{where}: `links` takes from, holdout and hidden, "
+                                 f"got extra {extra}")
+        reader, opts = e["links"], e.get("from")
+        if not isinstance(reader, str) or reader not in parts:
+            raise RandomizeError(f"{where}: `links` names the part that reads the channel, "
+                                 f"got {reader!r}")
+        if (not isinstance(opts, list) or len(opts) < 2 or len(set(opts)) != len(opts)
+                or any(not isinstance(n, str) for n in opts)):
+            raise RandomizeError(f"{where}: `from` is a list of at least two different part "
+                                 f"names, got {opts!r}")
+        hold = e.get("holdout") or []
+        if not isinstance(hold, list) or any(not isinstance(n, str) for n in hold):
+            raise RandomizeError(f"{where}: `holdout` is a list of part names, got {hold!r}")
+        for n in (*opts, *hold):
+            if n not in parts:
+                raise RandomizeError(f"{where}: {n!r} is not a part of this room")
+            if not parts[n].outputs:
+                raise RandomizeError(f"{where}: {n!r} writes no channel, so it cannot feed "
+                                     f"{reader!r}")
+        wired = [n for n in (*opts, *hold) if _channel_of(parts[n]) in parts[reader].inputs]
+        if len(wired) != 1:
+            raise RandomizeError(f"{where}: {reader!r} must read exactly one of the candidates "
+                                 f"in the room file (its `in` reads {list(parts[reader].inputs)}); "
+                                 f"that one is the nominal wiring")
+        hidden = bool(e.get("hidden", False))
+        out.append(LinkSource(where, "structure", reader, list(opts), list(hold), hidden,
+                              wired[0]))
+    return out
+
+
+def _channel_of(part) -> str:
+    """The channel a candidate source feeds a reader with: its first output."""
+    return part.outputs[0]
 
 
 def _max_resample(room) -> int:

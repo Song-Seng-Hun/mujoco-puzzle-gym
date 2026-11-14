@@ -271,9 +271,14 @@ def check_resample(env: PuzzleEnv, seeds: int = RESAMPLE_SEEDS) -> dict[str, Any
     if stuck:
         out["reason"] = (f"{len(stuck)} of {seeds} seeds found no solvable room within "
                          f"max_resample {env.randomizer.max_resample}: " + "; ".join(stuck[:3]))
-    elif ratio > RESAMPLE_WARN:
-        out["warnings"] = [f"{ratio:.0%} of the draws are thrown away (over "
-                           f"{RESAMPLE_WARN:.0%}): narrow the ranges or widen the room"]
+    warn = [f"{where}: the link cue is hidden, so the room needs memory or search; "
+            f"a policy without one has a success-rate ceiling"
+            for where in env.randomizer.hidden_cues()]
+    if ratio > RESAMPLE_WARN:
+        warn.append(f"{ratio:.0%} of the draws are thrown away (over "
+                    f"{RESAMPLE_WARN:.0%}): narrow the ranges or widen the room")
+    if warn:
+        out["warnings"] = warn
     return out
 
 

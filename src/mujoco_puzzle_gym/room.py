@@ -81,7 +81,7 @@ import mujoco
 import numpy as np
 import yaml
 
-from . import catalog
+from . import catalog, randomize
 from . import floor as floor_mod
 from . import gaze as gaze_mod
 from . import markers
@@ -553,6 +553,7 @@ class Room:
                     kind.add_room_parts(parts)
                 except (ValueError, TypeError) as exc:
                     raise RoomError(str(exc), "values") from None
+        randomize.assign_cues(self.raw.get("randomize"), parts)   # R35 cue mats
         spawns = self.zone_spawns()
         for n, p in parts.items():
             if p.role == "warp":

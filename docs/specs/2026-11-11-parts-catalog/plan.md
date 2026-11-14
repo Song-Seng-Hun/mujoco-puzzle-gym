@@ -515,6 +515,18 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - 계획·spec과 다른 점(보고만): (1) 부품의 방향(`yaw`) 무작위화는 없다(부품에 일반적인 `yaw` 값이 없고 `place`가 위치만 옮긴다). spawn의 `yaw`는 된다. (2) M1 `random:`만 쓰는 방은 다시 뽑기를 돌리지 않는다(선언이 없으면 지금까지와 같은 한 번 뽑기). 기존 방들의 성공률 수치를 그대로 비교할 수 있게 두었다. (3) 다시 뽑기 판정의 "뽑힌 값이 입력인 정적 점검"은 목록(탄도·끈 길이·질량)이 아니라 부품 전체의 `check_static`이다(같은 점검을 `parts` 단계도 쓴다). (4) `candidates`의 `pick`은 1만 받는다(여러 개 고르기는 개수 무작위화와 함께 4b). (5) R21 난이도 `param`으로 `randomize.<층>` 세기를 올리는 것은 아직 없다(4c에서 평가 방식과 함께).
      - 알려진 한계: `region`은 한 번 뽑을 때 `min_gap`을 50번까지 시도하고, 그래도 안 되면 그 뽑기를 버려 다시 뽑는다. 평가 전용 값이 없는 샘플러는 `wide`에서 기준값에 머문다. 관측 `randomized`는 위치가 아니라 부품 값만 담는다(위치는 `part_pos`에 이미 있다).
 
+   - 4b 나누기 (2026-11-14, 사용자 결정 "승인"): 4b-1 자리·연결 섞기와 단서(먼저), 4b-2 종류·개수 후보와 보관 선반. 배선과 버스 순서는 방을 읽을 때 정해지므로 섞으려면 리셋 때 다시 배선해야 하고, 종류·개수는 후보를 미리 만들어 치워야 해서 건드리는 범위가 다르다.
+   - 4b-1 구현 기록 (2026-11-14, 브랜치 `feat/m2-randomize-4b1`, main fd3a23f + 4a 위):
+     - `randomize.py`: 방 단위 `randomize: {shuffle: [...]}` 파싱(`parse_shuffle`), 샘플러 `Places`(같은 종류 부품끼리 자리 순열)와 `LinkSource`(받는 부품이 이번 에피소드에 읽을 출처, `holdout`과 `hidden`), 뽑은 배선 적용 `apply_links`, 단서 칠하기 `paint_cues`, 관측 `link_observation`, 경고 목록 `hidden_cues`, 단서판 자리 배정 `assign_cues`. 층 `structure`가 `DONE_LAYERS`에 들어갔다.
+     - `signals.py`: `wire(parts, bus)`로 같은 버스를 제자리에서 다시 배선한다(채널 집합은 그대로여서 채널 값이 남는다). `env.py`가 리셋마다 `_apply_links` → `wire`를 돌리고, 뽑기 판정에서도 돌려 신호 점검이 거절하는 배선(고리)은 그 뽑기를 버린다.
+     - `parts/base.py`: 단서판 geom(`<부품>/cue`, 바닥에 깐 얇은 판, 충돌 없음, 크기는 부품 `half` + 0.03 m)과 `Part.paint_cue`. 부품들이 자기 상태 색을 매 스텝 덮어쓰기 때문에(발판은 눌리면 초록) 단서는 전용 geom에 둔다. 판 크기는 늘 같아 색만 단서가 된다.
+     - `obs.py`: 항목 `part_links`(섞이는 받는 부품마다 후보 원-핫, `hidden`이면 0)와 `part_used`(부품 칸이 이번 에피소드에 방에 있는지). 기존 `part_state` 폭은 건드리지 않았다.
+     - `check.py`: `resample` 단계 경고에 "단서가 꺼져 있어 기억·탐색이 필요하다"를 더했다.
+     - 예제 `examples/rooms/shuffle_switches.yaml`과 `examples/task_shuffle_switches.yaml`(`[move]`, 40초, `obs`에 `part_links`·`part_used`, `target_pos`는 일부러 뺌), `tests/test_shuffle.py` 29개(+slow 1개), `tests/test_examples.py` KINDS 등록.
+     - 잰 값: `mpg check` 시드 20개로 `shuffle_switches` 20/20(평균 12.9초), `resample` 비율 0.0. 빠른 시험 1141 passed/1 skipped, slow 묶음 57 passed(607초). `mpg bench` 557.9 env steps/s · 3451.1 body steps/s · 낙하 0(4a 566.7 · 3528.3, 3c 558 · 3482 — 잡음 범위). 저장본은 뽑힌 배선을 `meta["links"]`에 담고 구간 복원이 그 배선으로 돌아간다(4c의 결정성 항목 일부를 먼저 했다: 안 하면 복원한 체크포인트의 부품 상태가 그 에피소드 배선과 어긋난다).
+     - 계획·spec과 다른 점(보고만): (1) 연결 비트는 `part_state`에 섞지 않고 새 항목 `part_links`·`part_used`로 냈다(모든 방의 관측 폭이 바뀌면 기존 학습·수치와 비교가 끊긴다). (2) 연결 비트는 섞이는 쌍만 담는다(모든 (출처, 받는 부품) 쌍은 고정 정보라 길이만 늘린다). (3) 단서는 부품 색이 아니라 단서판 색이다(부품이 상태 색을 덮어쓴다). (4) `places`는 평가 전용 값이 없어 `wide`에서 기준 자리에 머문다(순열에 "범위 바깥"이 없다). (5) 문 여는 방향과 순서 잠금의 순서 섞기는 아직 없다(값이 에피소드 시작에 바뀌지 않는다 — 4b-2에서 함께 본다).
+     - 알려진 한계: 발판을 `floor_momentary`로 두면 해답이 발판에서 내려오는 순간 문이 닫혀 0/20이라 예제는 `floor_oneshot`이다. `places`에 들어간 부품은 자기 `random`·`randomize.pos`를 가질 수 없다.
+
 17. 예제 방(큐브·소켓, 벽 버튼, 빨래 `laundry.yaml`). 가이드 완성, AGENTS.md와 SKILL.md 연결.
    - 나누기 (2026-11-12, 사용자 결정 "추천대로 가자"): (a) 예제 방 3개는 지금 한다. (b) 가이드 완성, AGENTS.md와 SKILL.md 연결은 16g 뒤로 옮긴다.
    - (a) 구현 기록 (2026-11-12, 브랜치 `feat/m2-examples-beak`, `feat/m2-basket-exit` 위): 예제 `examples/rooms/cube_socket.yaml`·`wall_button.yaml`·`laundry.yaml`, task `examples/task_cube_socket.yaml`(`[move, head, grab]`)·`task_laundry.yaml`(`[move, head, grab]`, 60 s 판). 세 방 모두 표준 문틈(벽 끝 0.56 m 사이, 실제 틈 0.50 m, `device/sliding_door`)이고 격자 해답으로 풀며 `demo:`는 없다. 시험: `tests/test_examples.py`의 KINDS와 task 표, slow `test_demo_video_of_the_scripted_solution`(빨래·벽 버튼 방의 해답을 MP4로 그림, 성공·10 kB 이상), `tests/test_check2.py`의 예제 방 정적·20시드 점검에 새 task. 가이드 3종 예제 목록과 parts-guide 3종 조립 예 표.
