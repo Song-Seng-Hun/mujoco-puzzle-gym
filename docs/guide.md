@@ -100,7 +100,7 @@ plugins: []                              # 직접 만든 부품·관측·보상 
 
 ## 단계별 학습과 구간 평가
 
-체크포인트 깃발(`type: checkpoint`, `order: 1, 2, …`)이 있는 방은 구간으로 나뉩니다. 깃발이 2개면 `start->f1`, `f1->f2`, `f2->goal` 세 구간입니다. 첫 구간은 보통 에피소드처럼 시작하고, 나머지는 `mpg check`가 남긴 깃발 저장본(`runs/check/<방>/checkpoints/<깃발>.pkl`)에서 시작합니다. 그래서 먼저 `mpg check`를 돌립니다.
+체크포인트 깃발(`type: checkpoint`, `order: 1, 2, …`)이 있는 방은 구간으로 나뉩니다. 깃발이 2개면 `start->f1`, `f1->f2`, `f2->goal` 세 구간입니다. 첫 구간은 보통 에피소드처럼 시작하고, 나머지는 `mpg check`가 남긴 깃발 저장본(`runs/check/<방>/checkpoints/<깃발>.pkl`)에서 시작합니다. 그래서 먼저 `mpg check`를 돌립니다. 방을 무작위로 뽑으면(R35 배치·구조·방 층) 저장본 대신 방 파일의 `checkpoint_states:` 선언을 그 에피소드의 배치 위에 놓고 시작합니다([부품 안내](parts-guide.md#구간-시작-선언-checkpoint_states)).
 
 ```bash
 mpg check room.yaml

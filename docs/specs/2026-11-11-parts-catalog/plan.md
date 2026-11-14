@@ -561,6 +561,15 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - 잰 값: 빠른 시험 1213 passed/1 skipped, slow 묶음(eval·curriculum·checkpoint·rooms·groups·shuffle·train) 5 passed(380초). `mpg bench` 단독 668.1 env steps/s · 3340.5 body steps/s · 낙하 0(4c-1의 같은 세션 main 기준값 674.9 · 3374.6 — 잡음 범위. `_info`의 뽑기 기록은 무작위화를 선언하지 않은 방에서는 바로 빈 사전을 돌려준다).
      - 계획·spec과 다른 점(보고만): (1) 구간(`--segments`) 작업에도 모드를 넘기지만, 저장본에서 시작하는 구간은 아직 모드를 쓰지 않는다(저장본의 배치를 그대로 쓴다). 물리·몸 층만 다시 뽑는 규칙은 4c-3이다. (2) `mpg render`·`record`에는 `--randomize`를 넣지 않았다(spec은 eval만 말한다).
 
+   - 4c-3 구현 기록 (2026-11-14, 브랜치 `feat/m2-randomize-4c3`, 4c-2 머지 뒤 main 위):
+     - `room.py`: `checkpoint_states:` 해석(`parse_checkpoint_states`·`_start_body`·`_start_parts`) — 깃발마다 `body:`(`pos` 또는 `at` + `offset`·`yaw`)와 `parts:`(`state:`는 그 부품의 `state_keys`, `values:`는 실행 중·에피소드 시작 값, 스키마로 검사). `Room.checkpoint_states`.
+     - `randomize.py`: `Randomizer.draws(*layers)`(그 층에 선언된 샘플러가 세기 > 0인지. M1 `random:` 줄임은 세지 않는다)와 `draw(..., only=(...))`(그 층만 뽑기. 빠진 층은 M1 줄임까지 기준값).
+     - `curriculum.py`: `begin_segment`가 세 길로 갈린다 — 구간 0은 그대로, 배치·구조·방 층을 뽑거나 저장본이 없으면 새로 뽑은 에피소드 + `apply_start_state`(부품 상태·값 → 몸 자세 → 신호 한 번 → 그 자리의 저장본 하나), 그 밖에는 저장본에서 시작하되 `only=("physics",)`로 값만 다시 뽑아 덮는다(체크포인트 복귀 상태에도 담는다). `load_snapshots`는 선언이 있는 깃발의 빠진 저장본을 넘기고, 둘 다 없는 깃발만 거절한다.
+     - `tests/test_checkpoint_states.py` 23개(선언 읽기·거절 10종, 고정 방은 저장본 + 물리 다시 뽑기, 뽑는 방은 선언 + 새 배치, 선언 없으면 거절, 층을 끄면 저장본 복귀, 저장본 없이 선언만, 둘 다 없을 때 메시지, 구간 끝까지 달리기, 복귀 상태).
+     - 문서: 가이드 3종에 「구간 시작 선언」 절, `docs/guide.md`의 단계별 학습 문단에 한 줄, `room.py` 모듈 설명.
+     - 잰 값: 빠른 시험 1236 passed/1 skipped, slow 묶음(checkpoint_states·curriculum·checkpoint·eval 2종·train·rooms·examples) 34 passed(738초). `mpg bench` 단독 683.6 env steps/s · 3418.1 body steps/s · 낙하 0(4c-1의 같은 세션 main 기준값 674.9 · 3374.6 — 잡음 범위).
+     - 계획·spec과 다른 점(보고만): (1) 새로 뽑는 규칙은 방이 `randomize:`로 선언한 배치·구조·방 층에만 걸린다. M1 `random:` 줄임만 쓰는 방(예: `four_flags`)은 그대로 저장본에서 시작한다(지금까지의 동작이고, 그 흔들기는 저장본 시작에 들어간 적이 없다). (2) 부품 상태를 `state:`로 저장본이 담는 키 그대로 적게 했다(spec의 "부품 상태"를 일반적으로 적을 수 있는 유일한 꼴이다. 끈은 `state: {tied: ...}` + `values: {length: ...}`). (3) `checkpoint_states:`를 쓰는 예제 방은 만들지 않았다(깃발 예제 `four_flags`는 무작위화가 없고, 시험 방이 네 길을 모두 덮는다).
+
 17. 예제 방(큐브·소켓, 벽 버튼, 빨래 `laundry.yaml`). 가이드 완성, AGENTS.md와 SKILL.md 연결.
    - 나누기 (2026-11-12, 사용자 결정 "추천대로 가자"): (a) 예제 방 3개는 지금 한다. (b) 가이드 완성, AGENTS.md와 SKILL.md 연결은 16g 뒤로 옮긴다.
    - (a) 구현 기록 (2026-11-12, 브랜치 `feat/m2-examples-beak`, `feat/m2-basket-exit` 위): 예제 `examples/rooms/cube_socket.yaml`·`wall_button.yaml`·`laundry.yaml`, task `examples/task_cube_socket.yaml`(`[move, head, grab]`)·`task_laundry.yaml`(`[move, head, grab]`, 60 s 판). 세 방 모두 표준 문틈(벽 끝 0.56 m 사이, 실제 틈 0.50 m, `device/sliding_door`)이고 격자 해답으로 풀며 `demo:`는 없다. 시험: `tests/test_examples.py`의 KINDS와 task 표, slow `test_demo_video_of_the_scripted_solution`(빨래·벽 버튼 방의 해답을 MP4로 그림, 성공·10 kB 이상), `tests/test_check2.py`의 예제 방 정적·20시드 점검에 새 task. 가이드 3종 예제 목록과 parts-guide 3종 조립 예 표.

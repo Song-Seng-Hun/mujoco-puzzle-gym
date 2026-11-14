@@ -283,6 +283,42 @@ mpg train task.yaml --minutes 60 --curriculum forward
 mpg eval runs/<id> --full --segments
 ```
 
+### Declared segment starts, `checkpoint_states:`
+
+Segment i starts from flag i's snapshot by default. That snapshot is one `mpg check`
+episode's room, so if the room is drawn, a policy would memorize those few layouts.
+Therefore:
+
+- When the room's `randomize:` draws the **layout, structure or rooms** layer, the
+  segment does not use the snapshot: it draws this episode's room and puts the room
+  file's declared start on it. A flag with no declaration is refused, with the message
+  saying what to write.
+- When those layers are off, the segment starts from the snapshot as before, with the
+  **physics and body layers drawn again** over it, so a run does not train on one
+  frozen set of part values. The drawn values also go into the state a checkpoint
+  respawn returns to.
+- A flag with a declaration and no snapshot at all takes the declaration. With neither,
+  the refusal names the flags that are missing.
+
+```yaml
+checkpoint_states:
+  flag_2:
+    body: {at: flag_2, offset: [-0.1, 0.0], yaw: 0.0}   # or {pos: [x, y], yaw: 0}
+    parts:
+      flag_1: {state: {reached: true}}                  # the flags already passed
+      plate_a: {state: {latched: true}}                 # a plate left pressed
+      tow_rope: {state: {tied: [body, hitch_a]}, values: {length: 0.6}}
+```
+
+- `body:` is `pos` (room coordinates) or `at` (that part's place this episode) plus
+  `offset`; leaving `yaw` out keeps this episode's spawn heading. `at` follows the drawn
+  layout.
+- `state:` keys are the attributes that part's snapshots keep (`Part.state_keys`) and
+  `values:` are its run-time or episode-start values (a rope's `length`, for instance).
+  An unknown flag, key or value is refused while the room loads.
+- An episode started from a declaration saves a snapshot there too, so
+  `respawn: checkpoint` goes back to that state.
+
 ### Difficulty steps
 
 `difficulty:` in `task.yaml` raises values such as trap strength in steps. Only values that may change while running ("yes") or at episode start can be stepped.

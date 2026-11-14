@@ -138,8 +138,10 @@ def snapshot_dir(env) -> Path:
 
 
 def load_snapshots(env) -> dict[str, Any]:
-    """The flag snapshots segment starts need (flag name -> Snapshot), checked
-    against the env's model. Raises CurriculumError naming what is missing."""
+    """The flag snapshots segment starts need (flag name -> Snapshot), checked against
+    the env's model. A flag the room declares a start for (`checkpoint_states:`) may
+    have no snapshot and is then left out; CurriculumError names the flags that have
+    neither."""
     import mujoco
 
     from .snapshot import SIG
@@ -147,12 +149,16 @@ def load_snapshots(env) -> dict[str, Any]:
 
     d = snapshot_dir(env)
     require_trusted(d, "snapshot folder")
+    declared = env.room.checkpoint_states
     need = [s["start"] for s in segments(env.parts) if s["start"] is not None]
     missing = [f for f in need if not (d / f"{f}.pkl").exists()]
-    if missing:
+    if [f for f in missing if f not in declared]:
         raise CurriculumError(
-            f"no snapshots for flags {missing} in {d}; run `mpg check {env.task['room']}` "
-            "(its solver saves them) or set curriculum.snapshots")
+            f"no snapshots for flags {[f for f in missing if f not in declared]} in {d}; run "
+            f"`mpg check {env.task['room']}` (its solver saves them), set "
+            "curriculum.snapshots, or declare those starts in the room's "
+            "`checkpoint_states:`")
+    need = [f for f in need if f not in missing]
     size = mujoco.mj_stateSize(env.model, SIG)
     out = {}
     for f in need:
@@ -363,8 +369,16 @@ class SegmentDraw:
 
 
 def begin_segment(env, segment: int, to_goal: bool, layout: dict | None = None) -> None:
-    """Reset `env` to the start of segment `segment`: a sampled (or given) layout
-    for segment 0, else its start flag's snapshot (layout and all)."""
+    """Reset `env` to the start of segment `segment`: a sampled (or given) layout for
+    segment 0, else its start.
+
+    A later segment starts from its flag's snapshot (that episode's layout and all),
+    with the physics and body layers drawn again (R35), so a run does not train on one
+    frozen set of part values. When the room draws its layout or its structure, those
+    few snapshot layouts are what a policy would memorize, so the segment starts from a
+    freshly drawn episode with the room's declared start on it (`checkpoint_states:`)
+    instead; a flag with no declaration is refused. A flag with a declaration but no
+    snapshot takes the declaration too."""
     segs = env.segments
     if not 0 <= segment < len(segs):
         raise CurriculumError(f"segment {segment} out of range: the room has {len(segs)} "
@@ -372,22 +386,76 @@ def begin_segment(env, segment: int, to_goal: bool, layout: dict | None = None) 
     start = segs[segment]["start"]
     if start is None:
         env._reset_sim(env.np_random, layout)
-    else:
-        if env._start_snaps is None:
-            env._start_snaps = load_snapshots(env)
-        snap = env._start_snaps[start]
-        env._reset_sim(None, {"spawn": env.room.sample_spawn(None),
-                              "parts": {n: xy.copy() for n, xy in snap.part_xy.items()},
-                              # R35: the wiring the snapshot was recorded with
-                              "links": dict(snap.meta.get("links") or {})})
-        env.restore_snapshot(snap)
-        if env.difficulty:            # the flag snapshot holds the check run's values: step them again
-            apply_difficulty(env, env._difficulty_k)
-            snap = copy.copy(snap)
-            snap.values = {**snap.values, **{st.part: copy.deepcopy(env.parts[st.part].live)
-                                             for st in env.difficulty}}
-        env.checkpoint_snap = snap
+        env.segment = {"index": segment, "end": "goal" if to_goal else segs[segment]["end"]}
+        return
+    if env._start_snaps is None:
+        env._start_snaps = load_snapshots(env)
+    fresh = env.randomizer.draws("layout", "structure", "rooms")
+    snap = env._start_snaps.get(start)
+    if fresh or snap is None:
+        decl = env.room.checkpoint_states.get(start)
+        if decl is None:
+            why = ("the room draws its layout or its structure, so the flag snapshots are "
+                   "one episode's room" if fresh else "there is no snapshot for it")
+            raise CurriculumError(
+                f"segment {segs[segment]['name']!r} cannot start from flag {start!r}: {why}. "
+                f"Declare that start in the room's `checkpoint_states:` (body pose and the "
+                f"parts' state), or turn the layout and structure layers off in the task's "
+                f"`randomize:`")
+        env._reset_sim(env.np_random, layout)
+        apply_start_state(env, decl)
+        env.checkpoint_snap = env.save_snapshot(checkpoint=start)
+        env.segment = {"index": segment, "end": "goal" if to_goal else segs[segment]["end"]}
+        return
+    env._reset_sim(None, {"spawn": env.room.sample_spawn(None),
+                          "parts": {n: xy.copy() for n, xy in snap.part_xy.items()},
+                          # R35: the wiring the snapshot was recorded with
+                          "links": dict(snap.meta.get("links") or {})})
+    env.restore_snapshot(snap)
+    changed: dict[str, Any] = {}
+    if env.difficulty:            # the flag snapshot holds the check run's values: step them again
+        apply_difficulty(env, env._difficulty_k)
+        changed.update({st.part: copy.deepcopy(env.parts[st.part].live) for st in env.difficulty})
+    if env.randomizer.draws("physics"):      # R35: draw this episode's values over it
+        drawn = env.randomizer.draw(env.room, env.parts, env.np_random, env.randomize_mode,
+                                    only=("physics",))
+        env._apply_values(drawn)
+        env.layout = {**env.layout, "values": drawn["values"]}
+        changed.update({n: copy.deepcopy(env.parts[n].live) for n in drawn["values"]})
+    if changed:                   # the start state the episode respawns to holds them
+        snap = copy.copy(snap)
+        snap.values = {**snap.values, **changed}
+    env.checkpoint_snap = snap
     env.segment = {"index": segment, "end": "goal" if to_goal else segs[segment]["end"]}
+
+
+def apply_start_state(env, decl: dict[str, Any]) -> None:
+    """Put a declared segment start (`checkpoint_states:`) on the episode's own room: the
+    parts' state and values first, then the body pose, then one signal step so the
+    channels carry what those parts now say."""
+    import mujoco
+
+    for name, entry in (decl.get("parts") or {}).items():
+        part = env.parts[name]
+        if entry.get("state"):
+            part.load_state(env.model, env.data,
+                            {**part.save_state(), **copy.deepcopy(entry["state"])})
+        for key, v in (entry.get("values") or {}).items():
+            part.set_value(env.model, env.data, key, copy.deepcopy(v), episode=True)
+    body = decl.get("body")
+    if body is not None:
+        xy = np.asarray(body["pos"] if "pos" in body else env.parts[body["at"]].xy, dtype=float)
+        xy = xy + np.asarray(body.get("offset", (0.0, 0.0)), dtype=float)
+        yaw = env.layout["spawn"][2] if body["yaw"] is None else float(body["yaw"])
+        pose = (float(xy[0]), float(xy[1]), yaw)
+        env.body.reset(env.data, pose)
+        if env.floor is not None:
+            env._place_body(pose)
+    mujoco.mj_forward(env.model, env.data)
+    env.signals.step(env.model, env.data, env.read_body())
+    env.body_state = env.read_body()
+    env.stage = env._stage()
+    env._mark_target()
 
 
 def segment_done(env, goal_success: bool) -> bool:
