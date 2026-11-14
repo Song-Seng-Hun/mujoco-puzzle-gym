@@ -1,8 +1,10 @@
 """R24: example rooms in examples/rooms/ (six or more, one per kind so far), and the
 assembly presets that are whole rooms. Each passes `mpg check` (slow); the
 example rooms' 20-seed check is in test_check2.py. Slow: the scripted solution of
-the laundry room (R28) and the wall button room (R19) renders to an MP4."""
+the laundry room (R28) and the wall button room (R19) renders to an MP4, and
+`mpg demo <room>` does the same from the CLI."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,9 +12,8 @@ import yaml
 
 from mujoco_puzzle_gym import catalog
 from mujoco_puzzle_gym.check import check
-from mujoco_puzzle_gym.env import PuzzleEnv
-from mujoco_puzzle_gym.evaluate import write_video
-from mujoco_puzzle_gym.solver import ScriptedSolver
+from mujoco_puzzle_gym.cli import main
+from mujoco_puzzle_gym.evaluate import render_solution as _render_solution
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOMS = sorted((ROOT / "examples/rooms").glob("*.yaml"))
@@ -80,21 +81,8 @@ def test_four_flags_check_writes_flag_snapshots(asset_dir, tmp_path):
 
 def render_solution(room: str, out: Path, seed: int = 0) -> dict:
     """The scripted solution of an example room, rendered to `out` (MP4)."""
-    env = PuzzleEnv(task=TASKS.get(room), room=ROOT / f"examples/rooms/{room}.yaml",
-                    render_mode="rgb_array")
-    solver = ScriptedSolver(env)
-    env.reset(seed=seed)
-    solver.reset()
-    frames = [env.render()]
-    info: dict = {}
-    while True:
-        _, _, term, trunc, info = env.step(solver.act())
-        frames.append(env.render())
-        if term or trunc:
-            break
-    write_video(frames, out, fps=env.hz)
-    env.close()
-    return info
+    return _render_solution(ROOT / f"examples/rooms/{room}.yaml", out=out, seed=seed,
+                            task=TASKS.get(room))
 
 
 @pytest.mark.slow
@@ -105,3 +93,23 @@ def test_demo_video_of_the_scripted_solution(asset_dir, tmp_path, room):
     info = render_solution(room, out)
     assert info["success"] and not info["fallen"]
     assert out.stat().st_size > 10_000
+
+
+@pytest.mark.slow
+def test_mpg_demo_renders_a_room_solution(asset_dir, tmp_path, capsys):
+    """R24: `mpg demo <room>` writes the scripted solution of any room, with no run folder."""
+    out = tmp_path / "wall_button.mp4"
+    assert main(["demo", str(ROOT / "examples/rooms/wall_button.yaml"),
+                 "--out", str(out), "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["ok"] and result["success"] and not result["fallen"]
+    assert result["room"] == "wall_button" and result["seed"] == 0
+    assert Path(result["mp4"]) == out.resolve() and out.stat().st_size > 10_000
+
+
+def test_mpg_demo_rejects_a_missing_room_and_a_stray_task(tmp_path, capsys):
+    """The argument errors cost no simulation, so they are checked in the fast set."""
+    assert main(["demo", str(tmp_path / "nope.yaml"), "--json"]) == 1
+    assert "no such room file" in json.loads(capsys.readouterr().out)["error"]
+    assert main(["demo", "--task", str(ROOT / "examples/task_ppo.yaml"), "--json"]) == 1
+    assert "--task goes with a room file" in json.loads(capsys.readouterr().out)["error"]

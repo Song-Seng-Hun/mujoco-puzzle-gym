@@ -48,7 +48,7 @@ Every command accepts `--json` and exits non-zero on failure.
 | `mpg eval runs/<id>` | Success rate and mean time on held-out layouts (`--policy random` for a baseline). `--onnx policy.onnx --task task.yaml` evaluates an exported policy without pickle. `--difficulty k` runs at difficulty step k (default: the last). `--randomize nominal\|train\|wide` picks the draw mode (default `train`; `wide` draws only the evaluation-only values) |
 | `mpg export-onnx runs/<id>` | Export the policy as `policy.onnx` and `policy.json` (for sharing) |
 | `mpg render runs/<id>` | MP4 of a success episode |
-| `mpg demo` | Video of the bundled trained policy solving the example room (`demo.mp4`) |
+| `mpg demo <room.yaml>` | Video of that room's scripted solution (`<room>.mp4`). No trained policy and no run folder, so it works on a room you have just written. `--task` when its `demo:` needs actions beyond `move`. With no room, the bundled trained policy solving the example room (`demo.mp4`) |
 | `mpg bench` | Measure simulation speed of the walking body and the environment |
 | `mpg version` | Print the version |
 

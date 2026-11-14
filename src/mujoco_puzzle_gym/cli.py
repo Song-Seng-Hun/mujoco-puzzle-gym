@@ -302,19 +302,33 @@ DEMO_RUN = Path(__file__).resolve().parents[2] / "examples" / "pretrained" / "sw
 
 
 def _demo(args: argparse.Namespace) -> dict[str, Any]:
-    from .evaluate import render
+    from .evaluate import render, render_solution
 
+    if args.room:                                   # R24: the room's scripted solution
+        if not Path(args.room).is_file():
+            raise CommandError(f"no such room file: {args.room}")
+        try:
+            return render_solution(args.room, out=args.out, seed=args.seed or 0, task=args.task)
+        except _run_errors() as exc:
+            raise CommandError(str(exc)) from exc
+    if args.task:
+        raise CommandError("--task goes with a room file: `mpg demo <room>.yaml --task task.yaml`")
     if not (DEMO_RUN / "summary.json").exists():
         raise CommandError(f"bundled demo policy missing at {DEMO_RUN} (run from a git checkout)")
     try:
-        return render(DEMO_RUN, out=args.out, seed=args.seed)
+        return render(DEMO_RUN, out=args.out or "demo.mp4", seed=args.seed)
     except _run_errors() as exc:
         raise CommandError(str(exc)) from exc
 
 
 def _configure_demo(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--out", default="demo.mp4", help="MP4 path (default: ./demo.mp4)")
-    p.add_argument("--seed", type=int, default=None, help="layout seed (default: first success)")
+    p.add_argument("room", nargs="?", help="room.yaml: render its scripted solution "
+                                           "(default: the bundled trained policy on the example room)")
+    p.add_argument("--task", help="task.yaml for the room, when its `demo:` needs more than `move`")
+    p.add_argument("--out", default=None,
+                   help="MP4 path (default: <room>.mp4, or ./demo.mp4 for the bundled policy)")
+    p.add_argument("--seed", type=int, default=None,
+                   help="layout seed (room: 0; bundled policy: the first success)")
 
 
 COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None]]] = {
@@ -335,7 +349,8 @@ COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None
     "export-onnx": ("Write policy.onnx + policy.json from a run, to share without pickle.",
                     _export_onnx, _configure_export_onnx),
     "render": ("Offscreen MP4 of a success episode.", _render, _configure_render),
-    "demo": ("Render the bundled trained policy solving the example room to demo.mp4.", _demo, _configure_demo),
+    "demo": ("Render a room's scripted solution to MP4, or the bundled trained policy "
+             "on the example room.", _demo, _configure_demo),
 }
 
 
