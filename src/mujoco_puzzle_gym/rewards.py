@@ -3,6 +3,7 @@
 Terms read `env.events`, filled once per env step:
 - progress: metres of geodesic distance (around walls, through open doors) gained
   toward the current target this step;
+- progress_free: the same, toward the nearest target that is not solved yet (R35);
 - new_on:   switches that turned on this step;
 - success:  a goal was reached;
 - fallen:   the body fell;
@@ -17,6 +18,15 @@ from .registry import register_reward
 @register_reward("progress", replace=True)
 def progress(env):
     return env.events["progress"]
+
+
+@register_reward("progress_free", replace=True)
+def progress_free(env):
+    """Metres gained this step toward the nearest target that is not solved yet (R35),
+    whichever it is: the solution order is not used, so a policy earns nothing for
+    walking the order it memorized and has to read the room's cue instead. `progress`
+    stays the default; a task that wants this one asks for it by name."""
+    return env.events["progress_free"]
 
 
 @register_reward("stage", replace=True)
