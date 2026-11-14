@@ -1,0 +1,8 @@
+# Task for examples/rooms/room_roulette.yaml (R35): the room itself changes every
+# episode, so the observation carries `part_used` (which room's parts are in play) and
+# `target_pos` is left out: the policy has to read the room it woke up in.
+# Missing keys take task.DEFAULTS.
+room: rooms/room_roulette.yaml
+actions: [move]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, part_used]
+randomize: {layout: 1.0, rooms: 1.0}

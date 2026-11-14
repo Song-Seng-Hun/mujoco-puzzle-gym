@@ -162,7 +162,6 @@ def test_zero_pins_a_layer_to_the_nominal_value(tmp_path):
     ({"layout": -1.0}, "must be a number >= 0"),
     ({"nonsense": 1.0}, "unknown layer"),
     ({"look": True}, "not available yet"),
-    ({"rooms": 1.0}, "not available yet"),
     ([1.0], "must be a mapping"),
 ])
 def test_bad_task_strengths_are_refused(tmp_path, raw, bad):
