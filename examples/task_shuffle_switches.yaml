@@ -1,0 +1,9 @@
+# Task for examples/rooms/shuffle_switches.yaml (R35): the wiring changes every
+# episode, so the observation carries the cue (`part_links`) and the plate slots'
+# mask (`part_used`). `target_pos` is left out on purpose: with it the policy is
+# told where to go and never has to read the cue (the order-reasoning test, R35).
+# Missing keys take task.DEFAULTS.
+room: rooms/shuffle_switches.yaml
+actions: [move]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, part_links, part_used]
+randomize: {layout: 1.0, structure: 1.0}
