@@ -49,6 +49,12 @@
   free object (`push`).
 - Pits (R16) with `on_fall: reset` send a fall into them back like room
   `on_fall: reset`; with `fail` the pit's `failed()` ends the episode.
+- Episode randomization (R35, room `randomize:` and task `randomize:`): every
+  reset draws the spawn, part positions and run-time values from the room's
+  samplers (randomize.py), scaled by the task's per-layer strengths, and draws
+  again while the draw has no solution order or a part refuses a drawn value.
+  `self.layout` holds the draw, `reset(options={"randomize": "nominal" | "wide"})`
+  picks a draw mode, and `info["draws"]` counts how many draws this episode took.
 - Difficulty steps (R21, task `difficulty:`): every reset applies step
   `options["difficulty"]` (or the drawn level's, or the last step);
   `info["difficulty"]` reports it.
@@ -67,7 +73,7 @@ import gymnasium as gym
 import mujoco
 import numpy as np
 
-from . import curriculum, snapshot
+from . import curriculum, randomize as randomize_mod, snapshot
 from .grab import BEAK_PART
 from .bodies import DEFAULT_BODY, BodyState, make_body
 from .layout import Grid
@@ -76,7 +82,8 @@ from .logic import free_mask, solution_order
 from .parts.base import Part, World
 from .obs import make_items
 from .registry import REWARDS
-from .room import Room
+from .room import Room, RoomError
+from .schema import SchemaError
 from .task import TaskError, load_task
 
 # A gate counts as having let the body through once its state passed this
@@ -136,6 +143,13 @@ class PuzzleEnv(gym.Env):
             self.difficulty = curriculum.parse_difficulty(self.task.get("difficulty"), self.parts)
         except curriculum.CurriculumError as exc:
             raise TaskError(str(exc)) from None
+        #: R35 draw mode for later resets: train | nominal | wide (`mpg eval --randomize`).
+        self.randomize_mode = "train"
+        try:                                                     # R35 episode randomization
+            self.randomizer = randomize_mod.Randomizer(self.room, self.parts, self.task)
+            self.randomizer.check_difficulty(self.difficulty)
+        except randomize_mod.RandomizeError as exc:
+            raise RoomError(str(exc), "values") from None
         self.difficulty_steps = len(self.difficulty[0].values) if self.difficulty else 1
         self.difficulty_level: int | None = None
         self._difficulty_k: int | None = None                    # the step `reset` asked for
@@ -336,16 +350,68 @@ class PuzzleEnv(gym.Env):
         self._mark_target()
 
     # ---- layout and state ---------------------------------------------------
-    def sample_layout(self, rng: np.random.Generator | None) -> dict[str, Any]:
-        """Spawn pose and part positions; `rng=None` gives the nominal layout."""
-        return {
-            "spawn": self.room.sample_spawn(rng),
-            "parts": {n: (p.sample_xy(rng) if rng is not None else p.base_xy.copy())
-                      for n, p in self.parts.items()},
-        }
+    def sample_layout(self, rng: np.random.Generator | None,
+                      mode: str = "train") -> dict[str, Any]:
+        """Spawn pose, part positions and drawn part values (R35); `rng=None` or
+        `mode="nominal"` gives the nominal layout.
 
-    def _reset_sim(self, rng: np.random.Generator | None, layout: dict | None = None) -> None:
-        layout = layout or self.sample_layout(rng)
+        A room that declares `randomize:` is drawn again while the draw cannot be
+        solved (no solution order, a `min_gap` broken, or a part's static check
+        refuses a drawn value), up to the room's `max_resample`. `layout["draws"]`
+        counts the draws and `layout["why"]` holds the last reasons, which is what
+        `mpg check` measures; the M1 `random:` shorthand alone is drawn once, as
+        before."""
+        if rng is None or mode == "nominal":
+            return self.randomizer.draw(self.room, self.parts, np.random.default_rng(0),
+                                        "nominal")
+        if not self.randomizer.active():
+            return self.randomizer.draw(self.room, self.parts, rng, mode)
+        layout = None
+        for k in range(self.randomizer.max_resample):
+            layout = self.randomizer.draw(self.room, self.parts, rng, mode)
+            why = self._layout_why(layout)
+            layout["draws"], layout["why"] = k + 1, why
+            if not why:
+                return layout
+        return layout
+
+    def _layout_why(self, layout: dict[str, Any]) -> list[str]:
+        """Reasons a drawn layout is thrown away (R35): no goal order from the drawn
+        places, a broken `min_gap`, or a part refusing a drawn value."""
+        why = self.randomizer.gap_reasons(self.room, layout)
+        for name, xy in layout["parts"].items():
+            self.parts[name].place(self.model, xy)
+        if layout.get("values"):
+            why += self._apply_values(layout, probe=True)
+        res = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2],
+                             broken=demo_breaks(self.room))
+        if not res["ok"]:
+            why.append(res["reason"])
+        if layout.get("values"):
+            why += [r for p in self.parts.values() for r in p.check_static(self)]
+        return why
+
+    def _apply_values(self, layout: dict[str, Any], probe: bool = False) -> list[str]:
+        """Set the drawn run-time values (R35 physics layer) on their parts. A probe
+        (the resample loop) reports a refused value instead of raising; the values are
+        set again for real after `reset_values`."""
+        why = []
+        for name, vals in (layout.get("values") or {}).items():
+            part = self.parts.get(name)
+            if part is None:
+                continue
+            for key, v in vals.items():
+                try:
+                    part.set_value(self.model, self.data, key, v, episode=True)
+                except SchemaError as exc:
+                    if not probe:
+                        raise
+                    why.append(str(exc))
+        return why
+
+    def _reset_sim(self, rng: np.random.Generator | None, layout: dict | None = None,
+                   mode: str | None = None) -> None:
+        layout = layout or self.sample_layout(rng, mode or self.randomize_mode)
         self.layout = layout
         snapshot.load_model_values(self.model, self._model0)
         mujoco.mj_resetData(self.model, self.data)
@@ -382,6 +448,7 @@ class PuzzleEnv(gym.Env):
         for p in self.parts.values():
             p.reset_values(self.model, self.data)
         curriculum.apply_difficulty(self, self._difficulty_k)    # R21: before parts reset and the plan
+        self._apply_values(layout)                               # R35: the drawn values
         for p in self.parts.values():
             p.reset(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
@@ -515,7 +582,7 @@ class PuzzleEnv(gym.Env):
         self.segment = None
         self._difficulty_k = curriculum.difficulty_step(self, diff)
         if seg is None:
-            self._reset_sim(self.np_random, opts.get("layout"))
+            self._reset_sim(self.np_random, opts.get("layout"), opts.get("randomize"))
         else:
             curriculum.begin_segment(self, int(seg), to_goal, opts.get("layout"))
         return self._obs(), self._info()
@@ -629,6 +696,7 @@ class PuzzleEnv(gym.Env):
             "parts": {n: p.state() for n, p in self.parts.items()},
             "plan_ok": self.plan["ok"],
             **({"difficulty": self.difficulty_level} if self.difficulty else {}),
+            **({"draws": self.layout["draws"]} if "draws" in self.layout else {}),
         }
 
     # ---- rendering ----------------------------------------------------------

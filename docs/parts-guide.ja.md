@@ -299,6 +299,42 @@ curriculum: {mode: forward, order: difficulty_first}
 - `bind`がかかっている値、範囲外の値、大きさの値は部屋を読むときに拒否します。
 - 抽選なしで動かすと(評価、ただの`reset`)最後の段階です。`mpg eval runs/<id> --difficulty 1`のように段階を選べます。
 
+### エピソードのランダム化
+
+部屋は何がどこまで変わりうるか(`randomize:`)を書き、`task.yaml`はその範囲を今回の学習でどれだけ使うかを決めます。同じ部屋を固定でもランダムでも学習できます。
+
+```yaml
+parts:
+  - name: switch_a
+    preset: input/floor_momentary
+    pos: [-0.6, 0.5]
+    randomize:
+      pos: {region: [[-1.2, 0.0, -0.9, 0.9]], min_gap: 0.2}
+  - name: goal
+    type: goal
+    pos: [1.1, 0.0]
+    randomize:
+      pos: {candidates: [[1.1, 0.0], [1.1, 0.5]], weights: [2, 1], holdout: [[0.9, -0.5]]}
+  - name: fan
+    preset: trap/crosswind
+    pos: [-1.0, -0.65]
+    randomize:
+      power: {range: 0.5, holdout_scale: 2.0}
+spawn: {pos: [-1.2, 0.0], randomize: {pos: {range: [0.1, 0.2]}, yaw: {range: 1.0}}}
+max_resample: 20
+```
+
+```yaml
+randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
+```
+
+- 引き方は三つです。`range`(基準値±。M1の`random: [dx, dy]`はこの省略形で、両方書くと拒否します)、`region`(箱の並びの中のどこか。`min_gap`で壁や他の部品との間隔を保ちます)、`candidates`(候補から一つ。`weights`も使えます)。`pos`は位置で、それ以外の名前は実行中かエピソード開始時に変えられる部品の値です。
+- 層は、位置と開始姿勢が`layout`、部品の値が`physics`、観測の雑音が`body`です。taskの数は部屋の範囲を何倍使うかで、0なら基準値に固定します。既定は1.0なので、部屋に書けば有効になります。`structure`・`look`・`rooms`はまだ無く、0以外を与えると拒否します。
+- 同じ値を`bind`や難易度段階も動かす場合は拒否します(どちらかが黙って消えるためです)。
+- 引いた部屋が解けない場合(目標の順序が無い、`min_gap`が壊れる、部品が引かれた値を拒否する)は捨てて引き直します(`max_resample`、既定20)。`mpg check`の`resample`段階は種100個で部屋を引き、捨てた割合が30%を超えると警告し、上限まで解ける部屋が見つからない種があれば拒否します。
+- 評価専用の値は、`candidates`なら`holdout:`、`region`なら`holdout_region:`、`range`なら範囲の外側の帯(`holdout_scale`、既定1.5倍)です。`reset(options={"randomize": "wide"})`はそれだけを引き(評価専用の値が無い引き方は基準値のままです)、部屋に一つも無ければ拒否します。`"nominal"`は何も引きません。
+- 観測項目`randomized`(既定はオフ)は、引かれた部品の値を部屋が書いた範囲で割った数です。`info["draws"]`はそのエピソードが何回引いたかです。
+
 ## キューブとくちばしでつかむ動作
 
 - `cube`は取っ手の付いた箱です(`size`、`mass`、`friction`、取っ手の面`handles`は`+x`、`-x`、`+y`、`-y`、`+z`から選択、既定は側面の4つ)。圧力板、ソケット、物で押すボタンと区域が数えます。部屋にキューブがあると、キューブで入る入力は解く順序で踏み板として数えます。`rest_on: <キューブ>`を付けると、リセットのたびにそのキューブの上面に載って始まります(`pos`はそのキューブ基準のままなので、そのキューブのランダム範囲に付いていきます。自分の`random`は0でなければなりません。下のキューブは別のキューブに載ったものであってはならず、中心がその上面の上になければなりません)。載ったキューブの接触優先度は掛け所の物と同じ(2)なので、ロープのある部屋の掛け所のキューブの上でも、二つのうち大きい摩擦で支えます。
@@ -513,6 +549,7 @@ def majority(inputs, state, dt):
 | `out` | list |  | — |  |  | channels this part writes (default: its name if it emits) |
 | `enable` | str |  | — |  |  | power channel; off (<= 0.5) freezes the part's output |
 | `marker` | any |  | — |  |  | ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one |
+| `randomize` | any |  | — |  |  | R35: {pos: {range\|region\|candidates: ...}, <run-time value>: {...}}, drawn at every episode start and scaled by the task's `randomize:` |
 | `bind` | any |  | — |  |  | R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, applied every body step, clipped to the value's range |
 
 ### `addon_station`

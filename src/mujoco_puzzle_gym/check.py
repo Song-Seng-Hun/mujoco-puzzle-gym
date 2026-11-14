@@ -31,6 +31,12 @@ circuit:   the break graph (R34, circuit.py): what breaking each breakable part
            broken that changes nothing) with warnings when the answer leans on a
            part that can be broken with no repair; checked after `order`, on its
            solution order;
+resample:  a randomized room (R35 `randomize:`) is drawn once per seed (100) and
+           the draws are counted: a seed that used up `max_resample` without a
+           solvable draw fails the stage, and more than `RESAMPLE_WARN` of the
+           draws thrown away is a warning. Skipped when the room declares no
+           randomization or the task turns every layer off; it runs last because
+           it leaves the room on a drawn layout;
 (a) order: a signal path to a goal exists: a switch/door order that reaches a
            goal (link graph on the room grid), and every coin is reachable (R36);
            in letter-map rooms (R37) also: parts, spawn and their random ranges lie on
@@ -68,8 +74,11 @@ from .room import RoomError
 from .solver import ScriptedSolver, run_episode
 
 STABILITY_SECONDS = 10.0
+RESAMPLE_SEEDS = 100     # R35: seeds the `resample` stage draws the room with
+RESAMPLE_WARN = 0.3      # R35: thrown-away share that earns a warning
 LOAD_STAGES = ("values", "channels", "demo")
-STATIC = ("community", *LOAD_STAGES, "body", "parts", "overlap", "order", "circuit", "actions")  # community: --community only
+STATIC = ("community", *LOAD_STAGES, "body", "parts", "overlap", "order", "circuit", "actions",
+          "resample")  # community: --community only
 DYNAMIC = ("stability", "solver")
 STAGES = STATIC + DYNAMIC
 OVERLAP_DEPTH = 0.005    # [m] penetration that counts as an overlap
@@ -190,7 +199,8 @@ def check_order(env: PuzzleEnv) -> dict[str, Any]:
 
 
 def map_placement(env: PuzzleEnv) -> list[str]:
-    """Letter maps (R37): parts, spawn and their random ranges must lie on floor cells."""
+    """Letter maps (R37): parts, spawn and everywhere a draw can put them (the `random:`
+    shorthand and the R35 `randomize:` samplers) must lie on floor cells."""
     m = env.room.map
     out: list[str] = []
 
@@ -207,7 +217,13 @@ def map_placement(env: PuzzleEnv) -> list[str]:
                 out.append(f"{what} at ({p[0]:.2f}, {p[1]:.2f}){span} {what_k}: {where}")
                 return
 
+    def drawn(what: str, owner: str, nominal, half=(0.0, 0.0)) -> None:
+        """Every edge position the R35 samplers can draw must be on floor too."""
+        for xy in env.randomizer.extremes_of(owner, nominal):
+            probe(what, xy, (0.0, 0.0), half)
+
     probe("spawn", env.room.spawn_pos, env.room.spawn_random[:2])
+    drawn("spawn", "spawn", env.room.spawn_pos)
     for n, p in env.parts.items():
         if not p.has_body or getattr(p, "floor_part", False):
             continue
@@ -215,6 +231,7 @@ def map_placement(env: PuzzleEnv) -> list[str]:
         if getattr(p, "mount", None) == "wall":      # a wall plate's size is [width, height] on the wall
             half = (0.0, 0.0)
         probe(f"part {n!r}", p.base_xy, p.random, half)
+        drawn(f"part {n!r}", n, p.base_xy, half)
     return out
 
 
@@ -227,6 +244,37 @@ def map_steps(env: PuzzleEnv, start_xy) -> list[str]:
     cells.discard(None)
     vals = env.body.capabilities.values
     return m.step_reasons(cells, float(vals.get("max_step", np.inf)), float(vals.get("max_slope", 90.0)))
+
+
+def check_resample(env: PuzzleEnv, seeds: int = RESAMPLE_SEEDS) -> dict[str, Any]:
+    """Static: how much of a randomized room's drawing is thrown away (R35).
+
+    Draws the room once per seed and counts the draws each one took. The stage
+    warns above `RESAMPLE_WARN` thrown-away draws and fails when a seed used up
+    the room's `max_resample` without a solvable draw, because that episode would
+    start from an unsolvable room. A room that declares no randomization (or whose
+    task turns every layer off) is skipped."""
+    if not env.randomizer.entries:
+        return {"ok": True, "skipped": "the room declares no `randomize:`"}
+    if not env.randomizer.active():
+        return {"ok": True, "skipped": "the task's `randomize:` turns every layer off"}
+    draws, stuck = 0, []
+    for s in range(seeds):
+        layout = env.sample_layout(np.random.default_rng(s))
+        draws += int(layout.get("draws", 1))
+        if layout.get("why"):
+            stuck.append(f"seed {s}: {layout['why'][0]}")
+    env.reset(options={"layout": env.sample_layout(None)})      # back to the nominal room
+    ratio = (draws - seeds) / draws
+    out: dict[str, Any] = {"ok": not stuck, "seeds": seeds, "draws": draws,
+                           "ratio": round(ratio, 3), "max_resample": env.randomizer.max_resample}
+    if stuck:
+        out["reason"] = (f"{len(stuck)} of {seeds} seeds found no solvable room within "
+                         f"max_resample {env.randomizer.max_resample}: " + "; ".join(stuck[:3]))
+    elif ratio > RESAMPLE_WARN:
+        out["warnings"] = [f"{ratio:.0%} of the draws are thrown away (over "
+                           f"{RESAMPLE_WARN:.0%}): narrow the ranges or widen the room"]
+    return out
 
 
 def check_stability(env: PuzzleEnv, seconds: float = STABILITY_SECONDS) -> dict[str, Any]:
@@ -328,6 +376,7 @@ def check_static(env: PuzzleEnv) -> dict[str, Any]:
     out["order"] = check_order(env)
     out["circuit"] = check_circuit(env, out["order"]["order"])
     out["actions"] = check_actions(env, out["order"]["order"])
+    out["resample"] = check_resample(env)      # last: it leaves the room on a drawn layout
     return out
 
 
@@ -382,7 +431,7 @@ def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
             result["solver"] = check_solver(env, seeds, need, snap_dir)
         else:
             why = {"order": "no solution order (a)", "body": "missing body capabilities",
-                   "parts": "part static check", "actions": "task actions miss what the plan needs"}.get(failed[0], f"static stage {failed[0]} failed")
+                   "parts": "part static check", "resample": "a drawn room has no solution", "actions": "task actions miss what the plan needs"}.get(failed[0], f"static stage {failed[0]} failed")
             result["solver"] = {**skipped, "skipped": why}
     _summary(result)
     result["wall_seconds"] = round(time.perf_counter() - t0, 1)

@@ -162,6 +162,15 @@ def circuit(env):
     return np.concatenate(rows) if rows else np.zeros(0)
 
 
+@register_obs("randomized", replace=True)
+def randomized(env):
+    """The run-time values this episode drew (R35 physics layer), normalized to about
+    [-1, 1] against the range the room declares, part and value name in order. Off by
+    default: without it the policy has to cope without knowing what was drawn. A room
+    that randomizes no value gives an empty array."""
+    return env.randomizer.observation(env.layout, env.parts)
+
+
 BALLS_K = 3   # nearest balls in the `balls` term
 
 
