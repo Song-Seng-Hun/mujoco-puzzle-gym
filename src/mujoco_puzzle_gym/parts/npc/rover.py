@@ -333,6 +333,13 @@ class Npc(Part):
         self.write(0.0, self.name + ".moving")
         self.write(-1.0, self.name + ".on")
 
+    def shelve(self, model, data, spot) -> None:
+        """R35 storage shelf: a robot stands still off stage at floor height."""
+        self.park(model, data, [float(spot[0]), float(spot[1]), 0.0])
+
+    def unshelve(self, model, data) -> None:
+        self.unpark(model, [*self.xy, 0.0])
+
     def unpark(self, model, xyz) -> None:
         """Back on stage at `xyz` (call `teleport` / mj_forward after)."""
         self.place(model, xyz[:2])

@@ -205,10 +205,10 @@ def test_a_part_cannot_both_swap_places_and_draw_one(tmp_path):
     assert "swaps places or draws one" in str(exc.value)
 
 
-def test_the_room_block_takes_only_shuffle(tmp_path):
+def test_the_room_block_takes_only_its_own_keys(tmp_path):
     with pytest.raises(RoomError) as exc:
         env_of(tmp_path, randomize={"shuffle": [{"places": list(PLATES)}], "pos": {"range": 1}})
-    assert "takes only `shuffle:`" in str(exc.value)
+    assert "takes `shuffle:` and `holdout:`" in str(exc.value)
 
 
 def test_a_snapshot_keeps_the_wiring_it_was_recorded_with(tmp_path):

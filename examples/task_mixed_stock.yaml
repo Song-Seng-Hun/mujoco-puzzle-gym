@@ -1,0 +1,8 @@
+# Task for examples/rooms/mixed_stock.yaml (R35): the parts themselves change, so
+# the observation carries `part_group` (which candidate / how many copies are in
+# play) and `part_used` (which part slots are in the room). Missing keys take
+# task.DEFAULTS.
+room: rooms/mixed_stock.yaml
+actions: [move]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, part_group, part_used]
+randomize: {layout: 1.0, structure: 1.0}

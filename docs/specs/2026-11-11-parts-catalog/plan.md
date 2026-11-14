@@ -527,6 +527,19 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - 계획·spec과 다른 점(보고만): (1) 연결 비트는 `part_state`에 섞지 않고 새 항목 `part_links`·`part_used`로 냈다(모든 방의 관측 폭이 바뀌면 기존 학습·수치와 비교가 끊긴다). (2) 연결 비트는 섞이는 쌍만 담는다(모든 (출처, 받는 부품) 쌍은 고정 정보라 길이만 늘린다). (3) 단서는 부품 색이 아니라 단서판 색이다(부품이 상태 색을 덮어쓴다). (4) `places`는 평가 전용 값이 없어 `wide`에서 기준 자리에 머문다(순열에 "범위 바깥"이 없다). (5) 문 여는 방향과 순서 잠금의 순서 섞기는 아직 없다(값이 에피소드 시작에 바뀌지 않는다 — 4b-2에서 함께 본다).
      - 알려진 한계: 발판을 `floor_momentary`로 두면 해답이 발판에서 내려오는 순간 문이 닫혀 0/20이라 예제는 `floor_oneshot`이다. `places`에 들어간 부품은 자기 `random`·`randomize.pos`를 가질 수 없다.
 
+   - 4b-2 구현 기록 (2026-11-14, 브랜치 `feat/m2-randomize-4b2`, 4b-1 위):
+     - `randomize.py`: 그룹 `Group`(종류·개수)과 펼치기 `expand_parts` — 부품 하나를 후보마다(`<이름>#0..`) 또는 복제마다(`<이름>#1..hi`) 만들고, 종류 그룹의 이름을 읽던 부품은 첫 후보로 돌려둔다(기준 방). 뽑기 `Choice`(종류는 후보 하나, 개수는 `lo..hi`개와 서로 다른 자리), 그룹 평가 전용 후보 `_holdout_members`(방 단위 `randomize: {holdout: {<그룹>: [...]}}`), 방에 있는 부품 `used_parts`, 종류 그룹 재배선 `group_links`, 관측 `used_observation`.
+     - `room.py`: `Room.from_dict`가 펼치기를 돌리고 프리셋을 한 번 더 채우며 `Room.groups`에 남긴다.
+     - `parts/base.py`: `Part.shelve`·`unshelve`·`own_geoms`와 `can_shelve`(문·벽 부착·바닥 타일은 치울 수 없다). `object/ball.py`(자유 물체)와 `npc/rover.py`는 자기 `park`/`unpark`로 넘긴다.
+     - `env.py`: 상수 `SHELF_X/Y/GAP`(방 밖 +x 60 m부터 2 m 간격), `_apply_shelf`가 부품 리셋 뒤에 돌아 고른 것만 방에 두고(자유 물체의 리셋이 되돌려 놓기 때문) 치운 부품의 채널을 0으로 둔다. 뽑기 판정에서도 자리 배치 뒤에 돌린다.
+     - `signals.py`: 버스가 치워진 부품(`parked`)을 갱신하지 않는다(디스펜서 보관 복제품과 같은 규칙을 일반화).
+     - `logic.py`: 계획이 치워진 부품을 빼고 본다(`free_mask`, `live_free`, `plan_channels`, 발판·게이트·골 목록, 워프).
+     - `obs.py`: 항목 `part_group`(그룹마다 후보·복제 한 칸, 방에 있는 것만 1).
+     - 예제 `examples/rooms/mixed_stock.yaml`·`examples/task_mixed_stock.yaml`(발판 종류 2종, 상자 0~2개), `tests/test_groups.py` 24개(+slow 1개).
+     - 잰 값: `mpg check` 시드 20개로 `mixed_stock` 20/20(평균 12.7초), `resample` 비율 0.0. 빠른 시험 1167 passed/1 skipped, slow 묶음 60 passed(604초). `mpg bench` 560.0 env steps/s · 3478.9 body steps/s · 낙하 0(4b-1 557.9 · 3451.1).
+     - 계획·spec과 다른 점(보고만): (1) 개수 그룹은 자리를 방 작성자가 `pos: {candidates: [...]}`로 주어야 한다(복제가 한 `pos`에 겹쳐 서면 overlap 단계가 거절한다). 뽑기는 서로 다른 자리를 고르고 기준 방은 자리마다 하나다. (2) 개수 그룹의 채널을 읽는 부품이 있으면 거절한다(어느 복제인지 말할 수 없다). (3) 치울 수 없는 부품(문·벽 부착·바닥 타일)은 그룹에 못 넣는다. (4) 문 여는 방향과 순서 잠금 순서 섞기는 여전히 없다(에피소드 시작에 바뀌는 값이 아니고, 방향은 기하라서 치우기·후보로 다뤄야 한다 — 필요한 방이 나올 때 다시 본다). (5) 개수 그룹에는 평가 전용 값이 없어 `wide`에서 기준 개수에 머문다.
+     - 알려진 한계: 보관 선반은 한 모델 안의 자리라서 후보·복제가 늘면 모델이 커진다(4c의 `rooms` 상한 8과 같은 성질). 종류 후보는 자리(`pos`)만 물려받고 나머지 값은 각 프리셋의 것이다.
+
 17. 예제 방(큐브·소켓, 벽 버튼, 빨래 `laundry.yaml`). 가이드 완성, AGENTS.md와 SKILL.md 연결.
    - 나누기 (2026-11-12, 사용자 결정 "추천대로 가자"): (a) 예제 방 3개는 지금 한다. (b) 가이드 완성, AGENTS.md와 SKILL.md 연결은 16g 뒤로 옮긴다.
    - (a) 구현 기록 (2026-11-12, 브랜치 `feat/m2-examples-beak`, `feat/m2-basket-exit` 위): 예제 `examples/rooms/cube_socket.yaml`·`wall_button.yaml`·`laundry.yaml`, task `examples/task_cube_socket.yaml`(`[move, head, grab]`)·`task_laundry.yaml`(`[move, head, grab]`, 60 s 판). 세 방 모두 표준 문틈(벽 끝 0.56 m 사이, 실제 틈 0.50 m, `device/sliding_door`)이고 격자 해답으로 풀며 `demo:`는 없다. 시험: `tests/test_examples.py`의 KINDS와 task 표, slow `test_demo_video_of_the_scripted_solution`(빨래·벽 버튼 방의 해답을 MP4로 그림, 성공·10 kB 이상), `tests/test_check2.py`의 예제 방 정적·20시드 점검에 새 task. 가이드 3종 예제 목록과 parts-guide 3종 조립 예 표.

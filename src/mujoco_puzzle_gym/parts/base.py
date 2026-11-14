@@ -339,6 +339,39 @@ class Part:
             raise SchemaError(f"part {self.name!r}: {key!r} cannot change {when}")
         self.live[key] = f.check(f"part {self.name!r}", value)
 
+    # ---- the storage shelf (R35 structure layer) ---------------------------------
+    def can_shelve(self) -> str | None:
+        """Why this part cannot be put on the storage shelf, or None. A part that is
+        part of the room's shape -- a gate in a wall gap, a plate on a wall, a floor
+        tile -- would leave a hole behind, so a room that wants to draw it away is
+        refused while it loads."""
+        if self.role == "gate":
+            return "a gate closes a gap in a wall"
+        if getattr(self, "mount", None) == "wall":
+            return "it is fixed to a wall"
+        if getattr(self, "floor_part", False):
+            return "it is part of the floor"
+        return None
+
+    def shelve(self, model: mujoco.MjModel, data: mujoco.MjData, spot) -> None:
+        """Put this part off stage at `spot` (R35): no collisions, and far enough out
+        that the room's grid and the sensors never see it. A reset reloads the model
+        values first, so nothing has to be remembered."""
+        for g in self.own_geoms(model):
+            model.geom_contype[g] = model.geom_conaffinity[g] = 0
+        self.place(model, spot)
+        self.parked = True
+
+    def unshelve(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
+        """Back in play (the model values are already the room's again)."""
+        self.parked = False
+
+    def own_geoms(self, model: mujoco.MjModel) -> list[int]:
+        """Geom ids of this part's own body."""
+        if self._bid < 0:
+            return []
+        return [g for g in range(model.ngeom) if int(model.geom_bodyid[g]) == self._bid]
+
     def paint_cue(self, model: mujoco.MjModel, rgba) -> None:
         """Colour this part's cue mat (R35): the flat plate under a part that takes part
         in a link shuffle. Parts paint their own geoms for their state (a pressed plate

@@ -90,6 +90,7 @@ from .task import TaskError, load_task
 # A gate counts as having let the body through once its state passed this
 # (a half-open door already leaves a gap wider than the body).
 GATE_PASSABLE = 0.3
+SHELF_X, SHELF_Y, SHELF_GAP = 60.0, 0.0, 2.0   # [m] where parts off stage wait (R35)
 RESPAWN = ("start", "checkpoint")
 RESPAWN_PENALTY = -1.0
 _NOW = object()    # target_field: the target's current key
@@ -386,6 +387,7 @@ class PuzzleEnv(gym.Env):
         why += self._apply_links(layout, probe=True)
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
+        self._apply_shelf(layout)              # after the places: the shelf moves them off
         if layout.get("values"):
             why += self._apply_values(layout, probe=True)
         res = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2],
@@ -396,11 +398,29 @@ class PuzzleEnv(gym.Env):
             why += [r for p in self.parts.values() for r in p.check_static(self)]
         return why
 
+    def _apply_shelf(self, layout: dict[str, Any]) -> None:
+        """Put the group members this episode did not draw on the storage shelf and the
+        drawn ones back in the room (R35 structure layer). The shelf is off along +x,
+        one spot per part, where nothing reaches them."""
+        if not self.randomizer.choices:
+            return
+        used = self.randomizer.used_parts(self.parts, layout)
+        members = {n for e in self.randomizer.choices for n in e.group.members}
+        for i, (name, part) in enumerate(self.parts.items()):
+            if name not in members:
+                continue                   # only a group's members go on and off the shelf
+            if name in used:               # set it either way: a thrown-away draw may have
+                part.unshelve(self.model, self.data)      # left the flag the other way round
+            else:
+                part.shelve(self.model, self.data, (SHELF_X + i * SHELF_GAP, SHELF_Y))
+                for ch in part.outputs:        # off stage: its channels read 0
+                    self.signals.set(ch, 0.0)
+
     def _apply_links(self, layout: dict[str, Any], probe: bool = False) -> list[str]:
         """Set the wiring this episode drew (R35 `shuffle: {links: ...}`) and wire the bus
         again. A probe reports a wiring the signal checks refuse instead of raising, so
         the draw is thrown away."""
-        if not self.randomizer.links:
+        if not (self.randomizer.links or self.randomizer.choices):
             return []
         self.randomizer.apply_links(self.parts, layout)
         try:
@@ -473,7 +493,8 @@ class PuzzleEnv(gym.Env):
         self._apply_values(layout)                               # R35: the drawn values
         for p in self.parts.values():
             p.reset(self.model, self.data)
-        mujoco.mj_forward(self.model, self.data)
+        self._apply_shelf(layout)      # R35: after the parts reset (a free object's reset
+        mujoco.mj_forward(self.model, self.data)       # puts it back in play otherwise)
         for p in self.parts.values():                            # R31: default rope ends tie now
             p.after_reset(self.model, self.data)
         if self.world.ropes:

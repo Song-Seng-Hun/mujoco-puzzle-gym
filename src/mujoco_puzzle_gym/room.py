@@ -372,6 +372,8 @@ class Room:
     demo: list[tuple] = field(default_factory=list)   # scripted solver sub-goals (R20)
     gaze: gaze_mod.GazeConfig = field(default_factory=gaze_mod.GazeConfig)   # R27
     part_presets: dict[str, str] = field(default_factory=dict)   # part name -> preset (R3)
+    #: Parts drawn in several shapes or numbers (R35 structure layer, randomize.Group).
+    groups: list[Any] = field(default_factory=list)
 
     # ---- loading ----------------------------------------------------------
     @classmethod
@@ -393,6 +395,16 @@ class Room:
         except catalog.PresetError as exc:
             raise RoomError(str(exc), "values") from None
         raw = {**raw, "parts": [c for c, _ in expanded]} if expanded else raw
+        try:            # R35: a part drawn in several shapes or numbers becomes several parts
+            cfgs, groups = randomize.expand_parts(raw.get("parts") or [])
+        except randomize.RandomizeError as exc:
+            raise RoomError(str(exc), "values") from None
+        if groups:
+            try:
+                expanded = [catalog.expand_part(c) for c in cfgs]
+            except catalog.PresetError as exc:
+                raise RoomError(str(exc), "values") from None
+            raw = {**raw, "parts": [c for c, _ in expanded]}
         wall = raw.get("wall", {}) or {}
         thick = float(wall.get("thickness", 0.06))
         height = float(wall.get("height", 0.25))
@@ -458,7 +470,7 @@ class Room:
             spawn_random=np.asarray(rnd[:3], dtype=float),
             part_cfgs=[dict(c) for c in cfgs], links=[dict(l) for l in links],
             path=path, raw=raw, floor_friction=friction, part_zones=[0] * len(cfgs),
-            map=rmap, on_fall=on_fall,
+            map=rmap, on_fall=on_fall, groups=groups,
             part_presets={c["name"]: n for c, n in expanded if n and isinstance(c, dict) and "name" in c},
         )
         if stage:

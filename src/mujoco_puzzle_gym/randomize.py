@@ -263,6 +263,38 @@ class LinkSource(Sampler):
         return out
 
 
+@dataclass
+class Choice(Sampler):
+    """A group's draw (R35): which candidate is in the room, or how many copies are.
+
+    The members that are not drawn wait on the storage shelf, where they block
+    nothing, write nothing and are left out of the plan and the observations."""
+
+    group: Group = None            # type: ignore[assignment]
+    holdout: list[int] = field(default_factory=list)
+
+    def pick(self, rng, mode: str) -> list[str]:
+        """The members in the room this episode, in group order. An evaluation-only
+        candidate is drawn in `wide` mode only and never while training."""
+        g = self.group
+        if g.kind == "type":
+            hold = [g.members[i] for i in self.holdout]
+            pool = hold if mode == "wide" else [n for n in g.members if n not in hold]
+            return [str(pool[int(rng.choice(len(pool)))])]
+        n = int(rng.integers(g.lo, g.hi + 1))
+        return list(g.members[:n])
+
+    def wide_ok(self) -> bool:
+        """A `count` group has no evaluation-only value, so `wide` leaves it nominal."""
+        return bool(self.holdout)
+
+    def width(self) -> int:
+        return len(self.group.members)
+
+    def bits(self, used: set[str]) -> np.ndarray:
+        return np.array([1.0 if n in used else 0.0 for n in self.group.members])
+
+
 def _same(a, b) -> bool:
     """Whether two drawn candidate entries are the same value (numbers or anything else)."""
     try:
@@ -453,11 +485,12 @@ class Randomizer:
         self.entries: list[Entry] = []
         block = room.raw.get("randomize")
         if block is not None:
-            if not isinstance(block, dict) or set(block) - {"shuffle"}:
-                raise RandomizeError("the room's `randomize:` takes only `shuffle:`; a part's "
-                                     "own `randomize:` goes on that part")
-            for sampler in parse_shuffle(block.get("shuffle"), parts):
-                self.entries.append(Entry("room", sampler.where, sampler))
+            if not isinstance(block, dict) or set(block) - {"shuffle", "holdout"}:
+                raise RandomizeError("the room's `randomize:` takes `shuffle:` and `holdout:`; "
+                                     "a part's own `randomize:` goes on that part")
+            if "shuffle" in block:
+                for sampler in parse_shuffle(block["shuffle"], parts):
+                    self.entries.append(Entry("room", sampler.where, sampler))
         spawn = (room.raw.get("spawn") or {}).get("randomize")
         if spawn is not None:
             if not isinstance(spawn, dict):
@@ -473,6 +506,17 @@ class Randomizer:
                     self.entries.append(Entry("spawn", "yaw", _spawn_yaw(where, spawn["yaw"])))
                 else:
                     raise RandomizeError(f"spawn `randomize:` takes pos and yaw, got {target!r}")
+        for group in getattr(room, "groups", []):
+            where = f"part {group.name!r} randomize.{group.kind}"
+            for n in group.members:
+                if n not in parts:
+                    raise RandomizeError(f"{where}: {n!r} is not a part of this room")
+                why = parts[n].can_shelve()
+                if why and not (group.kind == "type" and n == group.members[0]):
+                    raise RandomizeError(f"{where}: {n!r} cannot be put on the storage shelf "
+                                         f"({why}), so it cannot be drawn away")
+            hold = _holdout_members(where, group, (room.raw.get("randomize") or {}))
+            self.entries.append(Entry("room", where, Choice(where, "structure", group, hold)))
         for name, part in parts.items():
             raw = part.cfg.get("randomize")
             if raw is None:
@@ -503,6 +547,8 @@ class Randomizer:
                               if e.owner not in ("spawn", "room") and e.target != "pos"})
         #: `shuffle: {links: ...}` entries, in declaration order (the `part_links` item).
         self.links = [e.sampler for e in self.entries if isinstance(e.sampler, LinkSource)]
+        #: Group draws (R35 `type` / `count`), in room order (the `part_group` item).
+        self.choices = [e.sampler for e in self.entries if isinstance(e.sampler, Choice)]
 
     # ---- drawing ------------------------------------------------------------------
     def __bool__(self) -> bool:
@@ -551,7 +597,7 @@ class Randomizer:
         values: dict[str, dict[str, Any]] = {}
         if mode == "nominal":
             return {"spawn": tuple(spawn), "parts": pos, "values": values, "links": {},
-                    "mode": mode}
+                    "used": {}, "mode": mode}
         if mode == "train":            # M1 `random:` shorthand: no evaluation-only band,
             d = rng.uniform(-room.spawn_random, room.spawn_random)   # so `wide` leaves it alone
             spawn = [spawn[0] + d[0], spawn[1] + d[1], spawn[2] + d[2]]
@@ -560,10 +606,21 @@ class Randomizer:
                     pos[n] = p.base_xy + rng.uniform(-p.random, p.random)
         ctx = Clearance(room.walls(), {"spawn": np.array(spawn[:2]), **pos})
         links: dict[str, str] = {}
+        used: dict[str, list[str]] = {}
         for e in self.entries:
             scale = float(self.strength.get(e.sampler.layer, 0.0))
             if scale <= 0.0 or (mode == "wide" and not e.sampler.wide_ok()):
                 continue          # `wide`: a sampler with no evaluation-only value stays nominal
+            if isinstance(e.sampler, Choice):
+                g = e.sampler.group
+                keep = e.sampler.pick(rng, mode)
+                used[g.name] = keep
+                if g.kind == "count":          # a different spot for each copy kept
+                    order = list(rng.permutation(len(g.spots)))
+                    for member, j in zip(keep, order):
+                        pos[member] = np.asarray(g.spots[j], dtype=float)
+                        ctx.taken[member] = pos[member]
+                continue
             if isinstance(e.sampler, Places):
                 swapped = e.sampler.permute(rng, pos)
                 pos.update(swapped)
@@ -589,11 +646,47 @@ class Randomizer:
                 values.setdefault(e.owner, {})[e.target] = \
                     e.sampler.draw(rng, nominal, scale, mode, ctx)
         return {"spawn": tuple(float(v) for v in spawn), "parts": pos, "values": values,
-                "links": links, "mode": mode}
+                "links": links, "used": used, "mode": mode}
+
+    def used_parts(self, parts: dict[str, Any], layout: dict[str, Any]) -> set[str]:
+        """Part names in the room this episode: everything but the group members the
+        draw left on the shelf (R35)."""
+        drawn = layout.get("used")
+        out = set(parts)
+        for e in self.choices:
+            keep = set(drawn[e.group.name]) if drawn and e.group.name in drawn \
+                else set(e.group.members[:e.group.lo] if e.group.kind == "count"
+                         else e.group.members[:1])
+            out -= {n for n in e.group.members if n not in keep}
+        return out
+
+    def group_links(self, layout: dict[str, Any]) -> dict[str, str]:
+        """Which member each `type` group's readers must read this episode."""
+        out: dict[str, str] = {}
+        drawn = layout.get("used") or {}
+        for e in self.choices:
+            if e.group.kind != "type":
+                continue
+            member = (list(drawn.get(e.group.name) or ()) or [e.group.members[0]])[0]
+            for reader in e.group.readers:
+                out[reader] = member
+        return out
+
+    def used_observation(self, layout: dict[str, Any]) -> np.ndarray:
+        """Obs item `part_group`: per group a bit per member, 1 for the ones in the room."""
+        drawn = layout.get("used") or {}
+        rows = [e.bits(set(drawn.get(e.group.name, e.group.members[:1]))) for e in self.choices]
+        return np.concatenate(rows) if rows else np.zeros(0)
 
     def apply_links(self, parts: dict[str, Any], layout: dict[str, Any]) -> None:
         """Set each shuffled reader's `in` to the source this episode drew (R35). The
         caller wires the bus again afterwards, which checks the drawn wiring."""
+        for reader, member in self.group_links(layout).items():     # R35 `type` groups
+            part = parts.get(reader)
+            group = next(e.group for e in self.choices
+                         if reader in e.group.readers and e.group.kind == "type")
+            if part is not None:
+                part.inputs = [member if ch in set(group.members) else ch for ch in part.inputs]
         for sampler in self.links:
             drawn = (layout.get("links") or {}).get(sampler.reader) or sampler.nominal
             cand = {_channel_of(parts[n]) for n in (*sampler.options, *sampler.holdout)}
@@ -673,6 +766,142 @@ def _spawn_yaw(where: str, spec: Any) -> Sampler:
         hold = [float(v) for v in spec["holdout"]] if "holdout" in spec else []
         return Candidates(where, "layout", opts, _weights(where, spec, len(opts)), hold)
     raise RandomizeError(f"{where}: `region` draws a position, not a heading")
+
+
+@dataclass
+class Group:
+    """A part the room draws in several shapes or numbers (R35 structure layer).
+
+    `type`: one of the candidate parts is in the room, the rest wait on the storage
+    shelf, and whoever read the group's name reads the one that is there.
+    `count`: `lo` to `hi` copies are in the room and the rest wait on the shelf."""
+
+    name: str                 # the name the room wrote
+    kind: str                 # "type" | "count"
+    members: list[str]        # part names, in candidate / copy order
+    readers: list[str]        # parts that read the group's channel (`type` only)
+    channel: str              # the channel the room's readers asked for
+    lo: int = 1
+    hi: int = 1
+    cands: list[str] = field(default_factory=list)   # `type`: the names as declared
+    spots: list[list[float]] = field(default_factory=list)   # `count`: the places to fill
+
+
+MEMBER = "#"                  # `<group name>#<k>`: a candidate or a copy
+
+
+def expand_parts(cfgs: list[dict]) -> tuple[list[dict], list[Group]]:
+    """Turn a part with `randomize: {type: ...}` or `{count: [lo, hi]}` into the parts
+    the scene needs: every candidate and every copy exists from the start, because
+    MuJoCo cannot add a body while running, and the draw only moves them on and off
+    the storage shelf (R35). A member entry may name a preset, so the caller fills
+    presets in again afterwards.
+
+    Readers of a `type` group are pointed at the first candidate, which is the nominal
+    room; the draw wires them to the candidate it picked.
+    """
+    groups: list[Group] = []
+    out: list[dict] = []
+    for cfg in cfgs:
+        rnd = cfg.get("randomize") if isinstance(cfg, dict) else None
+        want = {k: rnd[k] for k in ("type", "count") if isinstance(rnd, dict) and k in rnd}
+        if not want:
+            out.append(cfg)
+            continue
+        name = cfg.get("name")
+        if len(want) == 2:
+            raise RandomizeError(f"part {name!r}: give `type` or `count`, not both")
+        rest = {k: v for k, v in rnd.items() if k not in want}
+        if "type" in want:
+            out += _type_members(name, cfg, want["type"], rest, groups)
+        else:
+            out += _count_members(name, cfg, want["count"], rest, groups)
+    for g in groups:
+        g.readers[:] = sorted({c["name"] for c in out
+                               if isinstance(c, dict) and g.channel in (c.get("in") or [])})
+        if g.kind == "count" and g.readers:
+            raise RandomizeError(f"part {g.name!r}: {g.readers} read its channel, so its number "
+                                 f"cannot be drawn; draw the number of parts nothing reads")
+        for c in out:                       # the nominal room reads the first candidate
+            if isinstance(c, dict) and g.channel in (c.get("in") or []):
+                c["in"] = [g.members[0] if ch == g.channel else ch for ch in c["in"]]
+    return out, groups
+
+
+def _type_members(name, cfg, spec, rest, groups) -> list[dict]:
+    """One part per `type` candidate, all at the group's place."""
+    if not isinstance(spec, dict) or set(spec) != {"candidates"} or \
+            not isinstance(spec["candidates"], list) or len(spec["candidates"]) < 2:
+        raise RandomizeError(f"part {name!r} randomize.type: write "
+                             f"{{candidates: [<preset or type>, ...]}} with at least two")
+    out = []
+    for i, cand in enumerate(spec["candidates"]):
+        if not isinstance(cand, str):
+            raise RandomizeError(f"part {name!r} randomize.type: a candidate is a preset or "
+                                 f"type name, got {cand!r}")
+        entry = {"preset": cand} if "/" in cand else {"type": cand}
+        member = {**entry, "name": f"{name}{MEMBER}{i}", "pos": cfg.get("pos")}
+        if rest:
+            member["randomize"] = copy.deepcopy(rest)
+        out.append(member)
+    groups.append(Group(name, "type", [c["name"] for c in out], [], name,
+                        cands=[str(c) for c in spec["candidates"]]))
+    return out
+
+
+def _count_members(name, cfg, spec, rest, groups) -> list[dict]:
+    """`hi` copies of the part, one per spot; the draw fills `lo` to `hi` of the spots.
+
+    The spots are the room author's (`pos: {candidates: [[x, y], ...]}`, at least `hi`
+    of them): copies all at one `pos` would overlap, and the draw takes a different
+    spot for each copy it keeps."""
+    if (not isinstance(spec, (list, tuple)) or len(spec) != 2
+            or any(isinstance(v, bool) or not isinstance(v, int) for v in spec)
+            or not 0 <= spec[0] <= spec[1] or spec[1] < 1):
+        raise RandomizeError(f"part {name!r} randomize.count: write [lo, hi] with "
+                             f"0 <= lo <= hi and hi >= 1, got {spec!r}")
+    lo, hi = int(spec[0]), int(spec[1])
+    pos = (rest or {}).get("pos") if isinstance(rest, dict) else None
+    spots = (pos or {}).get("candidates") if isinstance(pos, dict) else None
+    if not isinstance(spots, list) or len(spots) < hi:
+        raise RandomizeError(f"part {name!r} randomize.count: the copies need a spot each, so "
+                             f"give `randomize: {{pos: {{candidates: [[x, y], ...]}}}}` with at "
+                             f"least {hi} spots")
+    spots = [list(s) for s in _xy_list(f"part {name!r} randomize.count", "candidates", spots)]
+    extra = sorted(set(rest) - {"pos"}) if isinstance(rest, dict) else []
+    out = []
+    for i in range(1, hi + 1):
+        member = {k: v for k, v in cfg.items() if k != "randomize"}
+        member["name"] = f"{name}{MEMBER}{i}"
+        member["pos"] = list(spots[i - 1])          # the nominal room: one copy per spot
+        if extra:
+            member["randomize"] = {k: copy.deepcopy(rest[k]) for k in extra}
+        out.append(member)
+    groups.append(Group(name, "count", [c["name"] for c in out], [], name, lo, hi, spots=spots))
+    return out
+
+
+def _holdout_members(where: str, group: Group, block: dict) -> list[int]:
+    """`randomize: {holdout: {<group>: [<preset or type>, ...]}}` on the room: candidates
+    kept for `mpg eval --randomize wide` and left out of the training draw."""
+    raw = (block.get("holdout") or {}).get(group.name)
+    if raw is None:
+        return []
+    if group.kind != "type":
+        raise RandomizeError(f"{where}: a `count` group has no evaluation-only candidates; "
+                             f"`wide` draws the numbers outside the training range")
+    if not isinstance(raw, list) or not raw:
+        raise RandomizeError(f"{where}: `holdout` is a list of candidate names")
+    out = []
+    for name in raw:
+        if not isinstance(name, str) or name not in group.cands:
+            raise RandomizeError(f"{where}: `holdout` names one of the candidates "
+                                 f"{group.cands}, got {name!r}")
+        out.append(group.cands.index(name))
+    if len(out) >= len(group.cands):
+        raise RandomizeError(f"{where}: `holdout` cannot take every candidate; leave at "
+                             f"least one for training")
+    return out
 
 
 def assign_cues(block: Any, parts: dict[str, Any]) -> None:
