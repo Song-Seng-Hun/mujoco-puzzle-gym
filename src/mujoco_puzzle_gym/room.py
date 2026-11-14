@@ -68,6 +68,13 @@ and `drop` given the dispenser's name work on that copy, R28), `addon <station>`
 answer (the solution order), so a demo may stop before the goal. Without
 `demo:` the solver uses the grid answer only.
 
+Segment starts (R21 `checkpoint_states:`): per checkpoint flag, where a staged
+training episode that starts at that flag begins -- the body pose (`pos`, or `at`
+a part's place this episode, plus `offset` and `yaw`) and the parts' `state:`
+(their snapshot attributes) and `values:` (run-time values). A room whose layout
+or structure is drawn needs these, because the flag snapshots `mpg check` saves
+are one episode's room (curriculum.py `begin_segment`).
+
 Markers and gaze (R26, R27): marked parts get ArUco markers (markers/);
 `gaze: {fov, max_dist, max_tilt, dwell}` sets the gaze sensor (gaze.py), and a
 part reading `<part>.seen` adds the hidden `_gaze` part writing it.
@@ -119,6 +126,113 @@ class RoomError(ValueError):
 DEMO_COMMANDS = ("goto", "press", "wait", "push", "herd", "grab", "place", "drop", "turn", "pull", "look",
                  "take", "addon", "glide", "tow", "untow", "drag", "break", "repair")
 MAX_WAIT = 60.0                        # [s] longest `wait`
+
+
+def parse_checkpoint_states(raw: Any, parts: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """`checkpoint_states:` (R21, R35): the start of a checkpoint segment written in the
+    room file, for a room whose layout is drawn (the flag snapshots of `mpg check` are
+    one episode's layout, so a randomized room would train on those few layouts) or that
+    has no snapshots at all.
+
+        checkpoint_states:
+          flag_1:
+            body: {at: flag_1, offset: [-0.1, 0.0], yaw: 0.0}   # or {pos: [x, y], yaw: 0}
+            parts:
+              flag_1: {state: {reached: true}}
+              plate_a: {state: {latched: true}}
+              tow_rope: {state: {tied: [body, hitch_a]}, values: {length: 0.6}}
+
+    `state:` keys are the attributes that part's snapshots keep (`Part.state_keys`) and
+    `values:` are its run-time or episode-start values. Raises RoomError (stage
+    `values`) naming what is wrong."""
+    if raw is None:
+        return {}
+    flags = {n for n, p in parts.items() if p.role == "checkpoint"}
+    if not isinstance(raw, dict) or not raw:
+        raise RoomError("`checkpoint_states:` must be a mapping of checkpoint flag names "
+                        f"to their segment start ({sorted(flags)})", "values")
+    out: dict[str, dict[str, Any]] = {}
+    for flag, entry in raw.items():
+        where = f"checkpoint_states[{flag!r}]"
+        if flag not in flags:
+            raise RoomError(f"{where}: {flag!r} is not a checkpoint flag of this room "
+                            f"({sorted(flags)})", "values")
+        if not isinstance(entry, dict) or set(entry) - {"body", "parts"}:
+            raise RoomError(f"{where}: takes `body:` and `parts:`, got "
+                            f"{sorted(entry) if isinstance(entry, dict) else entry!r}", "values")
+        out[flag] = {"body": _start_body(where, entry.get("body"), parts),
+                     "parts": _start_parts(where, entry.get("parts"), parts)}
+    return out
+
+
+def _start_body(where: str, raw: Any, parts: dict[str, Any]) -> dict[str, Any] | None:
+    """`body:` of a segment start: `pos` (room coordinates) or `at` (a part's place this
+    episode, plus `offset`), with an optional `yaw`."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or set(raw) - {"pos", "at", "offset", "yaw"} \
+            or ("pos" in raw) == ("at" in raw):
+        raise RoomError(f"{where} body: write {{pos: [x, y], yaw: 0}} or "
+                        f"{{at: <part>, offset: [dx, dy], yaw: 0}}", "values")
+    out: dict[str, Any] = {"yaw": None}
+    if "yaw" in raw:
+        try:
+            out["yaw"] = float(raw["yaw"])
+        except (TypeError, ValueError):
+            raise RoomError(f"{where} body: `yaw` must be a number [rad]", "values") from None
+    for key in ("pos", "offset"):
+        if key in raw:
+            try:
+                x, y = (float(v) for v in raw[key])
+            except (TypeError, ValueError):
+                raise RoomError(f"{where} body: `{key}` must be [x, y], "
+                                f"got {raw[key]!r}", "values") from None
+            out[key] = (x, y)
+    if "at" in raw:
+        if raw["at"] not in parts:
+            raise RoomError(f"{where} body: `at` names a part of this room, "
+                            f"got {raw['at']!r}", "values")
+        out["at"] = str(raw["at"])
+    return out
+
+
+def _start_parts(where: str, raw: Any, parts: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not raw:
+        raise RoomError(f"{where} parts: a mapping of part names to "
+                        f"{{state: {{...}}, values: {{...}}}}", "values")
+    out: dict[str, dict[str, Any]] = {}
+    for name, entry in raw.items():
+        if name not in parts:
+            raise RoomError(f"{where} parts: {name!r} is not a part of this room", "values")
+        if not isinstance(entry, dict) or set(entry) - {"state", "values"} or not entry:
+            raise RoomError(f"{where} parts[{name!r}]: takes `state:` and `values:`", "values")
+        part = parts[name]
+        state = entry.get("state") or {}
+        if not isinstance(state, dict):
+            raise RoomError(f"{where} parts[{name!r}]: `state` is a mapping", "values")
+        keys = type(part).state_keys
+        extra = sorted(set(state) - set(keys))
+        if extra:
+            raise RoomError(f"{where} parts[{name!r}]: {extra} are not state of a "
+                            f"{part.type_name} (it keeps {sorted(keys)})", "values")
+        values = entry.get("values") or {}
+        if not isinstance(values, dict):
+            raise RoomError(f"{where} parts[{name!r}]: `values` is a mapping", "values")
+        schema = part.full_schema()
+        for key, v in values.items():
+            f = schema.get(key)
+            if f is None or not (f.runtime or f.episode):
+                ok = sorted(k for k, g in schema.items() if g.runtime or g.episode)
+                raise RoomError(f"{where} parts[{name!r}]: {key!r} cannot be set at an "
+                                f"episode start ({name}: {ok})", "values")
+            try:
+                f.check(f"{where} parts[{name!r}]", v)
+            except ValueError as exc:
+                raise RoomError(str(exc), "values") from None
+        out[name] = {"state": dict(state), "values": dict(values)}
+    return out
 
 
 def parse_demo(raw: Any, parts: dict[str, Any]) -> list[tuple]:
@@ -378,6 +492,8 @@ class Room:
     map: RoomMap | None = None          # letter map (R37)
     on_fall: str = "fail"               # fall into a hole: fail | reset (R37, R16)
     demo: list[tuple] = field(default_factory=list)   # scripted solver sub-goals (R20)
+    #: Declared segment starts (R21 `checkpoint_states:`), flag name -> {body, parts}.
+    checkpoint_states: dict[str, dict[str, Any]] = field(default_factory=dict)
     gaze: gaze_mod.GazeConfig = field(default_factory=gaze_mod.GazeConfig)   # R27
     part_presets: dict[str, str] = field(default_factory=dict)   # part name -> preset (R3)
     #: Parts drawn in several shapes or numbers (R35 structure layer, randomize.Group).
@@ -501,6 +617,7 @@ class Room:
         room._add_rooms(raw)               # R35 `rooms`: the candidate rooms as zones
         parts = room.make_parts()          # validates parts and links
         room.demo = parse_demo(raw.get("demo"), parts)
+        room.checkpoint_states = parse_checkpoint_states(raw.get("checkpoint_states"), parts)
         return room
 
     def _add_stages(self, paths: list[Any]) -> None:

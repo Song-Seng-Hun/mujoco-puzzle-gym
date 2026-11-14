@@ -624,9 +624,18 @@ class Randomizer:
         return [p for e in self.entries if e.owner == owner and e.target == "pos"
                 for p in e.sampler.extremes(nominal)]
 
+    def draws(self, *layers: str) -> bool:
+        """Whether this run draws anything in those layers (a declared sampler with a
+        non-zero strength). The M1 `random:` shorthand is not counted: it is the same
+        jitter every episode had before R35, so a segment start keeps using it."""
+        return any(e.sampler.layer in layers and self.strength.get(e.sampler.layer, 0.0) > 0.0
+                   for e in self.entries)
+
     def draw(self, room, parts: dict[str, Any], rng: np.random.Generator,
-             mode: str = "train") -> dict[str, Any]:
-        """One draw: spawn, part positions and part values, in the fixed order."""
+             mode: str = "train", only: tuple[str, ...] | None = None) -> dict[str, Any]:
+        """One draw: spawn, part positions and part values, in the fixed order. With
+        `only`, the layers outside it are left nominal (R21: a segment started from a
+        snapshot redraws the physics and body layers alone)."""
         if mode not in MODES:
             raise RandomizeError(f"randomize mode must be one of {list(MODES)}, got {mode!r}")
         if mode == "wide" and not self.wide_ok():
@@ -641,23 +650,25 @@ class Randomizer:
                     "used": {}, "zone": 0, "mode": mode}
         zone, jitter = 0, room.spawn_random
         if self.rooms is not None:     # R35 `rooms`: the zone first, then its own spawn
-            scale = float(self.strength.get(self.rooms.layer, 0.0))
+            scale = self._scale(self.rooms.layer, only)
             if scale > 0.0 and (mode != "wide" or self.rooms.wide_ok()):
                 zone = self.rooms.pick(rng, mode)
             dx, host = room.zone_rooms()[zone]
             spawn = [float(host.spawn_pos[0]) + dx, float(host.spawn_pos[1]), host.spawn_yaw]
             jitter = host.spawn_random
+        if only is not None and "layout" not in only:
+            jitter = np.zeros(3)       # a layer left out draws nothing, the shorthand too
         if mode == "train":            # M1 `random:` shorthand: no evaluation-only band,
             d = rng.uniform(-jitter, jitter)                         # so `wide` leaves it alone
             spawn = [spawn[0] + d[0], spawn[1] + d[1], spawn[2] + d[2]]
             for n, p in parts.items():
-                if np.any(p.random):
+                if np.any(p.random) and (only is None or "layout" in only):
                     pos[n] = p.base_xy + rng.uniform(-p.random, p.random)
         ctx = Clearance(room.walls(), {"spawn": np.array(spawn[:2]), **pos})
         links: dict[str, str] = {}
         used: dict[str, list[str]] = {}
         for e in self.entries:
-            scale = float(self.strength.get(e.sampler.layer, 0.0))
+            scale = self._scale(e.sampler.layer, only)
             if scale <= 0.0 or (mode == "wide" and not e.sampler.wide_ok()):
                 continue          # `wide`: a sampler with no evaluation-only value stays nominal
             if isinstance(e.sampler, Rooms):
@@ -698,6 +709,12 @@ class Randomizer:
                     e.sampler.draw(rng, nominal, scale, mode, ctx)
         return {"spawn": tuple(float(v) for v in spawn), "parts": pos, "values": values,
                 "links": links, "used": used, "zone": zone, "mode": mode}
+
+    def _scale(self, layer: str, only: tuple[str, ...] | None = None) -> float:
+        """The strength of `layer` this draw, 0 for a layer `only` leaves out."""
+        if only is not None and layer not in only:
+            return 0.0
+        return float(self.strength.get(layer, 0.0))
 
     def used_parts(self, parts: dict[str, Any], layout: dict[str, Any]) -> set[str]:
         """Part names in the room this episode: everything but the group members the
