@@ -1,9 +1,16 @@
 # Task for the R35 order-reasoning test, cue off (examples/rooms/order_blind.yaml): the
-# control group of examples/task_order_cue.yaml with the same obs, reward and draw
-# strengths. The room paints no cue and `part_links` stays zero, so the two runs differ
-# only in whether this episode's answer is visible. Missing keys take task.DEFAULTS.
+# control group of examples/task_order_cue.yaml with the same obs, reward (no `stage` term
+# either: the reason is written there) and draw strengths. The room paints no cue and
+# `part_links` stays zero, so the two runs differ only in whether this episode's answer is
+# visible. Missing keys take task.DEFAULTS.
 room: rooms/order_blind.yaml
 actions: [move]
+env: {hz: 10, episode_seconds: 26}        # 26 s: the scripted cue route needs 18.8 s at
+                                         # most (4d-3). The length no longer has to rule
+                                         # out pressing every plate: the room does, since
+                                         # a second plate locks the door
 obs: [gravity, ang_vel, lin_vel, part_pos, part_state, part_links, part_used]
-reward: {progress_free: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+reward: {progress_free: 2.0, success: 20.0, fall: -5.0}   # 4d-3: with 10.0 / 10.0 the
+                                         # metres were 44.6 of a 54.3 return, so walking
+                                         # efficiently beat picking the right plate
 randomize: {layout: 1.0, structure: 1.0}

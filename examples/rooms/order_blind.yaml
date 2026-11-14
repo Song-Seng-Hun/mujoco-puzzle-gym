@@ -17,9 +17,15 @@ randomize:
     - {links: door, from: [plate_a, plate_b, plate_c], holdout: [plate_d], hidden: true}
     - {places: [plate_a, plate_b, plate_c, plate_d]}
 parts:
-  - {name: plate_a, preset: input/floor_oneshot, pos: [-1.0, 0.6]}
-  - {name: plate_b, preset: input/floor_oneshot, pos: [-0.5, 0.6]}
-  - {name: plate_c, preset: input/floor_oneshot, pos: [-0.5, -0.6]}
-  - {name: plate_d, preset: input/floor_oneshot, pos: [-1.0, -0.6]}
-  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [plate_a]}
+  - {name: plate_a, preset: input/floor_oneshot, pos: [-1.25, 0.72]}
+  - {name: plate_b, preset: input/floor_oneshot, pos: [-0.35, 0.72]}
+  - {name: plate_c, preset: input/floor_oneshot, pos: [-0.35, -0.72]}
+  - {name: plate_d, preset: input/floor_oneshot, pos: [-1.25, -0.72]}
+  # 4d-3: the door needs its plate AND "no second plate is on". Plates latch, so pressing
+  # a decoy locks the door for the rest of the episode: a policy that cannot read the cue
+  # has a success-rate ceiling of one over the number of candidates. `expr` takes no
+  # arithmetic, so "at most one on" is written out with and/or.
+  - {name: one_only, type: gate, pos: [0.5, 0.8],
+     expr: "not ((plate_a and (plate_b or plate_c or plate_d)) or (plate_b and (plate_c or plate_d)) or (plate_c and plate_d))"}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [plate_a, one_only]}
   - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}

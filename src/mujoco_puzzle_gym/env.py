@@ -594,14 +594,22 @@ class PuzzleEnv(gym.Env):
         episode that are not solved yet, and the ones that are, which say which doors are
         open. Every one of them counts, not only the ones the solution order needs, so the
         reward never says which switch is the one that works. The checkpoint flags of
-        staged training (R21) are not among them."""
+        staged training (R21) are not among them.
+
+        Once the work that is left is a goal, the switches that are still off drop out
+        (4d-3): otherwise the reward keeps pulling the policy back to an unused switch
+        behind it, which in the order-reasoning rooms is the move that loses. Whether a
+        goal or a switch is what remains is public — an open door shows it — so this
+        still says nothing about which switch was the one that worked."""
         on, rest = set(), []
+        target = self.current_target()
+        goal_phase = target is not None and target.role == "goal"
         for name, p in self.parts.items():
             if p.parked or p.role not in ("switch", "goal"):
                 continue
             if p.satisfied():
                 on.add(name)
-            else:
+            elif not (goal_phase and p.role == "switch"):
                 rest.append((name, p.target_key()))
         return (frozenset(on), tuple(rest))
 

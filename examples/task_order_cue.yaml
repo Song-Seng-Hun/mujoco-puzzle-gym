@@ -1,7 +1,9 @@
 # Task for the R35 order-reasoning test, cue on (examples/rooms/order_cue.yaml).
 # - `progress_free` instead of `progress`: metres toward the nearest plate or goal that is
 #   not solved yet, so the reward does not lead to the plate that works this episode.
-# - `stage` pays when a plate turns on, `success` at the goal, `fall` for falling.
+# - No `stage` term (4d-2): it pays `new_on`, so every decoy plate pressed earned 2.0 and
+#   the first run's policies learned to press all four (8.0 of a 60 return). Only reaching
+#   the goal pays now, so a decoy press earns nothing.
 # - `target_pos` is left out of `obs` on purpose: with it the policy is told where to go.
 #   `part_links` is the cue and `part_used` the plate slots' mask.
 # - `randomize: {layout: 1.0, structure: 1.0}`: places and wiring are drawn every episode.
@@ -9,6 +11,12 @@
 # the cue off. Missing keys take task.DEFAULTS.
 room: rooms/order_cue.yaml
 actions: [move]
+env: {hz: 10, episode_seconds: 26}        # 26 s: the scripted cue route needs 18.8 s at
+                                         # most (4d-3). The length no longer has to rule
+                                         # out pressing every plate: the room does, since
+                                         # a second plate locks the door
 obs: [gravity, ang_vel, lin_vel, part_pos, part_state, part_links, part_used]
-reward: {progress_free: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+reward: {progress_free: 2.0, success: 20.0, fall: -5.0}   # 4d-3: with 10.0 / 10.0 the
+                                         # metres were 44.6 of a 54.3 return, so walking
+                                         # efficiently beat picking the right plate
 randomize: {layout: 1.0, structure: 1.0}
