@@ -171,6 +171,7 @@ class PuzzleEnv(gym.Env):
         self.grid: Grid = self.room.grid(body_values=dict(self.body.capabilities.values))
         self.walls = self.room.walls()
         self.reward_terms = [(n, REWARDS[n], float(w)) for n, w in self.task["reward"].items()]
+        self.free_targets = "progress_free" in self.task["reward"]   # R35: track it only then
         self.term_fall = bool(self.task["termination"].get("fall", True))
         self.term_success = bool(self.task["termination"].get("success", True))
         self.command_scale = float(self.task["env"].get("command_scale", 1.0))
@@ -545,11 +546,12 @@ class PuzzleEnv(gym.Env):
             [p for p in self.parts.values() if p.role in ("switch", "goal")]
         self.targets = curriculum.with_flags(self, self.targets, layout["spawn"][:2])   # R21
         self._fields: dict[tuple, np.ndarray] = {}
+        self._free_fields: dict[tuple, np.ndarray] = {}
         self.stage = self._stage()
         self._mark_target()
         self.steps = 0
-        self.events = {"progress": 0.0, "new_on": 0, "success": False, "fallen": False,
-                       "respawned": False}
+        self.events = {"progress": 0.0, "progress_free": 0.0, "new_on": 0, "success": False,
+                       "fallen": False, "respawned": False}
         self._gates_opened: set[str] = set()
         self.start_snap = self.save_snapshot(start=True) if self._needs_start else None
 
@@ -587,9 +589,41 @@ class PuzzleEnv(gym.Env):
         t = self.current_target()
         return t.target_key() if t is not None else None
 
+    def free_key(self) -> tuple:
+        """What `progress_free` measures to (R35): the switches and goals in the room this
+        episode that are not solved yet, and the ones that are, which say which doors are
+        open. Every one of them counts, not only the ones the solution order needs, so the
+        reward never says which switch is the one that works. The checkpoint flags of
+        staged training (R21) are not among them."""
+        on, rest = set(), []
+        for name, p in self.parts.items():
+            if p.parked or p.role not in ("switch", "goal"):
+                continue
+            if p.satisfied():
+                on.add(name)
+            else:
+                rest.append((name, p.target_key()))
+        return (frozenset(on), tuple(rest))
+
+    def free_distance(self, key: tuple | None = None) -> float:
+        """Distance [m] to the nearest switch or goal that is not solved yet, around the
+        walls and through the doors that are open now. 0.0 once they all are."""
+        on, rest = self.free_key() if key is None else key
+        best = np.inf
+        for name, k in rest:
+            fk = (on, name, k)
+            if fk not in self._free_fields:
+                free = free_mask(self.grid, self.walls, self.parts, set(on))
+                self._free_fields[fk] = self.grid.distance(
+                    free, self.parts[name].target_mask(self.grid))
+            best = min(best, self.grid.lookup(self._free_fields[fk], self.body_state.pos[:2]))
+        return 0.0 if not rest else float(best)
+
     def _mark_target(self) -> None:
         self.prev_dist = self.target_distance()
         self.prev_key = self._target_key()
+        self.prev_free_key = self.free_key() if self.free_targets else None
+        self.prev_free = self.free_distance(self.prev_free_key) if self.free_targets else 0.0
 
     @property
     def dict_obs(self) -> bool:
@@ -703,13 +737,23 @@ class PuzzleEnv(gym.Env):
         stage_before = self.stage
         dist_old_target = self.target_distance(stage_before, self.prev_key)
         progress = self.prev_dist - dist_old_target
+        # R35 `progress_free`: the same metres, but toward whichever target is nearest
+        free_old = self.free_distance(self.prev_free_key) if self.free_targets else 0.0
+        progress_free = self.prev_free - free_old
         self.stage = self._stage()
         if self.stage != stage_before or self._target_key() != self.prev_key:
-            self._mark_target()
+            self._mark_target()                 # re-marks the free distance as well
         else:
             self.prev_dist = dist_old_target
+            if self.free_targets:
+                key = self.free_key()           # a target solved out of order moves it too
+                self.prev_free = (free_old if key == self.prev_free_key
+                                  else self.free_distance(key))
+                self.prev_free_key = key
         if not np.isfinite(progress):
             progress = 0.0
+        if not np.isfinite(progress_free):
+            progress_free = 0.0
         success = any(p.role == "goal" and p.satisfied() for p in self.parts.values())
         fallen = bool(self.body_state.fallen) or not sane
         failed = [n for n, p in self.parts.items() if p.failed()]
@@ -725,8 +769,9 @@ class PuzzleEnv(gym.Env):
         done = success
         if self.segment is not None:                 # R21: the segment end counts as success
             done = curriculum.segment_done(self, success)
-        self.events = {"progress": float(progress), "new_on": len(on_after - on_before),
-                       "success": done, "fallen": fallen, "respawned": respawned}
+        self.events = {"progress": float(progress), "progress_free": float(progress_free),
+                       "new_on": len(on_after - on_before), "success": done,
+                       "fallen": fallen, "respawned": respawned}
         terms = {name: weight * float(fn(self)) for name, fn, weight in self.reward_terms}
         reward = float(sum(terms.values()))
         terminated = ((done and self.term_success) or (fallen and self.term_fall) or not sane

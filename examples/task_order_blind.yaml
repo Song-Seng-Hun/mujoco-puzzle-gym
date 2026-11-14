@@ -1,0 +1,9 @@
+# Task for the R35 order-reasoning test, cue off (examples/rooms/order_blind.yaml): the
+# control group of examples/task_order_cue.yaml with the same obs, reward and draw
+# strengths. The room paints no cue and `part_links` stays zero, so the two runs differ
+# only in whether this episode's answer is visible. Missing keys take task.DEFAULTS.
+room: rooms/order_blind.yaml
+actions: [move]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, part_links, part_used]
+reward: {progress_free: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+randomize: {layout: 1.0, structure: 1.0}

@@ -372,6 +372,8 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 - 예제 방 `examples/rooms/room_roulette.yaml`(task `examples/task_room_roulette.yaml`): 방 셋 중 하나에서 깨어나고, 문을 여는 발판 자리와 벽 틈이 방마다 달라 가는 길도 다릅니다. 셋째 방 `roulette_c`는 평가 전용이라 학습에서는 안 나옵니다. `mpg check` 시드 20개 20/20(평균 13.8초).
 - 예제 방 `examples/rooms/mixed_stock.yaml`(task `examples/task_mixed_stock.yaml`): 문을 여는 발판이 한 번 눌리면 켜지는 것과 누를 때마다 뒤집히는 것 중 하나로 뽑히고, 상자가 0~2개 흩어집니다. `mpg check` 시드 20개 20/20(평균 12.7초).
 - 예제 방 `examples/rooms/shuffle_switches.yaml`(task `examples/task_shuffle_switches.yaml`): 발판 3개 중 하나가 문과 이어지고 자리도 섞입니다. 해답은 계획에서 뽑힌 배선을 읽어 걸어가므로 `mpg check` 시드 20개에서 20/20(평균 12.9초)입니다. 정책은 단서(`part_links`나 색)를 읽어야 하고, task는 `target_pos`를 일부러 빼 두었습니다.
+- 보상 항목 `progress_free`: 아직 풀리지 않은 발판·골 가운데 **가장 가까운 것** 쪽으로 이번 스텝에 줄어든 거리(m)입니다. 풀이 순서를 쓰지 않으므로 외운 순서대로 걸어도 받을 것이 없고, 정책은 단서를 읽어야 합니다. 기본은 그대로 `progress`(다음 목표 쪽)이고, 쓰려면 task의 `reward:`에 이름을 적습니다(안 적은 방은 거리장을 만들지 않습니다). 단계별 학습의 깃발(R21)은 여기서 세지 않습니다.
+- 예제 방 `examples/rooms/order_cue.yaml`과 `order_blind.yaml`(task `examples/task_order_cue.yaml`·`task_order_blind.yaml`): 순서 추론 시험용 한 쌍입니다. 발판 4개 중 하나가 문과 이어지고, `plate_d`는 평가 전용(`holdout`)이라 학습에서는 안 나오고 `--randomize wide`에서만 문을 엽니다. 두 방은 단서(`hidden: true`)만 다르고 나머지가 같아, 두 정책의 `wide` 성공률을 나란히 놓고 봅니다. 보상은 `progress_free`이고 `obs`에 `target_pos`가 없습니다. `mpg check` 시드 20개로 둘 다 20/20(평균 13.2초).
 
 ## 큐브와 부리로 집기
 

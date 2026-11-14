@@ -1,0 +1,25 @@
+# Control room for the R35 order-reasoning test: examples/rooms/order_cue.yaml with the
+# cue off (`hidden: true`), everything else equal. The wired plate is not painted and the
+# obs item `part_links` stays zero, so nothing in the episode says which plate works: the
+# only way through the door is memory or search, which `mpg check` warns about. The test
+# reads the two rooms' `--randomize wide` success rates side by side; a policy that only
+# memorized scores the same in both.
+# Task: examples/task_order_blind.yaml.
+name: order_blind
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+randomize:
+  shuffle:
+    - {links: door, from: [plate_a, plate_b, plate_c], holdout: [plate_d], hidden: true}
+    - {places: [plate_a, plate_b, plate_c, plate_d]}
+parts:
+  - {name: plate_a, preset: input/floor_oneshot, pos: [-1.0, 0.6]}
+  - {name: plate_b, preset: input/floor_oneshot, pos: [-0.5, 0.6]}
+  - {name: plate_c, preset: input/floor_oneshot, pos: [-0.5, -0.6]}
+  - {name: plate_d, preset: input/floor_oneshot, pos: [-1.0, -0.6]}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [plate_a]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}

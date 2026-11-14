@@ -1,0 +1,14 @@
+# Task for the R35 order-reasoning test, cue on (examples/rooms/order_cue.yaml).
+# - `progress_free` instead of `progress`: metres toward the nearest plate or goal that is
+#   not solved yet, so the reward does not lead to the plate that works this episode.
+# - `stage` pays when a plate turns on, `success` at the goal, `fall` for falling.
+# - `target_pos` is left out of `obs` on purpose: with it the policy is told where to go.
+#   `part_links` is the cue and `part_used` the plate slots' mask.
+# - `randomize: {layout: 1.0, structure: 1.0}`: places and wiring are drawn every episode.
+# The control task is examples/task_order_blind.yaml, the same settings on the room with
+# the cue off. Missing keys take task.DEFAULTS.
+room: rooms/order_cue.yaml
+actions: [move]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, part_links, part_used]
+reward: {progress_free: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+randomize: {layout: 1.0, structure: 1.0}

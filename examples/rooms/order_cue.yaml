@@ -1,0 +1,31 @@
+# Example room (R35 order-reasoning test): four plates, one door, and only one plate
+# feeds the door this episode. `shuffle_switches.yaml` is the same idea; this room adds
+# the two things the test needs.
+# - `holdout: [plate_d]`: plate_d never feeds the door while training, and it is the only
+#   one that does under `mpg eval --randomize wide`. A policy that memorized "it is
+#   usually the plate on the left" scores there like a blind guess; one that reads the cue
+#   does not care which plate it is.
+# - The task (examples/task_order_cue.yaml) pays `progress_free`, not `progress`: metres
+#   toward the nearest plate or goal, whichever it is, so the reward does not lead to the
+#   plate that works either.
+# The cue is on here: the wired plate and the door are painted the same colour and the obs
+# item `part_links` says the same as a one-hot. The control room with the cue off is
+# examples/rooms/order_blind.yaml (`hidden: true`), everything else equal.
+name: order_cue
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+randomize:
+  shuffle:
+    - {links: door, from: [plate_a, plate_b, plate_c], holdout: [plate_d]}
+    - {places: [plate_a, plate_b, plate_c, plate_d]}
+parts:
+  - {name: plate_a, preset: input/floor_oneshot, pos: [-1.0, 0.6]}
+  - {name: plate_b, preset: input/floor_oneshot, pos: [-0.5, 0.6]}
+  - {name: plate_c, preset: input/floor_oneshot, pos: [-0.5, -0.6]}
+  - {name: plate_d, preset: input/floor_oneshot, pos: [-1.0, -0.6]}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [plate_a]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}

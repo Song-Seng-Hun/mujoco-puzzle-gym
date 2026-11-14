@@ -372,6 +372,8 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 - サンプルの部屋`examples/rooms/room_roulette.yaml`(task `examples/task_room_roulette.yaml`): 三つの部屋のどれかで目を覚まし、ドアを開く踏み板の位置も壁の隙間も部屋ごとに違うので通る道も変わります。三つめの`roulette_c`は評価専用で学習には出ません。`mpg check`の20種で20/20(平均13.8秒)。
 - サンプルの部屋`examples/rooms/mixed_stock.yaml`(task `examples/task_mixed_stock.yaml`): ドアを開く踏み板が「一度踏むと入る」ものと「踏むたびに切り替わる」もののどちらかに引かれ、箱が0〜2個散らばります。`mpg check`の20種で20/20(平均12.7秒)。
 - サンプルの部屋`examples/rooms/shuffle_switches.yaml`(task `examples/task_shuffle_switches.yaml`): 三つの踏み板のどれかがドアにつながり、位置も入れ替わります。手本の解答は計画から引かれた配線を読んで歩くので、`mpg check`の20種で20/20(平均12.9秒)です。方策は手がかり(`part_links`か色)を読む必要があり、taskは`target_pos`をあえて外しています。
+- 報酬項目`progress_free`: まだ解けていない踏み板・ゴールのうち**いちばん近いもの**へ、このステップで縮んだ距離(m)です。解く順序を使わないので、覚えた順に歩くだけでは何ももらえず、方策は手がかりを読むことになります。既定は今まで通り`progress`(次の目標へ)で、使うにはtaskの`reward:`に名前を書きます(書かない部屋では距離場を作りません)。段階学習の旗(R21)はここでは数えません。
+- サンプルの部屋`examples/rooms/order_cue.yaml`と`order_blind.yaml`(task `examples/task_order_cue.yaml`・`task_order_blind.yaml`): 順序推論テスト用の一組です。四つの踏み板のどれかがドアにつながり、`plate_d`は評価専用(`holdout`)なので学習には出ず、`--randomize wide`でだけドアを開けます。二つの部屋は手がかり(`hidden: true`)だけが違い、ほかは同じなので、二つの方策の`wide`成功率を並べて見られます。報酬は`progress_free`で、`obs`に`target_pos`はありません。`mpg check`の20種でどちらも20/20(平均13.2秒)。
 
 ## キューブとくちばしでつかむ動作
 
