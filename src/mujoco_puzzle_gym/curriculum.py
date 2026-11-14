@@ -377,7 +377,9 @@ def begin_segment(env, segment: int, to_goal: bool, layout: dict | None = None) 
             env._start_snaps = load_snapshots(env)
         snap = env._start_snaps[start]
         env._reset_sim(None, {"spawn": env.room.sample_spawn(None),
-                              "parts": {n: xy.copy() for n, xy in snap.part_xy.items()}})
+                              "parts": {n: xy.copy() for n, xy in snap.part_xy.items()},
+                              # R35: the wiring the snapshot was recorded with
+                              "links": dict(snap.meta.get("links") or {})})
         env.restore_snapshot(snap)
         if env.difficulty:            # the flag snapshot holds the check run's values: step them again
             apply_difficulty(env, env._difficulty_k)
