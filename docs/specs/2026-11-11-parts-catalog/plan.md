@@ -599,7 +599,7 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - 빨래는 바닥이 아니라 0.18 m 받침대 위에 있다(spec R28 "바닥의 빨래 2장"). 머리를 가장 숙여도 부리 끝이 0.135 m라 바닥 물체는 잡히지 않는다(Open question 8 미정, `cube_plate`와 같은 받침대).
      - 벽 버튼 예제는 `wall_button_beak_low`가 아니라 `mid`다(위 잰 값). 머리 숙여 누르기(R19)는 `tests/test_beak_presets.py`의 낮은 벽 버튼 시험이 본다.
      - `laundry` task는 60 s 판이다(`four_flags`처럼). 40 s로는 두 번 나르기에 79/100.
-     - R24의 `mpg demo <방>`(스크립트 해답 영상 명령)은 아직 없다. 영상은 시험의 그리기 도우미(`render_solution`)로 만든다.
+     - R24의 `mpg demo <방>`(스크립트 해답 영상 명령)은 이때 없었다. 영상은 시험의 그리기 도우미(`render_solution`)로 만들었다. → **2026-11-14에 구현했다**(아래 19단계).
    - 알려진 한계: `laundry.yaml`과 `cube_socket.yaml`의 해답은 시드 100개에서 90% 안팎이라 `mpg check` 18/20·19/20의 여유가 적다(둘레 자리 84–94%). 실패는 해답·몸의 한계(제자리 반시계 돌기, 나르다 놓친 물체가 바닥에 떨어지면 다시 못 잡음)이고 배치로는 더 줄이지 못했다. 낮은 벽 버튼은 누른 뒤 벽에서 물러나기가 85–88%다.
    - (b) 구현 기록 (2026-11-14, 브랜치 `feat/m2-docs-17b`, 4d-3 머지 뒤 main `3751e25` 위): 상위 가이드에 R35를 적고, 에이전트 입구 두 개를 새로 만들었다.
      - 가이드: `docs/guide.md`·`guide.en.md`·`guide.ja.md` 세 벌에 같은 네 곳. (1) 「주요 기능」에 "에피소드마다 다른 방" 항목(배선·종류·개수·방까지 뽑기, `holdout`) + parts-guide 절 링크. (2) 「학습 설정」의 task.yaml 아래에 보상 항목 목록(`progress`와 `progress_free`의 차이), `randomize:`의 층과 0의 뜻, 관측 `part_links`(`hidden: true`면 전부 0)·`part_used`·`randomized`, `target_pos`를 일부러 빼는 이유. (3) 명령 표 `mpg eval` 줄에 `--randomize nominal|train|wide`. (4) 예제 방 목록에 `shuffle_switches`·`order_cue`·`order_blind`.
@@ -629,6 +629,15 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - 사소해서 안 고친 것: `mpg build`가 gitignore된 `build/`에 쓴다.
      - 잰 값: 빠른 시험 1264 passed/1 skipped(135초). 링크 점검이 새 절의 앵커 셋(`#단계-방-stages`, `#stage-rooms-stages`, `#ステージ部屋-stages`)까지 보고 통과했다.
      - 계획·spec과 다른 점(보고만): (1) 시험을 머지 전 브랜치에서 돌렸다(위 이유). (2) R25 Check의 "작업 기록을 보관한다"를 지키려고 기록을 스크래치패드가 아니라 저장소 `r25-trial/`에 넣었다(작업자가 저장한 62 kB 부품 카탈로그 사본은 뺐다). (3) 과제 문구는 spec의 "버튼 순서 잠금 + 체크포인트 3개 + 워프로 다음 방"을 그대로 썼고, spec이 적은 방 이름이나 부품은 따로 없었다.
+
+19. R24 `mpg demo <방>`(계획에 없던 뒷일. 2026-11-14, 브랜치 `feat/m2-demo-room`, main `7dd1c94` 위. 사용자 선택: spec 문구를 고치는 대신 "실제로 구현").
+   - 왜: spec R24 Check는 "`mpg demo <방>`으로 스크립트 해답 영상이 나온다"인데 `mpg demo`는 방 인자를 받지 않았고(`--out`, `--seed`만) 내장 정책만 그렸다. 영상 만드는 코드는 `tests/test_examples.py`의 지역 도우미 `render_solution` 15줄 안에만 있었다. 기능은 있는데 사용자가 쓸 길이 없었던 것이다. R25와 반대 방향으로, **문구가 아니라 코드를 맞췄다**.
+   - 만든 것: `evaluate.render_solution(room, out, seed, task)`를 패키지로 옮겼다(환경 `render_mode="rgb_array"` + `ScriptedSolver` + `write_video`). 반환은 `render()`와 같은 모양이고 `ok: success`를 넣어, 해답이 실패하면 종료 코드가 0이 아니다(`cli.py`의 `emit`이 `ok`로 코드를 정한다). 영상 파일은 실패해도 남는다.
+   - CLI: `mpg demo`에 선택 위치 인자 `room`과 `--task`를 더했다. 방을 주면 스크립트 해답, 안 주면 기존대로 내장 학습 정책. `--out` 기본값은 방이면 `<방이름>.mp4`, 내장이면 `demo.mp4`로 **기존 동작을 그대로** 둔다. 없는 방 파일과 방 없이 준 `--task`는 각각 메시지를 내고 거절한다. 학습 정책도 run 폴더도 필요 없으니 pickle 신뢰 규칙에 걸리지 않는다.
+   - 시험: 시험의 지역 도우미는 패키지 함수를 부르는 래퍼로 줄여 기존 slow 시험(빨래·벽 버튼)을 그대로 유지했다. slow 하나(`mpg demo <방>`이 10 kB 이상 MP4와 `success`를 낸다)와 빠른 하나(없는 방, 방 없는 `--task`)를 더했다. 인자 오류는 시뮬레이션이 없어 빠른 쪽에 둔다.
+   - 잰 값: slow `-k demo` 3 passed, 빠른 시험 1265 passed/1 skipped. 18단계 시험 방(`r25-trial/r25_order_hall.yaml`, 저장소의 예제 밖)으로 실제 실행: `ok: true`, 175 kB, 33.3초, 334 프레임, 종료 코드 0.
+   - 고친 것: 첫 구현이 `info["seconds"]`를 읽어 `KeyError: 'seconds'`였다(환경 step info에는 그 키가 없다). `env.steps / env.hz`로 바꿨다. 새 slow 시험 셋이 처음에 모두 그 오류로 실패해 바로 잡혔다.
+   - spec은 고치지 않았다. 이제 R24 Check 문구가 사실이다.
 
 ## Risks
 - 플랫폼·스프링·워프 위의 몸은 걷기 정책의 학습 분포 밖이라 넘어질 수 있다. 측정한 뒤 프리셋 기본값을 낮추고, 가이드에 안전 범위를 적는다.

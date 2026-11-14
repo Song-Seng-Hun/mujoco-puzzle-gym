@@ -48,7 +48,7 @@ flowchart LR
 | `mpg eval runs/<id>` | 学習に使っていない配置での成功率と平均時間(`--policy random`で基準線)。`--onnx policy.onnx --task task.yaml`なら書き出したポリシーをpickleなしで評価。`--difficulty k`は難易度段階kで(既定は最後の段階)。`--randomize nominal\|train\|wide`は引き方のモード(既定は`train`、`wide`は評価専用の値だけ) |
 | `mpg export-onnx runs/<id>` | ポリシーを`policy.onnx`と`policy.json`に書き出す(共有用) |
 | `mpg render runs/<id>` | 成功エピソードのMP4 |
-| `mpg demo` | リポジトリに同梱の学習済みポリシーがサンプルの部屋を解く動画(`demo.mp4`) |
+| `mpg demo <room.yaml>` | その部屋のスクリプト解答の動画(`<部屋>.mp4`)。学習済みポリシーもrunフォルダも要らないので、書いたばかりの部屋にそのまま使えます。`demo:`が`move`以外の行動を使うなら`--task`。部屋を渡さなければ、同梱の学習済みポリシーがサンプルの部屋を解く`demo.mp4` |
 | `mpg bench` | 歩く体と環境のシミュレーション速度を測る |
 | `mpg version` | バージョンを表示 |
 

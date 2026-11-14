@@ -48,7 +48,7 @@ flowchart LR
 | `mpg eval runs/<id>` | 학습에 쓰지 않은 배치에서 성공률과 평균 시간 (`--policy random`으로 기준선). `--onnx policy.onnx --task task.yaml`은 내보낸 정책을 pickle 없이 평가. `--difficulty k`는 난이도 단계 k에서(기본은 마지막 단계). `--randomize nominal\|train\|wide`는 무작위 뽑기 모드(기본 `train`, `wide`는 평가 전용 값만) |
 | `mpg export-onnx runs/<id>` | 정책을 `policy.onnx`와 `policy.json`으로 내보내기(나누기용) |
 | `mpg render runs/<id>` | 성공 에피소드 MP4 |
-| `mpg demo` | 저장소에 든 학습된 정책이 예제 방을 푸는 영상(`demo.mp4`) |
+| `mpg demo <room.yaml>` | 그 방의 스크립트 해답 영상(`<방>.mp4`). 학습한 정책도 run 폴더도 필요 없으니 방금 쓴 방에 바로 씁니다. `demo:`가 `move` 밖의 행동을 쓰면 `--task`. 방 없이 쓰면 저장소에 든 학습된 정책이 예제 방을 푸는 `demo.mp4` |
 | `mpg bench` | 걷기 몸과 환경의 시뮬레이션 속도 측정 |
 | `mpg version` | 버전 출력 |
 

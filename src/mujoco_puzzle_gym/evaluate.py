@@ -290,6 +290,40 @@ def record(run: dict[str, Any], policy, seed: int, path: Path, deterministic: bo
     return ep, path
 
 
+def render_solution(room: str | Path, out: str | Path | None = None, seed: int = 0,
+                    task: str | Path | None = None) -> dict[str, Any]:
+    """R24: MP4 of a room's scripted solution, the one `mpg check` runs.
+
+    No policy and no run folder: the solver reads the plan, so this works on a room you
+    have just written. `task` picks a task file when the room's `demo:` needs actions
+    beyond `move`, or a longer episode.
+    """
+    from .env import PuzzleEnv
+    from .solver import ScriptedSolver
+
+    room = Path(room)
+    path = Path(out) if out else Path(f"{room.stem}.mp4")
+    env = PuzzleEnv(task=task, room=room, render_mode="rgb_array")
+    try:
+        solver = ScriptedSolver(env)
+        env.reset(seed=seed)
+        solver.reset()
+        frames = [env.render()]
+        info: dict[str, Any] = {}
+        while True:
+            *_, terminated, truncated, info = env.step(solver.act())
+            frames.append(env.render())
+            if terminated or truncated:
+                break
+        write_video(frames, path, fps=env.hz)
+        seconds = round(env.steps / env.hz, 2)
+    finally:
+        env.close()
+    return {"ok": bool(info["success"]), "room": room.stem, "mp4": str(path.resolve()),
+            "bytes": path.stat().st_size, "seed": seed, "success": bool(info["success"]),
+            "fallen": bool(info["fallen"]), "seconds": seconds, "frames": len(frames)}
+
+
 def render(run_dir: str | Path, out: str | Path | None = None, seed: int | None = None,
            tries: int = 20) -> dict[str, Any]:
     """MP4 of a success episode (first success among eval seeds), or of `seed`."""
