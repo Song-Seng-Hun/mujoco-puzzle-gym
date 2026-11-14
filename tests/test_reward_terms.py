@@ -90,9 +90,6 @@ def test_bad_task_is_rejected(repo_root, task, needle):
 
 
 # ---- progress_free (R35): no solution order -----------------------------------------
-FREE = {"progress_free": 10.0, "stage": 2.0, "success": 10.0, "fall": -5.0}
-
-
 @pytest.fixture(scope="module")
 def free_env(asset_dir, repo_root):
     """The order-reasoning room: four plates, one of them wired to the door."""
@@ -151,17 +148,56 @@ def test_walking_to_a_decoy_plate_earns_it(free_env):
     assert gained > 0.0
 
 
+def _drive_to(env, part, steps: int = 60) -> bool:
+    """Hand-steer at `part` (the walking policy has no reverse) and say whether it is on."""
+    for _ in range(steps):
+        to = env.parts[part].xy - env.body_state.pos[:2]
+        turn = np.arctan2(to[1], to[0]) - env.body_state.yaw
+        env.step(np.array([0.8, 0.0, np.clip(np.arctan2(np.sin(turn), np.cos(turn)), -1, 1)],
+                          dtype=np.float32))
+        if env.parts[part].satisfied():
+            return True
+    return False
+
+
+def test_a_decoy_press_locks_the_door_for_good(free_env):
+    """4d-3: the door reads its plate and `one_only`, and the plates latch, so a second
+    plate on means the door never opens again this episode. That is what gives a policy
+    that cannot read the cue a success-rate ceiling instead of a slower route."""
+    free_env.reset(seed=4)
+    wired = free_env.layout["links"]["door"]
+    decoy = min((n for n, p in free_env.parts.items() if p.role == "switch" and n != wired),
+                key=lambda n: np.linalg.norm(free_env.parts[n].xy - free_env.body_state.pos[:2]))
+    assert _drive_to(free_env, decoy), "the decoy must be pressed for this test to say anything"
+    assert free_env.parts["door"].state() < 0.5
+    assert _drive_to(free_env, wired, 120), "the wired plate must be pressed too"
+    for _ in range(20):
+        free_env.step(np.zeros(3, dtype=np.float32))
+    assert free_env.parts["door"].state() < 0.5, "a decoy press must lock the door"
+
+
+def test_the_wired_plate_alone_opens_the_door(free_env):
+    """The control of the test above: with no decoy pressed the same plate opens it."""
+    free_env.reset(seed=4)
+    assert _drive_to(free_env, free_env.layout["links"]["door"], 120)
+    for _ in range(20):
+        free_env.step(np.zeros(3, dtype=np.float32))
+    assert free_env.parts["door"].state() >= 0.5
+
+
 def test_a_solved_plate_drops_out_and_the_goal_takes_over(free_env):
     """Once a plate is on it is no longer a target, and the door it opened is open in the
-    distance field, so the goal behind it is what the reward leads to."""
+    distance field, so the goal behind it is what the reward leads to. The plates that are
+    still off drop out as well while a goal is what is left (4d-3), so the reward does not
+    lead back to a plate whose press would lock the door."""
     free_env.reset(seed=2)
     solver = ScriptedSolver(free_env)
     on = None
     for _ in range(free_env.max_steps):
         _, _, terminated, truncated, info = free_env.step(solver.act())
-        if on is None and info["reward_terms"]["stage"] > 0:
+        if on is None and info["switches_on"] > 0:   # the task pays no `stage` term (4d-2)
             on = {n for n, _ in free_env.free_key()[1]}
-            assert free_env.layout["links"]["door"] not in on and "goal" in on
+            assert on == {"goal"}
             after = free_env.free_distance()
         if terminated or truncated:
             break
