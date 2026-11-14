@@ -299,6 +299,42 @@ curriculum: {mode: forward, order: difficulty_first}
 - `bind`가 거는 값, 범위 밖 값, 크기 값은 방을 읽을 때 거절합니다.
 - 뽑기 없이 돌리면(평가, 직접 `reset`) 마지막 단계입니다. `mpg eval runs/<id> --difficulty 1`처럼 단계를 고를 수 있습니다.
 
+### 에피소드 무작위화
+
+방은 무엇이 어디까지 바뀔 수 있는지(`randomize:`)를 적고, `task.yaml`은 이번 학습에서 그 범위를 얼마나 쓸지를 정합니다. 같은 방을 고정으로도 무작위로도 학습합니다.
+
+```yaml
+parts:
+  - name: switch_a
+    preset: input/floor_momentary
+    pos: [-0.6, 0.5]
+    randomize:
+      pos: {region: [[-1.2, 0.0, -0.9, 0.9]], min_gap: 0.2}
+  - name: goal
+    type: goal
+    pos: [1.1, 0.0]
+    randomize:
+      pos: {candidates: [[1.1, 0.0], [1.1, 0.5]], weights: [2, 1], holdout: [[0.9, -0.5]]}
+  - name: fan
+    preset: trap/crosswind
+    pos: [-1.0, -0.65]
+    randomize:
+      power: {range: 0.5, holdout_scale: 2.0}
+spawn: {pos: [-1.2, 0.0], randomize: {pos: {range: [0.1, 0.2]}, yaw: {range: 1.0}}}
+max_resample: 20
+```
+
+```yaml
+randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
+```
+
+- 뽑는 방식 셋: `range`(기준값 ±, M1의 `random: [dx, dy]`가 이것의 줄임이고 둘을 함께 쓰면 거절), `region`(상자 목록 안 아무 곳, `min_gap`으로 벽·다른 부품과 간격), `candidates`(후보 중 하나, `weights` 가능). `pos`는 위치이고, 그 밖의 이름은 실행 중이나 에피소드 시작에 바꿀 수 있는 부품 값입니다.
+- 층: 위치와 출발 자세는 `layout`, 부품 값은 `physics`, 관측 잡음은 `body`입니다. task의 숫자는 방이 적은 범위를 몇 배로 쓸지이고 0이면 기준값에 고정합니다. 기본은 1.0이라 방에 적으면 켜집니다. `structure`·`look`·`rooms`는 아직 없어서 0이 아닌 값을 주면 거절합니다.
+- 같은 값을 `bind`나 난이도 단계도 건드리면 거절합니다(한쪽이 조용히 지워집니다).
+- 뽑은 방이 풀리지 않으면(목표 순서가 없거나 `min_gap`이 깨지거나 부품이 뽑힌 값을 거절) 버리고 다시 뽑습니다(`max_resample`, 기본 20). `mpg check`의 `resample` 단계는 시드 100개로 버린 비율을 재어 30%를 넘으면 경고하고, 한도까지 풀리는 방을 못 찾은 시드가 있으면 거절합니다.
+- 평가 전용 값: `candidates`는 `holdout:`, `region`은 `holdout_region:`, `range`는 범위 바깥 띠(`holdout_scale`, 기본 1.5배)입니다. `reset(options={"randomize": "wide"})`는 그 값만 뽑고(평가 전용 값이 없는 샘플러는 기준값에 둡니다), 방에 하나도 없으면 거절합니다. `"nominal"`은 아무것도 뽑지 않습니다.
+- 관측 항목 `randomized`(기본 끔)는 뽑힌 부품 값을 방이 적은 범위로 나눈 수입니다. 에피소드 기록의 `draws`는 그 에피소드가 몇 번 뽑았는지입니다.
+
 ## 큐브와 부리로 집기
 
 - `cube`는 손잡이가 달린 상자입니다(`size`, `mass`, `friction`, 손잡이 면 `handles`: `+x`, `-x`, `+y`, `-y`, `+z` 중, 기본 옆면 넷). 압력판, 소켓, 물체 버튼과 구역이 셉니다. 방에 큐브가 있으면 큐브가 켤 수 있는 입력은 풀이 순서에서 발판으로 칩니다. `rest_on: <큐브>`를 주면 리셋 때마다 그 큐브 윗면에 얹혀 시작합니다(`pos`는 그 큐브 기준으로 유지되어 그 큐브의 무작위 범위를 따라가고, 자기 `random`은 0이어야 함. 밑 큐브는 다른 큐브에 얹힌 것이 아니어야 하고, 가운데가 그 윗면 위여야 함). 얹힌 큐브는 접촉 우선순위가 걸이 물체와 같아서(2), 끈 방의 걸이 큐브 위에서도 둘 중 큰 마찰로 버팁니다.
@@ -513,6 +549,7 @@ def majority(inputs, state, dt):
 | `out` | list |  | — |  |  | channels this part writes (default: its name if it emits) |
 | `enable` | str |  | — |  |  | power channel; off (<= 0.5) freezes the part's output |
 | `marker` | any |  | — |  |  | ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one |
+| `randomize` | any |  | — |  |  | R35: {pos: {range\|region\|candidates: ...}, <run-time value>: {...}}, drawn at every episode start and scaled by the task's `randomize:` |
 | `bind` | any |  | — |  |  | R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, applied every body step, clipped to the value's range |
 
 ### `addon_station`

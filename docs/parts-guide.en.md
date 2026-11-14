@@ -299,6 +299,42 @@ curriculum: {mode: forward, order: difficulty_first}
 - Values driven by `bind`, values out of range and size values are rejected when the room loads.
 - Without a draw (evaluation, a plain `reset`) the last step is used. `mpg eval runs/<id> --difficulty 1` picks a step.
 
+### Episode randomization
+
+A room writes down what may change and how far (`randomize:`), and `task.yaml` says how much of that to use this run. The same room can be trained fixed or randomized.
+
+```yaml
+parts:
+  - name: switch_a
+    preset: input/floor_momentary
+    pos: [-0.6, 0.5]
+    randomize:
+      pos: {region: [[-1.2, 0.0, -0.9, 0.9]], min_gap: 0.2}
+  - name: goal
+    type: goal
+    pos: [1.1, 0.0]
+    randomize:
+      pos: {candidates: [[1.1, 0.0], [1.1, 0.5]], weights: [2, 1], holdout: [[0.9, -0.5]]}
+  - name: fan
+    preset: trap/crosswind
+    pos: [-1.0, -0.65]
+    randomize:
+      power: {range: 0.5, holdout_scale: 2.0}
+spawn: {pos: [-1.2, 0.0], randomize: {pos: {range: [0.1, 0.2]}, yaw: {range: 1.0}}}
+max_resample: 20
+```
+
+```yaml
+randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
+```
+
+- Three samplers: `range` (the nominal value +-; M1's `random: [dx, dy]` is this written short, and giving both is refused), `region` (anywhere in a list of boxes, keeping `min_gap` from the walls and the other parts) and `candidates` (one entry of a list, optionally with `weights`). `pos` is the position; any other name is a part value that can change while running or at episode start.
+- Layers: positions and the spawn pose are `layout`, part values are `physics`, observation noise is `body`. The task's number is how much of the room's range to use, and `0` pins the layer to its nominal value. Every layer defaults to 1.0, so a room that declares a range is randomized. `structure`, `look` and `rooms` are not implemented yet and are refused above 0.
+- A value that a `bind` or a difficulty step also drives is refused: one of the two would be silently undone.
+- A draw that cannot be solved (no goal order, a broken `min_gap`, or a part refusing a drawn value) is thrown away and drawn again, up to `max_resample` (default 20). `mpg check`'s `resample` stage draws the room with 100 seeds, warns above 30% thrown away, and refuses the room when a seed found no solvable draw within the limit.
+- Evaluation-only values: `holdout:` for `candidates`, `holdout_region:` for `region`, and the band outside the range for `range` (`holdout_scale`, default 1.5). `reset(options={"randomize": "wide"})` draws only those (a sampler without one stays nominal) and is refused when the room has none. `"nominal"` draws nothing.
+- The obs item `randomized` (off by default) reports the drawn part values divided by the range the room declares. `info["draws"]` counts how many draws the episode took.
+
 ## Cubes and beak grabbing
 
 - `cube` is a box with handles (`size`, `mass`, `friction`, handle faces `handles` from `+x`, `-x`, `+y`, `-y`, `+z`; default the four sides). Pressure plates, sockets, object buttons and zones count it. When a room has a cube, inputs a cube can set off count as switches in the solution order. With `rest_on: <cube>` it starts resting on that cube's top at every reset (its `pos` is kept relative to that cube, so it follows that cube's random range; its own `random` must be 0; the cube under it must not rest on another, and the centre must be over its top face). A resting cube has the hitch objects' contact priority (2), so on a hitch cube in a rope room the larger of the two frictions holds.
@@ -513,6 +549,7 @@ Below is the output of `mpg parts --markdown`. When parts change, replace this p
 | `out` | list |  | — |  |  | channels this part writes (default: its name if it emits) |
 | `enable` | str |  | — |  |  | power channel; off (<= 0.5) freezes the part's output |
 | `marker` | any |  | — |  |  | ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one |
+| `randomize` | any |  | — |  |  | R35: {pos: {range\|region\|candidates: ...}, <run-time value>: {...}}, drawn at every episode start and scaled by the task's `randomize:` |
 | `bind` | any |  | — |  |  | R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, applied every body step, clipped to the value's range |
 
 ### `addon_station`
