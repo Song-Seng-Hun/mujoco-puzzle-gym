@@ -159,6 +159,9 @@ class Part:
         Field("enable", "str", None, doc="power channel; off (<= 0.5) freezes the part's output"),
         Field("marker", "any", None,
               doc="ArUco marker (R26): `none` or {id, size, face}; default: a free id on parts that carry one"),
+        Field("randomize", "any", None,
+              doc="R35: {pos: {range|region|candidates: ...}, <run-time value>: {...}}, "
+                  "drawn at every episode start and scaled by the task's `randomize:`"),
         Field("bind", "any", None,
               doc="R13: {<run-time value>: {from: <channel>, map: [in0, in1, out0, out1]}}, "
                   "applied every body step, clipped to the value's range"),
@@ -320,6 +323,12 @@ class Part:
             when = "at episode start" if episode else "while running"
             raise SchemaError(f"part {self.name!r}: {key!r} cannot change {when}")
         self.live[key] = f.check(f"part {self.name!r}", value)
+
+    def room_value(self, key: str) -> Any:
+        """The value the room file gave, before any run-time change: what a drawn value
+        (R35) and a difficulty step are measured from."""
+        src = self._live0 if key in self._live0 else self.cfg
+        return copy.deepcopy(src.get(key))
 
     def claim_value(self, key: str) -> None:
         """A setter targets `key` (called while the room loads, before `build`): parts

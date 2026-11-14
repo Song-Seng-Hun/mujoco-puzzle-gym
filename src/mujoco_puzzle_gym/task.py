@@ -12,7 +12,10 @@ task is saved as `task.resolved.yaml` next to a run.
     obs: [gravity, ang_vel, lin_vel, part_pos, part_state]   # items may take
                                   # parameters: {item: coins, k: 5} (R39, obs.py)
     critic_obs: [part_pos, part_state]   # optional: value function only (R39)
-    randomize: {body: 1.0}        # optional: scales obs-item `noise` (R35 body layer)
+    randomize: {layout: 1.0, physics: 0.5, body: 1.0}
+                                  # optional (R35): how much of the room's declared
+                                  # randomization to use this run; `body` also scales
+                                  # obs-item `noise`. 0 pins a layer to its nominal value.
     curriculum: {mode: none, advance_at: 0.8, replay: 0.2, window: 50, snapshots: null,
                  order: difficulty_first}
                                   # R21 segments over checkpoint flags (curriculum.py);
@@ -151,11 +154,12 @@ def validate(task: dict[str, Any]) -> None:
         raise TaskError(str(exc)) from None
     rnd = task.get("randomize")
     if rnd is not None:
-        if not isinstance(rnd, dict):
-            raise TaskError("`randomize` must be a mapping, e.g. {body: 1.0}")
-        body = rnd.get("body", 1.0)
-        if isinstance(body, bool) or not isinstance(body, (int, float)) or body < 0:
-            raise TaskError(f"randomize.body must be a number >= 0, got {body!r}")
+        from .randomize import RandomizeError, validate_strengths
+
+        try:
+            validate_strengths(rnd)
+        except RandomizeError as exc:
+            raise TaskError(str(exc)) from None
     try:
         curriculum.validate(task["curriculum"])
     except curriculum.CurriculumError as exc:
