@@ -283,6 +283,28 @@ mpg train task.yaml --minutes 60 --curriculum forward
 mpg eval runs/<id> --full --segments
 ```
 
+### 구간 시작 선언 `checkpoint_states:`
+
+구간 i는 기본적으로 깃발 i의 저장본에서 시작합니다. 그 저장본은 `mpg check` 한 에피소드의 방이라, 방을 무작위로 뽑으면 정책이 그 몇 개 배치만 외웁니다. 그래서:
+
+- 방의 `randomize:`가 **배치·구조·방** 층을 뽑으면 구간은 저장본을 쓰지 않고, 이번 에피소드의 방을 새로 뽑아 그 위에 방 파일의 선언을 놓습니다. 선언이 없는 깃발이면 거절하고 무엇을 적을지 알려 줍니다.
+- 뽑지 않으면(그 층들이 0) 지금까지처럼 저장본에서 시작하되 **물리·몸 층은 다시 뽑아** 저장본 위에 덮습니다(한 벌의 부품 값만 보고 학습하지 않게). 다시 뽑은 값은 체크포인트 복귀 상태에도 들어갑니다.
+- 저장본이 아예 없어도 선언이 있으면 선언으로 시작합니다. 둘 다 없으면 어느 깃발이 비었는지 말하며 거절합니다.
+
+```yaml
+checkpoint_states:
+  flag_2:
+    body: {at: flag_2, offset: [-0.1, 0.0], yaw: 0.0}   # 또는 {pos: [x, y], yaw: 0}
+    parts:
+      flag_1: {state: {reached: true}}                  # 지나온 깃발
+      plate_a: {state: {latched: true}}                 # 눌러 둔 발판
+      tow_rope: {state: {tied: [body, hitch_a]}, values: {length: 0.6}}
+```
+
+- `body:`는 `pos`(방 좌표)나 `at`(그 부품의 이번 에피소드 자리) + `offset`이고, `yaw`를 빼면 이번 에피소드의 출발 방향을 씁니다. `at`을 쓰면 뽑힌 배치를 따라갑니다.
+- `state:`의 키는 그 부품의 저장본이 담는 상태(`Part.state_keys`)이고, `values:`는 실행 중·에피소드 시작에 바꿀 수 있는 값입니다(끈의 `length` 같은 것). 모르는 깃발·키·값은 방을 읽을 때 거절합니다.
+- 선언으로 시작한 에피소드도 그 자리에서 저장본을 하나 만들어 두므로, `respawn: checkpoint`는 그 상태로 돌아갑니다.
+
 ### 난이도 단계
 
 `task.yaml`의 `difficulty:`는 함정 세기 같은 값을 단계별로 올립니다. 실행 중 변경("예")이나 에피소드 시작에 바꿀 수 있는 값만 됩니다.
