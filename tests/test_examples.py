@@ -26,7 +26,8 @@ KINDS = {"logic_lock": "buttons and logic", "doors": "doors and trapdoors",
          "wall_button": "beak wall button", "laundry": "laundry and basket",
          "roller_rink": "addon station", "roller_route": "roller mechanics", "tow_yard": "tow rope",
          "power_cut": "circuit, breaking and repair",
-         "shuffle_switches": "randomized wiring"}
+         "shuffle_switches": "randomized wiring",
+         "mixed_stock": "randomized parts and counts"}
 #: Example rooms whose task adds actions beyond `move` (R19).
 TASKS = {r: ROOT / f"examples/task_{r}.yaml"
          for r in ("cube_plate", "cube_socket", "laundry", "power_cut")}

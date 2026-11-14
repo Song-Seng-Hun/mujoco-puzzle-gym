@@ -1,0 +1,34 @@
+# Example room (R35 `mixed_stock.yaml`): the room's parts themselves change.
+# - `randomize: {type: {candidates: [...]}}` draws which plate opens the door: one
+#   that latches on the first press, or one that toggles on every press (so walking
+#   over it twice shuts the door again). Every candidate is built when the room
+#   loads -- MuJoCo cannot add a body while running -- and the one that is not drawn
+#   waits on the storage shelf, off stage, where it blocks nothing and writes
+#   nothing. Whoever read the group's name (the door) reads the candidate that is
+#   there.
+# - `randomize: {count: [0, 2]}` draws how many crates clutter the floor, one per
+#   spot from the author's list, so the way round them changes too.
+# - Observations: `part_group` says which member of each group is in play and
+#   `part_used` which part slots are in the room at all.
+# Task: examples/task_mixed_stock.yaml (`[move]`, 40 s episodes).
+name: mixed_stock
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+parts:
+  - name: trigger
+    preset: input/floor_oneshot
+    pos: [-0.7, 0.55]
+    randomize:
+      type: {candidates: [input/floor_oneshot, input/floor_toggle]}
+  - name: crate
+    preset: beak/cube_weight
+    pos: [-0.3, -0.5]
+    randomize:
+      count: [0, 2]
+      pos: {candidates: [[-0.3, -0.5], [0.15, -0.55], [-0.75, -0.45]]}
+  - {name: door, preset: device/sliding_door, pos: [0.5, 0.0], in: [trigger]}
+  - {name: goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}
