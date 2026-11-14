@@ -1,0 +1,14 @@
+# Candidate room of examples/rooms/room_roulette.yaml (R35 `rooms`): the plate is on
+# the other side of the divider and the opening is near the top, so the way through is
+# not the way the first room taught. It is a complete room on its own too.
+name: roulette_b
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, 0.35]}      # divider, opening at y = 0.6
+  - {from: [0.5, 0.85], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+parts:
+  - {name: b_plate, preset: input/floor_oneshot, pos: [-0.5, -0.55]}
+  - {name: b_door, preset: device/sliding_door, pos: [0.5, 0.6], in: [b_plate]}
+  - {name: b_goal, type: goal, pos: [1.1, 0.6], radius: 0.15, random: [0.08, 0.2]}

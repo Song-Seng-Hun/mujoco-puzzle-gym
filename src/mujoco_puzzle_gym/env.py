@@ -133,7 +133,8 @@ class PuzzleEnv(gym.Env):
         if subs:
             def on_substep(model, data, subs=subs):
                 for p in subs:
-                    p.substep(model, data)
+                    if not p.parked:          # off stage (R35 shelf, a resting zone)
+                        p.substep(model, data)
             self._on_substep = on_substep
         self._model0 = snapshot.model_values(self.model)
         self.checkpoint_snap: snapshot.Snapshot | None = None
@@ -388,6 +389,7 @@ class PuzzleEnv(gym.Env):
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
         self._apply_shelf(layout)              # after the places: the shelf moves them off
+        self._apply_zone(layout)               # R35 `rooms`: the zones not drawn rest
         if layout.get("values"):
             why += self._apply_values(layout, probe=True)
         res = solution_order(self.grid, self.walls, self.parts, layout["spawn"][:2],
@@ -397,6 +399,23 @@ class PuzzleEnv(gym.Env):
         if layout.get("values"):
             why += [r for p in self.parts.values() for r in p.check_static(self)]
         return why
+
+    def _apply_zone(self, layout: dict[str, Any]) -> None:
+        """R35 `rooms`: the zones this episode did not draw rest. Their parts keep their
+        places (nobody goes there) but write nothing, run no `update` or `substep`, and
+        are left out of the plan and the observations. The drawn zone is in play, set
+        either way because a thrown-away draw may have picked another zone."""
+        if self.randomizer.rooms is None:
+            return
+        resting = self.randomizer.resting(self.parts, layout)
+        shelved = set(self.parts) - self.randomizer.used_parts(self.parts, layout)
+        for name, part in self.parts.items():
+            if name in shelved:
+                continue           # the storage shelf already put this one off stage
+            part.parked = name in resting
+            if name in resting:
+                for ch in part.outputs:
+                    self.signals.set(ch, 0.0)
 
     def _apply_shelf(self, layout: dict[str, Any]) -> None:
         """Put the group members this episode did not draw on the storage shelf and the
@@ -462,7 +481,7 @@ class PuzzleEnv(gym.Env):
         self.world.requests.clear()
         self.world.warp_until.clear()
         self.checkpoint_snap = None
-        self.zone = 0
+        self.zone = int(layout.get("zone", 0) or 0)      # R35 `rooms`: the drawn room
         for name, xy in layout["parts"].items():
             self.parts[name].place(self.model, xy)
         for name, xy in layout["parts"].items():
@@ -493,8 +512,9 @@ class PuzzleEnv(gym.Env):
         self._apply_values(layout)                               # R35: the drawn values
         for p in self.parts.values():
             p.reset(self.model, self.data)
-        self._apply_shelf(layout)      # R35: after the parts reset (a free object's reset
-        mujoco.mj_forward(self.model, self.data)       # puts it back in play otherwise)
+        self._apply_shelf(layout)      # R35: both after the parts reset (a free object's
+        self._apply_zone(layout)       # reset puts it back in play otherwise)
+        mujoco.mj_forward(self.model, self.data)
         for p in self.parts.values():                            # R31: default rope ends tie now
             p.after_reset(self.model, self.data)
         if self.world.ropes:

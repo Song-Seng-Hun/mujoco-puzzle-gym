@@ -45,6 +45,14 @@ the same model, so observation and snapshot sizes stay fixed; a warp pad with
 unique over all stages; channels are shared. The goal requirement holds for
 the stages together (an earlier stage may have none).
 
+Experiment rooms (R35 `rooms`): `randomize: {rooms: {candidates: [room_b.yaml,
+...], holdout: [<room name>]}}` draws which room each episode plays in. Every
+candidate is built as its own zone, the same way `stages:` does, and the draw
+picks one (env.py parks the zones that rest), so the observation keeps one size
+whichever room comes up. Zone 0 is the room that declares the candidates;
+`randomize.MAX_ROOMS` caps the zones, every zone needs its own part names, and
+`stages:` and letter maps cannot be used with it.
+
 Demo (R20): `demo:` lists the scripted solver's sub-goals for `mpg check`, in
 order (strings): `goto <part>`, `press <part>`, `wait <seconds>`, `push <ball>
 to <net or pin>`, `herd <npc> <part or x y>` (R29), `grab <object>`, `place
@@ -374,6 +382,11 @@ class Room:
     part_presets: dict[str, str] = field(default_factory=dict)   # part name -> preset (R3)
     #: Parts drawn in several shapes or numbers (R35 structure layer, randomize.Group).
     groups: list[Any] = field(default_factory=list)
+    #: Zone names when the room draws its room (R35 `rooms`): this room, then each
+    #: candidate, in zone order. Empty for a room that does not declare `rooms:`.
+    zone_names: list[str] = field(default_factory=list)
+    #: Candidate room names that are evaluation-only (R35 `randomize.rooms.holdout`).
+    rooms_holdout: list[str] = field(default_factory=list)
 
     # ---- loading ----------------------------------------------------------
     @classmethod
@@ -476,12 +489,16 @@ class Room:
         if stage:
             if raw.get("stages"):
                 raise RoomError("a `stages:` room cannot list stages itself")
+            if isinstance(raw.get("randomize"), dict) and "rooms" in raw["randomize"]:
+                raise RoomError("a room built as a zone (`stages:` or `randomize.rooms`) "
+                                "cannot draw rooms itself", "values")
             return room
         try:
             room.gaze = gaze_mod.parse_config(raw.get("gaze"))
         except ValueError as exc:
             raise RoomError(str(exc), "values") from None
         room._add_stages(raw.get("stages") or [])
+        room._add_rooms(raw)               # R35 `rooms`: the candidate rooms as zones
         parts = room.make_parts()          # validates parts and links
         room.demo = parse_demo(raw.get("demo"), parts)
         return room
@@ -489,15 +506,54 @@ class Room:
     def _add_stages(self, paths: list[Any]) -> None:
         if not isinstance(paths, list):
             raise RoomError("`stages:` must be a list of room files")
+        self._add_zones(paths, "stages")
+
+    def _add_rooms(self, raw: dict[str, Any]) -> None:
+        """R35 `randomize: {rooms: {candidates: [...]}}`: every candidate room file becomes
+        a zone of this model, so one episode plays in the zone the draw picks and the
+        observation keeps one size. Zone 0 is this room."""
+        block = raw.get("randomize")
+        if not isinstance(block, dict) or "rooms" not in block:
+            return
+        try:
+            cands, hold = randomize.parse_rooms(block["rooms"])
+        except randomize.RandomizeError as exc:
+            raise RoomError(str(exc), "values") from None
+        if raw.get("stages"):
+            raise RoomError("`randomize: {rooms: ...}` and `stages:` both build the model's "
+                            "zones; use one or the other", "values")
+        if self.map is not None:
+            raise RoomError("a `map` room cannot draw rooms yet: a zone is built without its "
+                            "own map", "values")
+        subs = self._add_zones(cands, "randomize.rooms.candidates")
+        warps = [c["name"] for c in self.part_cfgs
+                 if c.get("to") == "next_stage"
+                 or any(isinstance(r, dict) and r.get("to") == "next_stage"
+                        for r in (c.get("routes") or []))]
+        if warps:                 # the next zone is another candidate, not the next room
+            raise RoomError(f"part {warps[0]!r}: a `to: next_stage` warp is for `stages:`; "
+                            f"with `randomize.rooms` the other zones are the rooms this "
+                            f"episode is not in", "values")
+        self.zone_names = [self.name] + [s.name for s in subs]
+        self.rooms_holdout = hold
+
+    def _add_zones(self, paths: list[Any], where: str) -> list["Room"]:
+        """Build each room file in `paths` as its own zone to the +x side of the last one
+        (R14 `stages:`, R35 `rooms`), and take over its parts, links and presets."""
         base = self.path.parent if self.path else Path(".")
-        right = self.extent().x1
-        for k, rel in enumerate(paths, start=1):
+        right = max(e.x1 for e in self.zone_extents())
+        subs = []
+        for k, rel in enumerate(paths, start=len(self.stages) + 1):
             p = base / str(rel)
             try:
                 raw = yaml.safe_load(p.read_text())
             except (OSError, yaml.YAMLError) as exc:
-                raise RoomError(f"stages[{k - 1}]: cannot read room file {p}: {exc}") from None
+                raise RoomError(f"{where}[{k - 1}]: cannot read room file {p}: {exc}") from None
             sub = Room.from_dict(raw, path=p, stage=True)
+            if sub.map is not None:
+                raise RoomError(f"{where}[{k - 1}] {sub.name!r}: a `map` room cannot be a zone "
+                                f"yet (its tiles are built in the room's own coordinates)",
+                                "values")
             dx = right + STAGE_GAP - sub.extent().x0
             right = dx + sub.extent().x1
             self.stages.append((dx, sub))
@@ -505,11 +561,19 @@ class Room:
                 try:
                     cls = get_part(cfg.get("type"))
                 except KeyError as exc:
-                    raise RoomError(f"stages[{k - 1}] part {cfg.get('name')!r}: {exc.args[0]}") from None
+                    raise RoomError(f"{where}[{k - 1}] part {cfg.get('name')!r}: "
+                                    f"{exc.args[0]}") from None
+                if cfg.get("name") in {c["name"] for c in self.part_cfgs}:
+                    raise RoomError(f"{where}[{k - 1}] {sub.name!r}: part name "
+                                    f"{cfg['name']!r} is already used by another zone; every "
+                                    f"zone's parts need their own names (its channels are "
+                                    f"shared), e.g. {sub.name}_{cfg['name']}", "values")
                 self.part_cfgs.append(cls.shift_cfg(cfg, dx, 0.0))
                 self.part_zones.append(k)
             self.links += [dict(l) for l in sub.links]
             self.part_presets.update(sub.part_presets)
+            subs.append(sub)
+        return subs
 
     def resolved_parts(self) -> list[dict[str, Any]]:
         """Every room part as loaded: name, type, preset and its checked values with
@@ -527,6 +591,11 @@ class Room:
             out.append(json.loads(json.dumps(entry, default=lambda o: o.tolist()
                                              if hasattr(o, "tolist") else str(o))))
         return out
+
+    def zone_rooms(self) -> list[tuple[float, "Room"]]:
+        """Every zone as (x offset, room): this room, then each `stages:` or candidate
+        room (R14, R35 `rooms`)."""
+        return [(0.0, self), *self.stages]
 
     def zone_spawns(self) -> list[tuple[float, float, float]]:
         """Spawn pose of every zone (this room, then each `stages:` room)."""

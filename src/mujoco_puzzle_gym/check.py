@@ -36,7 +36,9 @@ resample:  a randomized room (R35 `randomize:`) is drawn once per seed (100) and
            solvable draw fails the stage, and more than `RESAMPLE_WARN` of the
            draws thrown away is a warning. Skipped when the room declares no
            randomization or the task turns every layer off; it runs last because
-           it leaves the room on a drawn layout;
+           it leaves the room on a drawn layout. A room drawing its room (R35
+           `rooms`) also reports how often each room came up and warns about one
+           that never did and is not evaluation-only;
 (a) order: a signal path to a goal exists: a switch/door order that reaches a
            goal (link graph on the room grid), and every coin is reachable (R36);
            in letter-map rooms (R37) also: parts, spawn and their random ranges lie on
@@ -259,9 +261,11 @@ def check_resample(env: PuzzleEnv, seeds: int = RESAMPLE_SEEDS) -> dict[str, Any
     if not env.randomizer.active():
         return {"ok": True, "skipped": "the task's `randomize:` turns every layer off"}
     draws, stuck = 0, []
+    zones: dict[int, int] = {}
     for s in range(seeds):
         layout = env.sample_layout(np.random.default_rng(s))
         draws += int(layout.get("draws", 1))
+        zones[int(layout.get("zone", 0) or 0)] = zones.get(int(layout.get("zone", 0) or 0), 0) + 1
         if layout.get("why"):
             stuck.append(f"seed {s}: {layout['why'][0]}")
     env.reset(options={"layout": env.sample_layout(None)})      # back to the nominal room
@@ -274,6 +278,15 @@ def check_resample(env: PuzzleEnv, seeds: int = RESAMPLE_SEEDS) -> dict[str, Any
     warn = [f"{where}: the link cue is hidden, so the room needs memory or search; "
             f"a policy without one has a success-rate ceiling"
             for where in env.randomizer.hidden_cues()]
+    rooms = env.randomizer.rooms
+    if rooms is not None:              # R35 `rooms`: which room each seed played in
+        names = rooms.zones
+        out["rooms"] = {names[k]: n for k, n in sorted(zones.items())}
+        missed = [names[k] for k in range(len(names))
+                  if k not in zones and k not in rooms.holdout]
+        if missed:
+            warn.append(f"{seeds} seeds never drew {missed}; a room the training never sees "
+                        f"is an evaluation-only room (`randomize.rooms.holdout`)")
     if ratio > RESAMPLE_WARN:
         warn.append(f"{ratio:.0%} of the draws are thrown away (over "
                     f"{RESAMPLE_WARN:.0%}): narrow the ranges or widen the room")

@@ -540,6 +540,19 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - 계획·spec과 다른 점(보고만): (1) 개수 그룹은 자리를 방 작성자가 `pos: {candidates: [...]}`로 주어야 한다(복제가 한 `pos`에 겹쳐 서면 overlap 단계가 거절한다). 뽑기는 서로 다른 자리를 고르고 기준 방은 자리마다 하나다. (2) 개수 그룹의 채널을 읽는 부품이 있으면 거절한다(어느 복제인지 말할 수 없다). (3) 치울 수 없는 부품(문·벽 부착·바닥 타일)은 그룹에 못 넣는다. (4) 문 여는 방향과 순서 잠금 순서 섞기는 여전히 없다(에피소드 시작에 바뀌는 값이 아니고, 방향은 기하라서 치우기·후보로 다뤄야 한다 — 필요한 방이 나올 때 다시 본다). (5) 개수 그룹에는 평가 전용 값이 없어 `wide`에서 기준 개수에 머문다.
      - 알려진 한계: 보관 선반은 한 모델 안의 자리라서 후보·복제가 늘면 모델이 커진다(4c의 `rooms` 상한 8과 같은 성질). 종류 후보는 자리(`pos`)만 물려받고 나머지 값은 각 프리셋의 것이다.
 
+   - 4c 나누기 (2026-11-14, 사용자 결정 "승인"): 4c-1 `rooms` 층(후보 방을 구역으로, 쉬는 구역, 관측 크기 고정, 평가 전용 방), 4c-2 기록·저장본과 `mpg eval --randomize`, 4c-3 `checkpoint_states:`와 단계별 학습 시작 규칙. 조각마다 PR 하나.
+
+   - 4c-1 구현 기록 (2026-11-14, 브랜치 `feat/m2-randomize-4c1`, 4b-2 위):
+     - `randomize.py`: 샘플러 `Rooms`(구역 하나 뽑기, `holdout`은 `wide`에서만), 선언 읽기 `parse_rooms`(후보 목록·상한 `MAX_ROOMS` 8·`holdout` 꼴)과 `rooms_sampler`(구역 이름으로 `holdout` 맞추기), 층 `rooms`를 구현 목록(`DONE_LAYERS`)에 넣음, `Randomizer.rooms`·`resting`(쉬는 구역의 부품 이름), `draw`가 구역을 가장 먼저 뽑고 그 구역의 출발 자세·`random:` 흔들기를 쓰며 `layout["zone"]`에 담는다.
+     - `room.py`: `_add_stages`를 일반화한 `_add_zones(paths, where)`와 `_add_rooms(raw)` — 후보 파일을 `stages:`와 같은 기구로 +x 쪽 구역으로 만들고 부품·링크·프리셋을 가져온다. `Room.zone_names`·`rooms_holdout`·`zone_rooms()`.
+     - `env.py`: `_apply_zone(layout)`가 뽑히지 않은 구역의 부품을 `parked`로 두고 채널을 0으로 둔다(보관 선반이 이미 치운 부품은 건드리지 않는다). 뽑기 판정과 리셋 둘 다에서 부품 리셋 뒤에 돌린다. `self.zone`이 뽑힌 구역이고(저장본에 이미 들어간다), `on_substep`이 치워진 부품을 건너뛴다.
+     - `community.py`: 경로 탈출·크기 점검이 `randomize.rooms.candidates`도 보고, 방 뽑기 방의 바닥 한도는 구역을 합치지 않고 가장 큰 후보로 잰다(구역은 번갈아 쓰는 방이라 합치면 3개만으로도 10 m를 넘는다).
+     - `check.py`: `resample` 단계가 시드 100개의 구역별 횟수를 `rooms`로 적고, 평가 전용이 아닌데 한 번도 안 뽑힌 방을 경고한다.
+     - 예제 `examples/rooms/room_roulette.yaml`(+후보 `room_roulette_b.yaml`, 평가 전용 `room_roulette_c.yaml`)와 `examples/task_room_roulette.yaml`, `tests/test_rooms.py` 30개(+slow 1개).
+     - 잰 값: `mpg check` 시드 20개로 `room_roulette` 20/20(평균 13.8초), `resample` 비율 0.0, 구역별 뽑힌 횟수 `room_roulette` 39 / `roulette_b` 61(평가 전용 `roulette_c` 0). 후보 방 단독 점검도 각각 20/20(평균 14.3초, 15.0초). 빠른 시험 1203 passed/1 skipped, slow 묶음 60 passed(611초). `mpg bench` 단독 692.0 env steps/s · 3459.8 body steps/s · 낙하 0, 같은 세션의 main 기준값 674.9 · 3374.6(차이는 잡음 범위). 이전 창에 적힌 560 env steps/s는 다른 bench 호출이라 바로 비교하지 않는다.
+     - 계획·spec과 다른 점(보고만): (1) 채널 접두사 `<방>/`를 자동으로 붙이지 않는다. 구역마다 부품 이름이 달라야 하고 겹치면 거절한다(부품 스키마에 "다른 부품을 가리키는 값"이라는 표시가 없어 `in`·`links`·`rest_on`·`to` 같은 참조를 자동으로 고쳐 쓸 수 없다. 방 작성자가 `a_`·`b_`처럼 붙인다). (2) 지도(`map:`) 방은 구역이 될 수 없다(구역의 바닥 타일·높이는 아직 자기 좌표계로만 만들어진다. spec 73줄의 "지도 방을 후보로" 항목은 `stages:`의 지도 지원과 함께 해야 한다). (3) 관측에 구역 원-핫을 따로 넣지 않았다. `part_used`가 이미 어느 방인지 알려 주는 마스크다. (4) 출발 위치를 `region`·`candidates`로 뽑는 방은 `rooms`와 함께 쓸 수 없다(좌표가 구역마다 다르다). `range`와 각 방의 `random:`은 된다. (5) `to: next_stage` 워프와 함께 쓸 수 없다(다음 구역은 이번 에피소드의 방이 아니다).
+     - 알려진 한계: 구역마다 모델과 build 시간이 커진다(상한 8). 후보 방의 `demo:`는 쓰이지 않는다(해답은 격자 계획을 따른다). 쉬는 구역의 자유 물체는 물리로는 여전히 한 번 내려앉는다(갱신·채널·계획·관측에서만 빠진다).
+
 17. 예제 방(큐브·소켓, 벽 버튼, 빨래 `laundry.yaml`). 가이드 완성, AGENTS.md와 SKILL.md 연결.
    - 나누기 (2026-11-12, 사용자 결정 "추천대로 가자"): (a) 예제 방 3개는 지금 한다. (b) 가이드 완성, AGENTS.md와 SKILL.md 연결은 16g 뒤로 옮긴다.
    - (a) 구현 기록 (2026-11-12, 브랜치 `feat/m2-examples-beak`, `feat/m2-basket-exit` 위): 예제 `examples/rooms/cube_socket.yaml`·`wall_button.yaml`·`laundry.yaml`, task `examples/task_cube_socket.yaml`(`[move, head, grab]`)·`task_laundry.yaml`(`[move, head, grab]`, 60 s 판). 세 방 모두 표준 문틈(벽 끝 0.56 m 사이, 실제 틈 0.50 m, `device/sliding_door`)이고 격자 해답으로 풀며 `demo:`는 없다. 시험: `tests/test_examples.py`의 KINDS와 task 표, slow `test_demo_video_of_the_scripted_solution`(빨래·벽 버튼 방의 해답을 MP4로 그림, 성공·10 kB 이상), `tests/test_check2.py`의 예제 방 정적·20시드 점검에 새 task. 가이드 3종 예제 목록과 parts-guide 3종 조립 예 표.

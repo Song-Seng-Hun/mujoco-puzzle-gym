@@ -1,0 +1,28 @@
+# Example room (R35 `room_roulette.yaml`): the episode does not know which room it is in.
+# - `randomize: {rooms: {candidates: [...]}}` draws one of the rooms every episode.
+#   Every candidate is built when the room loads, as a zone of one model (the same
+#   machinery `stages:` uses) -- MuJoCo cannot add a body while running -- and the
+#   episode starts at the drawn zone's own spawn. The other zones rest: their parts
+#   write nothing, run no update, and are left out of the plan and the observations,
+#   so `part_used` is the mask that says which room this is.
+# - `holdout: [roulette_c]` keeps the third room for `mpg eval --randomize wide`:
+#   it is in the training model as a zone, so the policy's input never changes size,
+#   but training never draws it.
+# - Each zone's parts need their own names (`a_`, `b_`, `c_`): the channels are shared
+#   over the whole model.
+# Task: examples/task_room_roulette.yaml (`[move]`, 40 s episodes).
+name: room_roulette
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.28]}     # divider, opening at y = 0
+  - {from: [0.5, 0.28], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.0], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+randomize:
+  rooms:
+    candidates: [room_roulette_b.yaml, room_roulette_c.yaml]
+    holdout: [roulette_c]
+parts:
+  - {name: a_plate, preset: input/floor_oneshot, pos: [-0.7, 0.55]}
+  - {name: a_door, preset: device/sliding_door, pos: [0.5, 0.0], in: [a_plate]}
+  - {name: a_goal, type: goal, pos: [1.1, 0.0], radius: 0.15, random: [0.08, 0.3]}

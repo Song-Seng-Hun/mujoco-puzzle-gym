@@ -1,0 +1,14 @@
+# Evaluation-only candidate of examples/rooms/room_roulette.yaml (R35 `rooms`
+# `holdout:`): built into the training model as a zone, but drawn only by
+# `mpg eval --randomize wide`. It is a complete room on its own too.
+name: roulette_c
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.5, -1.0], to: [0.5, -0.85]}     # divider, opening at y = -0.6
+  - {from: [0.5, -0.35], to: [0.5, 1.0]}
+spawn: {pos: [-1.2, 0.5], yaw: 0.0, random: [0.08, 0.1, 0.5]}
+parts:
+  - {name: c_plate, preset: input/floor_oneshot, pos: [-0.9, -0.6]}
+  - {name: c_door, preset: device/sliding_door, pos: [0.5, -0.6], in: [c_plate]}
+  - {name: c_goal, type: goal, pos: [1.1, -0.5], radius: 0.15, random: [0.08, 0.2]}
