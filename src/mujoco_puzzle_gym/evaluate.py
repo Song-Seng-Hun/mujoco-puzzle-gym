@@ -76,6 +76,10 @@ def run_episode(env, policy, seed: int, deterministic: bool = True, frames: list
             break
     ep.update(success=bool(info["success"]), fallen=bool(info["fallen"]), truncated=bool(truncated),
               stage=info["stage"], target=info["target"], seconds=ep["length"] / env.hz)
+    if "randomize" in info:                 # R35: what this episode drew
+        ep["randomize"] = info["randomize"]
+    if info.get("room") is not None:
+        ep["room"] = info["room"]
     if "segment" in info:
         ep.update(segment=int(info["segment"]), segment_success=bool(info["segment_success"]))
     if info.get("difficulty") is not None:
@@ -138,19 +142,22 @@ def run_episodes(run_dir: str | Path, seeds: list[int], policy: str = "trained",
 def evaluate(run_dir: str | Path, episodes: int = 100, policy: str = "trained",
              deterministic: bool = True, workers: int = DEFAULT_WORKERS,
              full: bool = False, segments: bool = False,
-             difficulty: int | None = None) -> dict[str, Any]:
+             difficulty: int | None = None, randomize: str = "train") -> dict[str, Any]:
     run = load_run(run_dir)
     seeds = list(range(EVAL_SEED_BASE, EVAL_SEED_BASE + episodes))
     segs = _segments(run) if segments else []
-    opts = {} if difficulty is None else {"difficulty": int(difficulty)}
-    jobs: list[Job] = [(s, dict(opts) or None) for s in seeds]
+    _check_mode(run["task"], randomize)
+    opts: dict[str, Any] = {"randomize": randomize}
+    if difficulty is not None:
+        opts["difficulty"] = int(difficulty)
+    jobs: list[Job] = [(s, dict(opts)) for s in seeds]
     jobs += [(s, {"segment": i, **opts}) for i in range(len(segs)) for s in seeds]
     done = run_jobs(run_dir, jobs, policy, deterministic, workers)
     eps = done[:episodes]
     hz = float(run["task"]["env"]["hz"])
     stats = window_stats(eps, hz)
     out = {"run_id": run["summary"]["run_id"], "policy": policy,
-           **_report(eps, seeds, hz, deterministic)}
+           **_report(eps, seeds, hz, deterministic, randomize)}
     if eps and "difficulty" in eps[0]:
         out["difficulty"] = eps[0]["difficulty"]
     if full:
@@ -167,10 +174,19 @@ def evaluate(run_dir: str | Path, episodes: int = 100, policy: str = "trained",
     return out
 
 
-def _report(eps: list[dict], seeds: list[int], hz: float, deterministic: bool) -> dict[str, Any]:
+def _report(eps: list[dict], seeds: list[int], hz: float, deterministic: bool,
+            randomize: str = "train") -> dict[str, Any]:
+    """The run's numbers. `randomize` is the R35 draw mode the episodes used; a room
+    that draws its room (`rooms`) also gets a success rate per room, because that is
+    what an evaluation-only room is measured with."""
     stats = window_stats(eps, hz)
     wins = [e["seconds"] for e in eps if e["success"]]
+    rooms = sorted({e["room"] for e in eps if e.get("room")})
+    by_room = {r: round(sum(e["success"] for e in eps if e.get("room") == r)
+                        / sum(e.get("room") == r for e in eps), 3) for r in rooms}
     return {
+        "randomize": randomize,
+        **({"success_by_room": by_room} if by_room else {}),
         "deterministic": deterministic,
         "episodes": len(eps),
         "seeds": [seeds[0], seeds[-1]],
@@ -185,7 +201,7 @@ def _report(eps: list[dict], seeds: list[int], hz: float, deterministic: bool) -
 
 
 def evaluate_onnx(onnx: str | Path, task: str | Path, episodes: int = 100,
-                  workers: int = DEFAULT_WORKERS) -> dict[str, Any]:
+                  workers: int = DEFAULT_WORKERS, randomize: str = "train") -> dict[str, Any]:
     """`mpg eval --onnx policy.onnx --task task.yaml`: held-out layouts, no pickle (R5)."""
     from .env import PuzzleEnv
     from .onnx_policy import OnnxPolicy, fit_report
@@ -197,13 +213,37 @@ def evaluate_onnx(onnx: str | Path, task: str | Path, episodes: int = 100,
         hz = float(env.hz)
     finally:
         env.close()
+    _check_mode(task, randomize)
     seeds = list(range(EVAL_SEED_BASE, EVAL_SEED_BASE + episodes))
-    eps = run_jobs(None, [(s, None) for s in seeds], workers=workers, onnx=onnx, task=task)
+    eps = run_jobs(None, [(s, {"randomize": randomize}) for s in seeds], workers=workers,
+                   onnx=onnx, task=task)
     out = {"onnx": str(onnx), "policy_room": pol.meta["room"], "algo": pol.meta["algo"],
-           **_report(eps, seeds, hz, True)}
+           **_report(eps, seeds, hz, True, randomize)}
     if warnings:
         out["warnings"] = warnings
     return out
+
+
+def _check_mode(task: Any, randomize: str) -> None:
+    """Refuse a draw mode the room cannot run before the workers start (R35): `wide`
+    needs at least one evaluation-only value, and a mode name must be known."""
+    from .randomize import MODES
+
+    if randomize not in MODES:
+        raise ValueError(f"randomize mode must be one of {list(MODES)}, got {randomize!r}")
+    if randomize != "wide":
+        return
+    from .env import PuzzleEnv
+
+    env = PuzzleEnv(task=task)
+    try:
+        if not env.randomizer.wide_ok():
+            raise ValueError(
+                "`--randomize wide` needs an evaluation-only value this run draws: give a "
+                "`holdout`, `holdout_region` or `holdout_scale` to a sampler of "
+                f"{env.room.name}, or evaluate with --randomize train")
+    finally:
+        env.close()
 
 
 def _segments(run: dict[str, Any]) -> list[dict[str, Any]]:
