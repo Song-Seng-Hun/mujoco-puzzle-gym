@@ -65,7 +65,9 @@ Parts send and receive signals through named channels.
 
 - `expr`: an expression over channels. Examples: `a and not b`, `delay(btn, 1.5)`, `latch(pulse(a), reset_btn)`, `count(lap) >= 3 or timer(plate) > 2`.
 - `op` and `in`: a form that does not put channel names in an expression, so presets use it (`logic/and` and others). `and`, `or` and `xor` take all inputs; `not`, `delay`, `hold`, `pulse`, `timer` and `count` take one input; `latch` takes `[set, reset]`.
-- `sequence: [a, b, c]`: a sequence lock. When the order is wrong, `<name>.wrong` turns on for one step.
+- `sequence: [a, b, c]`: a sequence lock. The inputs must turn on in the order written; a wrong one sends the lock back to the start and turns `<name>.wrong` on for one step. Completing the order turns the output on, but **without `latch: true` that is a one-step pulse**. A `mode: follow` door cannot be held open by the pulse, so give a lock that opens a door `latch: true`. Two more things bite:
+  - The static `order` stage models a sequence gate as **an AND of all its inputs** (planning alone cannot say which comes first). So `order` can pass a room whose press order the scripted solver then gets wrong. Spell the press order out in `demo:` (`press a`, `press b`, …).
+  - If the inputs are buttons that **stay on once pressed**, such as `input/floor_oneshot`, the order can only be attempted once per episode (there is no second rising edge). Stepping on a later button on the way somewhere else ends the episode's lock with no error at all — only a `solver` success rate of 0. Lay the room out so no route crosses a button, or use `latch: false` buttons.
 - `logic: <name>`: a Python function registered with `register_logic`.
 
 What expressions can use: channel names (a dotted name like `laps.count` is also one channel), numbers, `and or not xor`, comparisons (`< <= > >= == !=`), parentheses, and the functions `delay(x, s)`, `hold(x, s)`, `pulse(x)`, `latch(set, reset)`, `count(x)` and `timer(x)`. Arithmetic, attribute access, calls to other functions and strings are rejected when the room is loaded. Expressions are parsed with `ast`, checked against an allow list and evaluated by this package itself, so opening a room file someone else made does not run any code.
@@ -272,6 +274,45 @@ Dynamic phase:
 | `solver` | That a scripted solver that knows the answer solves at least 18 of 20 random layouts. If the room has `demo:` (`goto`, `press`, `wait`, `push <ball> to <goal_net>`, `herd <robot> <part>`, `turn <lever or dial> <value>`, `pull <cord or drawer>`, `look <part>`, `take <dispenser>`, `addon <station>`), the solver follows that order first, and a grid solver takes over for the rest |
 
 The solver stage saves a snapshot for each flag it passes in `runs/check/<room>/checkpoints/<flag>.pkl`.
+
+What the `order` stage looks at is **the solution order up to the goal**, nothing else. Checkpoint flags are not part of it (in a room with three flags, `order` still returns only buttons, doors, warps and the goal), and a sequence gate is modelled as an AND. So a passing `order` stage is no evidence that the solution reaches the flags in turn, or presses anything in the right order. The `solver` stage is what shows that.
+
+If `solver` is 0 while every entry in `failures` has `fallen` and `nan` false, `demo_step` equal to the number of `demo:` steps and `seconds` equal to the episode length, the room is not broken: **the route is longer than the episode**. The default episode is 40 s (`env.episode_seconds`). Shrink the room or lengthen the episode in the task — a room that passes a bare `mpg check`, with no custom task, is the sturdier one.
+
+## Stage rooms: `stages:`
+
+`stages:` lists the rooms that follow this one (paths relative to this room file). Each is built as a zone to the +x side of the previous one **inside the same model**, and a warp pad with `to: next_stage` moves the body to the next zone's spawn. Everything lives in one model because MuJoCo cannot add bodies at run time, and the payoff is that observation and snapshot sizes are the same whichever zone you are in.
+
+```yaml
+# hall.yaml — this room has no goal
+name: hall
+size: [2.2, 1.6]
+walls:                                            # divider at x = 0.45, open in the middle
+  - {from: [0.45, -0.8], to: [0.45, -0.25]}
+  - {from: [0.45, 0.25], to: [0.45, 0.8]}
+stages: [vault.yaml]                              # the room that follows
+spawn: {pos: [-0.9, 0.0]}
+parts:
+  - {name: btn, preset: input/floor_oneshot, pos: [-0.8, 0.5]}
+  - {name: door, preset: device/sliding_door, pos: [0.45, 0.0], in: [btn]}
+  - {name: to_vault, type: warp, pos: [0.8, 0.0], to: next_stage}
+```
+
+```yaml
+# vault.yaml — the goal is here
+name: vault
+size: [1.2, 1.0]
+spawn: {pos: [-0.4, 0.0]}
+parts:
+  - {name: vault_goal, type: goal, pos: [0.35, 0.0], radius: 0.15}
+```
+
+- Part names must be unique **across all the stages** (channels are shared over the whole model).
+- The goal requirement holds for **the stages together**. An earlier stage may have none.
+- This is the same mechanism as drawing a room per episode with `randomize: {rooms: ...}`, so using both at once is rejected.
+- A warp's destination `to:` is one of three: a place in the same room, `{pos: [x, y], yaw: …}` ([`examples/rooms/warp_hop.yaml`](../examples/rooms/warp_hop.yaml)); `reset`, the start pose; and `next_stage`, the only one that moves the body on to the next stage.
+
+Those two files pass `mpg check hall.yaml --static` (solution order `btn → door → to_vault → vault_goal`).
 
 ## Checkpoints and staged training
 

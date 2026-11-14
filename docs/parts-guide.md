@@ -65,7 +65,9 @@ parts:
 
 - `expr`: 채널을 읽는 식. 예: `a and not b`, `delay(btn, 1.5)`, `latch(pulse(a), reset_btn)`, `count(lap) >= 3 or timer(plate) > 2`.
 - `op`와 `in`: 채널 이름을 식에 쓰지 않는 형태라 프리셋으로 씁니다(`logic/and` 등). `and`, `or`, `xor`는 모든 입력, `not`, `delay`, `hold`, `pulse`, `timer`, `count`는 입력 하나, `latch`는 `[set, reset]`.
-- `sequence: [a, b, c]`: 순서 잠금. 순서가 틀리면 `<이름>.wrong`이 한 스텝 켜집니다.
+- `sequence: [a, b, c]`: 순서 잠금. 입력이 적힌 순서대로 켜져야 하고, 틀리면 순서가 처음으로 돌아가며 `<이름>.wrong`이 한 스텝 켜집니다. 순서를 다 맞히면 출력이 켜지지만 **`latch: true`가 없으면 한 스텝만 켜지는 펄스**입니다. `mode: follow` 문은 그 펄스로 열린 채 있지 못하니, 문을 여는 잠금에는 `latch: true`를 줍니다. 그리고 두 가지가 걸립니다.
+  - 정적 `order` 단계는 순서 게이트를 **입력 전체의 AND**로 봅니다(계획만으로는 어느 쪽이 먼저인지 알 수 없습니다). 그래서 `order`가 통과해도 해답 스크립트는 순서를 틀릴 수 있습니다. 누르는 순서를 `demo:`에 적어 주세요(`press a`, `press b`, …).
+  - 입력이 `input/floor_oneshot`처럼 **한 번 켜지면 켜진 채 남는** 버튼이면 순서를 맞힐 기회가 한 판에 한 번뿐입니다(두 번째 상승 에지가 없습니다). 다른 데로 가는 길에 뒤 순서의 버튼을 먼저 밟으면 그 판은 끝나는데, 오류는 나지 않고 `solver` 성공률만 0이 됩니다. 버튼을 지나칠 일이 없는 배치로 짜거나 `latch: false` 버튼을 씁니다.
 - `logic: <이름>`: `register_logic`으로 등록한 파이썬 함수.
 
 식에 쓸 수 있는 것: 채널 이름(점이 든 `laps.count`도 채널 하나), 숫자, `and or not xor`, 비교(`< <= > >= == !=`), 괄호, 함수 `delay(x, s)`, `hold(x, s)`, `pulse(x)`, `latch(set, reset)`, `count(x)`, `timer(x)`. 산술, 속성 접근, 다른 함수 호출, 문자열은 방을 읽을 때 거절합니다. 식은 `ast`로 읽어 허용 목록을 확인하고 이 패키지가 직접 계산하므로, 남이 만든 방 파일을 열어도 코드가 실행되지 않습니다.
@@ -272,6 +274,45 @@ parts:
 | `solver` | 정답을 아는 스크립트가 무작위 배치 20개 중 18개 이상을 푸는지. 방에 `demo:`(`goto`, `press`, `wait`, `push <공> to <골대>`, `herd <로봇> <부품>`, `turn <레버 또는 다이얼> <값>`, `pull <줄 또는 서랍>`, `look <부품>`, `take <디스펜서>`, `addon <장착대>`)가 있으면 그 순서를 먼저 따르고, 나머지는 격자 해답이 이어 갑니다 |
 
 해답 단계는 지나간 깃발마다 저장본을 `runs/check/<방>/checkpoints/<깃발>.pkl`에 남깁니다.
+
+`order` 단계가 보는 것은 **골까지의 풀이 순서**뿐입니다. 체크포인트 깃발은 이 순서에 들어가지 않고(깃발이 셋인 방도 `order`는 버튼·문·워프·골만 돌려줍니다), 순서 게이트는 AND로 봅니다. 그래서 `order` 통과는 "해답이 깃발을 차례로 밟는다"나 "순서를 맞게 누른다"의 증거가 아닙니다. 그건 `solver` 단계가 봅니다.
+
+`solver`가 0인데 `failures`의 `fallen`·`nan`이 모두 거짓이고, `demo_step`이 `demo:` 단계 수와 같고 `seconds`가 판 길이와 같으면, 방이 망가진 것이 아니라 **길이 판보다 긴** 것입니다. 기본 판은 40초(`env.episode_seconds`)입니다. 방을 줄이거나 task에서 판을 늘리는데, 커스텀 task 없이 `mpg check`만으로 통과하는 방이 더 튼튼합니다.
+
+## 단계 방 `stages:`
+
+`stages:`는 이어지는 방 파일의 목록입니다(경로는 이 방 파일 기준). 각 방은 **같은 모델 안에서** 앞 방의 +x 쪽 구역으로 지어지고, `to: next_stage` 워프 패드를 밟으면 몸이 다음 구역의 출발 자세로 옮겨집니다. MuJoCo가 실행 중에 몸체를 더하지 못하므로 한 모델에 다 넣는 것이고, 덕분에 어느 구역에 있든 관측과 저장본 크기가 같습니다.
+
+```yaml
+# hall.yaml — 이 방에는 골이 없습니다
+name: hall
+size: [2.2, 1.6]
+walls:                                            # x = 0.45의 칸막이, 가운데가 뚫림
+  - {from: [0.45, -0.8], to: [0.45, -0.25]}
+  - {from: [0.45, 0.25], to: [0.45, 0.8]}
+stages: [vault.yaml]                              # 이어지는 방
+spawn: {pos: [-0.9, 0.0]}
+parts:
+  - {name: btn, preset: input/floor_oneshot, pos: [-0.8, 0.5]}
+  - {name: door, preset: device/sliding_door, pos: [0.45, 0.0], in: [btn]}
+  - {name: to_vault, type: warp, pos: [0.8, 0.0], to: next_stage}
+```
+
+```yaml
+# vault.yaml — 골은 여기 있습니다
+name: vault
+size: [1.2, 1.0]
+spawn: {pos: [-0.4, 0.0]}
+parts:
+  - {name: vault_goal, type: goal, pos: [0.35, 0.0], radius: 0.15}
+```
+
+이 두 파일은 `mpg check hall.yaml --static`을 통과합니다(풀이 순서 `btn → door → to_vault → vault_goal`).
+
+- 부품 이름은 **모든 단계를 합쳐** 겹칠 수 없습니다(채널은 모델 전체에서 공유됩니다).
+- 골 요건은 **단계를 합쳐** 봅니다. 앞 단계에는 골이 없어도 됩니다.
+- 에피소드마다 방을 뽑는 `randomize: {rooms: ...}`와 같은 기구라서, 둘을 함께 쓰는 것은 거절합니다.
+- 워프의 목적지 `to:`는 셋입니다. 같은 방 안의 자리는 `{pos: [x, y], yaw: …}`([`examples/rooms/warp_hop.yaml`](../examples/rooms/warp_hop.yaml)), `reset`은 출발 자세, 그리고 다음 단계로 보내는 것은 `next_stage`뿐입니다.
 
 ## 체크포인트와 단계별 학습
 

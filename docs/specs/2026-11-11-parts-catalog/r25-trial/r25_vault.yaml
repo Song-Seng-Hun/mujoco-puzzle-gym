@@ -1,0 +1,11 @@
+# The next room of r25_order_hall: the `to: next_stage` warp pad lands the body on this
+# room's own spawn, and the goal is here. A stage room is built as a zone of the same
+# model (room.py `stages:`), to the +x side of the hall, so its part names must not clash
+# with the hall's. The goal requirement holds for the stages together, which is why the
+# hall itself has no goal.
+name: r25_vault
+size: [1.2, 1.0]
+wall: {thickness: 0.06, height: 0.25}
+spawn: {pos: [-0.4, 0.0], yaw: 0.0}
+parts:
+  - {name: vault_goal, type: goal, pos: [0.35, 0.0], radius: 0.15, random: [0.05, 0.2]}

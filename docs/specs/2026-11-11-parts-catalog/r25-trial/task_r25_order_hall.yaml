@@ -1,0 +1,22 @@
+# Task for r25_order_hall.yaml. The room already passes `mpg check` on the built-in 40 s
+# episodes (40/40 seeds, mean 32.9 s); this task gives the long route -- three flags, then
+# the three lock buttons, then the door, the warp and the vault goal -- more headroom and
+# sets up staged training on the three flag snapshots `mpg check` saves.
+# Missing keys take task.DEFAULTS.
+room: r25_order_hall.yaml
+env:
+  hz: 10
+  episode_seconds: 60
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, target_pos, checkpoints]
+reward:
+  progress: 10.0          # through the flags in order
+  stage: 2.0
+  success: 10.0
+  fall: -5.0
+termination: {success: true, fall: true}
+curriculum: {mode: forward, advance_at: 0.8, replay: 0.2, window: 50}
+algo: ppo
+algo_kwargs: {learning_rate: 0.0003, n_steps: 256, batch_size: 896, gamma: 0.99}
+net: [128, 128]
+n_envs: 7
+seed: 0

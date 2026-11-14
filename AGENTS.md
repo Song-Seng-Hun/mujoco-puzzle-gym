@@ -63,6 +63,11 @@ each one is supposed to produce.
   downloads the pinned assets when the cache is empty.
 - **Shared rooms are limited.** `mpg check --community` applies the extra limits for rooms
   contributed to `community/rooms/`.
+- **A passing static check is not a passing room.** `--static` (the `order` stage included) does not
+  cover checkpoint flags or a sequence lock's press order, so it can pass a room the scripted solver
+  then fails. Only the `solver` stage settles it. When `solver` comes back 0 with `demo_step` equal
+  to the number of `demo:` steps and `seconds` equal to the episode length, nothing is broken — the
+  route is simply longer than the episode (40 s by default).
 - **Measure, don't assert.** When a room's or policy's success rate matters, run the seeds and
   write the numbers (and the failure seeds) into the spec's plan record or
   `docs/training-log.md`. Negative results are recorded too.
