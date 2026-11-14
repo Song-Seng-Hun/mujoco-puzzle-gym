@@ -182,8 +182,9 @@ def part_group(env):
 @register_obs("part_used", replace=True)
 def part_used(env):
     """Whether each part slot is in the room this episode (R35 structure layer), room
-    order: 1 for a part in play, 0 for one off stage (a storage shelf, a dispenser's
-    stored copy). The slots never move, so the item keeps its length."""
+    order: 1 for a part in play, 0 for one off stage (a storage shelf, a resting
+    `rooms` zone, a dispenser's stored copy). The slots never move, so the item keeps
+    its length, which is how a policy reads which room it woke up in (R35 `rooms`)."""
     return np.array([0.0 if p.parked else 1.0 for p in _obs_parts(env)])
 
 

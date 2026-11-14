@@ -30,8 +30,12 @@ the `layout` layer, a part value to `physics`, and observation noise to `body`
 (obs.py). The task scales each layer: `{layout: 1.0, physics: 0.5}` uses half of
 every range a value declares, and `0` pins the layer to its nominal value. Every
 implemented layer defaults to 1.0, so a room that declares a range is randomized
-unless the task turns it off. `structure`, `look` and `rooms` are not implemented
-yet and are refused above 0.
+unless the task turns it off. `look` is not implemented yet and is
+refused above 0. The `rooms` layer (`randomize: {rooms: {candidates: [...]}}` on the
+room) draws which experiment room the episode plays in: every candidate room file is
+built as a zone of one model, the drawn zone's spawn is the start, and the other
+zones rest (their parts write nothing and are left out of the plan and the
+observations), so the observation keeps one size whichever room is drawn.
 
 Draw modes: `train` (the declared ranges), `nominal` (no draw at all) and `wide`
 (the evaluation-only values only: `holdout` entries, `holdout_region` boxes, and
@@ -55,13 +59,13 @@ import numpy as np
 
 from .parts.base import CUE_OFF_RGBA
 
-#: Randomization layers (R35). `structure`, `look` and `rooms` are declared by the
-#: spec but not implemented yet.
+#: Randomization layers (R35). `look` is declared by the spec but not implemented yet.
 LAYERS = ("layout", "structure", "physics", "body", "look", "rooms")
-DONE_LAYERS = ("layout", "structure", "physics", "body")
+DONE_LAYERS = ("layout", "structure", "physics", "body", "rooms")
 MODES = ("nominal", "train", "wide")
 KINDS = ("range", "region", "candidates")
 DEFAULT_MAX_RESAMPLE = 20
+MAX_ROOMS = 8                # `rooms` zones in one model, the declaring room included
 HOLDOUT_SCALE = 1.5          # `range` wide band: 1 .. this times the half-range
 REGION_TRIES = 50            # `region` attempts to satisfy `min_gap` within one draw
 #: Colours a drawn link is painted with (R35 cue), one per `shuffle: {links: ...}` entry.
@@ -226,6 +230,31 @@ class Places(Sampler):
     def permute(self, rng, pos: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         order = list(rng.permutation(len(self.names)))
         return {self.names[i]: pos[self.names[j]].copy() for i, j in enumerate(order)}
+
+
+@dataclass
+class Rooms(Sampler):
+    """`randomize: {rooms: {candidates: [...]}}`: which experiment room this episode is.
+
+    Every candidate is built when the room loads, as a zone of one model (the same
+    machinery `stages:` uses), so the observation and the snapshot keep one size
+    whichever room is drawn. The zones that are not drawn rest: their parts write
+    nothing, run no `update` or `substep`, and are left out of the plan and the
+    observations. Zone 0 is the room file that declares the candidates."""
+
+    zones: list[str] = field(default_factory=list)      # zone names, zone 0 first
+    holdout: list[int] = field(default_factory=list)    # evaluation-only zone indices
+
+    def pick(self, rng, mode: str) -> int:
+        pool = self.holdout if mode == "wide" \
+            else [k for k in range(len(self.zones)) if k not in self.holdout]
+        return int(pool[int(rng.choice(len(pool)))])
+
+    def wide_ok(self) -> bool:
+        return bool(self.holdout)
+
+    def width(self) -> int:
+        return len(self.zones)
 
 
 @dataclass
@@ -485,9 +514,12 @@ class Randomizer:
         self.entries: list[Entry] = []
         block = room.raw.get("randomize")
         if block is not None:
-            if not isinstance(block, dict) or set(block) - {"shuffle", "holdout"}:
-                raise RandomizeError("the room's `randomize:` takes `shuffle:` and `holdout:`; "
-                                     "a part's own `randomize:` goes on that part")
+            if not isinstance(block, dict) or set(block) - {"shuffle", "holdout", "rooms"}:
+                raise RandomizeError("the room's `randomize:` takes `shuffle:`, `rooms:` and "
+                                     "`holdout:`; a part's own `randomize:` goes on that part")
+            if "rooms" in block:       # the room loaded the candidates as zones (room.py)
+                sampler = rooms_sampler(room.zone_names, room.rooms_holdout)
+                self.entries.append(Entry("room", sampler.where, sampler))
             if "shuffle" in block:
                 for sampler in parse_shuffle(block["shuffle"], parts):
                     self.entries.append(Entry("room", sampler.where, sampler))
@@ -549,6 +581,15 @@ class Randomizer:
         self.links = [e.sampler for e in self.entries if isinstance(e.sampler, LinkSource)]
         #: Group draws (R35 `type` / `count`), in room order (the `part_group` item).
         self.choices = [e.sampler for e in self.entries if isinstance(e.sampler, Choice)]
+        #: The `rooms` draw (R35), or None: which experiment room this episode is.
+        self.rooms = next((e.sampler for e in self.entries if isinstance(e.sampler, Rooms)), None)
+        if self.rooms is not None:
+            bad = [e.sampler.where for e in self.entries
+                   if e.owner == "spawn" and e.target == "pos" and not isinstance(e.sampler, Range)]
+            if bad:
+                raise RandomizeError(f"{bad[0]}: with `rooms` the spawn place must be drawn with "
+                                     f"`range` (an offset from the drawn room's own spawn); "
+                                     f"`region` and `candidates` are places in one room")
 
     # ---- drawing ------------------------------------------------------------------
     def __bool__(self) -> bool:
@@ -597,9 +638,17 @@ class Randomizer:
         values: dict[str, dict[str, Any]] = {}
         if mode == "nominal":
             return {"spawn": tuple(spawn), "parts": pos, "values": values, "links": {},
-                    "used": {}, "mode": mode}
+                    "used": {}, "zone": 0, "mode": mode}
+        zone, jitter = 0, room.spawn_random
+        if self.rooms is not None:     # R35 `rooms`: the zone first, then its own spawn
+            scale = float(self.strength.get(self.rooms.layer, 0.0))
+            if scale > 0.0 and (mode != "wide" or self.rooms.wide_ok()):
+                zone = self.rooms.pick(rng, mode)
+            dx, host = room.zone_rooms()[zone]
+            spawn = [float(host.spawn_pos[0]) + dx, float(host.spawn_pos[1]), host.spawn_yaw]
+            jitter = host.spawn_random
         if mode == "train":            # M1 `random:` shorthand: no evaluation-only band,
-            d = rng.uniform(-room.spawn_random, room.spawn_random)   # so `wide` leaves it alone
+            d = rng.uniform(-jitter, jitter)                         # so `wide` leaves it alone
             spawn = [spawn[0] + d[0], spawn[1] + d[1], spawn[2] + d[2]]
             for n, p in parts.items():
                 if np.any(p.random):
@@ -611,6 +660,8 @@ class Randomizer:
             scale = float(self.strength.get(e.sampler.layer, 0.0))
             if scale <= 0.0 or (mode == "wide" and not e.sampler.wide_ok()):
                 continue          # `wide`: a sampler with no evaluation-only value stays nominal
+            if isinstance(e.sampler, Rooms):
+                continue               # drawn above: the zone sets the spawn
             if isinstance(e.sampler, Choice):
                 g = e.sampler.group
                 keep = e.sampler.pick(rng, mode)
@@ -646,7 +697,7 @@ class Randomizer:
                 values.setdefault(e.owner, {})[e.target] = \
                     e.sampler.draw(rng, nominal, scale, mode, ctx)
         return {"spawn": tuple(float(v) for v in spawn), "parts": pos, "values": values,
-                "links": links, "used": used, "mode": mode}
+                "links": links, "used": used, "zone": zone, "mode": mode}
 
     def used_parts(self, parts: dict[str, Any], layout: dict[str, Any]) -> set[str]:
         """Part names in the room this episode: everything but the group members the
@@ -659,6 +710,15 @@ class Randomizer:
                          else e.group.members[:1])
             out -= {n for n in e.group.members if n not in keep}
         return out
+
+    def resting(self, parts: dict[str, Any], layout: dict[str, Any]) -> set[str]:
+        """Parts of the zones this episode did not draw (R35 `rooms`): they rest, so they
+        write nothing, run no `update` or `substep` and are left out of the plan and the
+        observations."""
+        if self.rooms is None:
+            return set()
+        zone = int(layout.get("zone", 0) or 0)
+        return {n for n, p in parts.items() if int(getattr(p, "zone", 0)) != zone}
 
     def group_links(self, layout: dict[str, Any]) -> dict[str, str]:
         """Which member each `type` group's readers must read this episode."""
@@ -917,6 +977,48 @@ def assign_cues(block: Any, parts: dict[str, Any]) -> None:
         for n in names:
             if isinstance(n, str) and n in parts and parts[n].cue_slot is None:
                 parts[n].cue_slot = i
+
+
+def parse_rooms(raw: Any) -> tuple[list[str], list[str]]:
+    """The room's `randomize: {rooms: {candidates: [...], holdout: [...]}}` as it is
+    written: the candidate room files and the names of the evaluation-only ones. The
+    room loads the files (they become zones) and `rooms_sampler` checks the names."""
+    where = "randomize.rooms"
+    if not isinstance(raw, dict) or set(raw) - {"candidates", "holdout"}:
+        raise RandomizeError(f"{where}: write {{candidates: [<room file>, ...]}}, with an "
+                             f"optional `holdout:` of evaluation-only room names")
+    cands = raw.get("candidates")
+    if (not isinstance(cands, list) or not cands
+            or any(not isinstance(c, str) or not c for c in cands)
+            or len(set(cands)) != len(cands)):
+        raise RandomizeError(f"{where}: `candidates` is a list of different room file names "
+                             f"next to this one, got {cands!r}")
+    if len(cands) + 1 > MAX_ROOMS:
+        raise RandomizeError(f"{where}: at most {MAX_ROOMS - 1} candidates ({MAX_ROOMS} rooms "
+                             f"with this one), because every one is built into the model, "
+                             f"got {len(cands)}")
+    hold = raw.get("holdout", [])
+    if not isinstance(hold, list) or any(not isinstance(n, str) for n in hold):
+        raise RandomizeError(f"{where}: `holdout` is a list of candidate room names "
+                             f"(evaluation only), got {hold!r}")
+    return list(cands), list(hold)
+
+
+def rooms_sampler(zones: list[str], holdout: list[str]) -> Rooms:
+    """The `rooms` sampler for a room whose candidates are loaded: `zones` are the zone
+    names (zone 0 is the declaring room) and `holdout` names the evaluation-only ones."""
+    where = "randomize.rooms"
+    if len(set(zones)) != len(zones):
+        raise RandomizeError(f"{where}: the candidate rooms need different `name`s, got "
+                             f"{zones}")
+    idx = []
+    for n in holdout:
+        if n not in zones[1:]:
+            raise RandomizeError(f"{where}: `holdout` names one of the candidate rooms "
+                                 f"({zones[1:]}), got {n!r}")
+        idx.append(zones.index(n))
+    # zone 0 (the declaring room) is never evaluation-only, so training always has a room
+    return Rooms(where, "rooms", list(zones), sorted(set(idx)))
 
 
 def parse_shuffle(raw: Any, parts: dict[str, Any]) -> list[Sampler]:
