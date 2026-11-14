@@ -23,6 +23,7 @@ flowchart LR
 ## 주요 기능
 
 - **YAML로 짓는 방**: 방 크기와 벽, 부품 배치, 부품마다의 무작위 범위, 출발 자세, 부품 사이 신호 연결(`links`).
+- **에피소드마다 다른 방**: 자리와 값뿐 아니라 배선, 부품 종류와 개수, 어느 방에서 할지까지 매 에피소드 뽑습니다. 평가 전용 후보(`holdout`)를 따로 두어 학습에서 본 적 없는 배치로 평가합니다. [에피소드 무작위화](parts-guide.md#에피소드-무작위화)
 - **확장 가능한 부품, 관측, 보상, 알고리즘**: 모두 같은 등록 함수(`register_part`, `register_obs`, `register_reward`, `register_algo`)로 들어갑니다. 내장 부품도 같은 방식으로 등록되어 있습니다.
 - **부품 프리셋**: 버튼, 게이트, 문, 바닥 타일, 공 같은 부품을 프리셋 이름으로 불러 값만 바꿔 씁니다. 여러 부품을 묶은 조립 프리셋도 있습니다. [부품과 프리셋 안내](parts-guide.md)
 - **두 단계 점검**: 정적 단계(값, 신호, 겹침, 풀이 순서 등)와 동적 단계(물리 안정성, 스크립트 해답 성공률).
@@ -44,7 +45,7 @@ flowchart LR
 | `mpg parts` | 등록된 부품, 값 스키마, 프리셋 목록(`--json`), 값 표(`--markdown`) |
 | `mpg train <task.yaml> --minutes N` | 정해진 시간 동안 학습, 결과는 `runs/<id>/` |
 | `mpg diagnose runs/<id>` | 실패 원인 분류, 근거 숫자, 실패 영상 |
-| `mpg eval runs/<id>` | 학습에 쓰지 않은 배치에서 성공률과 평균 시간 (`--policy random`으로 기준선). `--onnx policy.onnx --task task.yaml`은 내보낸 정책을 pickle 없이 평가. `--difficulty k`는 난이도 단계 k에서(기본은 마지막 단계) |
+| `mpg eval runs/<id>` | 학습에 쓰지 않은 배치에서 성공률과 평균 시간 (`--policy random`으로 기준선). `--onnx policy.onnx --task task.yaml`은 내보낸 정책을 pickle 없이 평가. `--difficulty k`는 난이도 단계 k에서(기본은 마지막 단계). `--randomize nominal\|train\|wide`는 무작위 뽑기 모드(기본 `train`, `wide`는 평가 전용 값만) |
 | `mpg export-onnx runs/<id>` | 정책을 `policy.onnx`와 `policy.json`으로 내보내기(나누기용) |
 | `mpg render runs/<id>` | 성공 에피소드 MP4 |
 | `mpg demo` | 저장소에 든 학습된 정책이 예제 방을 푸는 영상(`demo.mp4`) |
@@ -74,7 +75,7 @@ links:
 ```
 
 - 발판 `switch`는 M1 이름 그대로 쓰는 바닥 버튼입니다. 버튼 프리셋 `input/floor_oneshot`(몸으로 한 번 밟으면 계속 켜짐)과 같고, `latch: false`면 밟고 있는 동안만 켜지는 `momentary`입니다.
-- 새 방은 프리셋으로 짜는 편이 쉽습니다. `{name: b, preset: input/floor_oneshot, pos: [x, y]}`처럼 쓰고 바꿀 값만 덧붙입니다. 예제 방 목록과 프리셋 사용법은 [부품과 프리셋 안내](parts-guide.md)에 있습니다. 예제는 [`examples/rooms/`](../examples/rooms/)(버튼과 논리 게이트, 문 세 가지, 깃발 4개, 코인, 공, 글자 지도, 엘리베이터와 스프링, 함정, 워프, 도망치는 로봇, 큐브와 압력판, 열쇠와 소켓, 벽 버튼, 빨래 바구니, 포탑)와 공 조립 프리셋(`mini_soccer`, `ball_ramp`, `bowling`, `color_sort`)입니다.
+- 새 방은 프리셋으로 짜는 편이 쉽습니다. `{name: b, preset: input/floor_oneshot, pos: [x, y]}`처럼 쓰고 바꿀 값만 덧붙입니다. 예제 방 목록과 프리셋 사용법은 [부품과 프리셋 안내](parts-guide.md)에 있습니다. 예제는 [`examples/rooms/`](../examples/rooms/)(버튼과 논리 게이트, 문 세 가지, 깃발 4개, 코인, 공, 글자 지도, 엘리베이터와 스프링, 함정, 워프, 도망치는 로봇, 큐브와 압력판, 열쇠와 소켓, 벽 버튼, 빨래 바구니, 포탑, 섞인 배선 `shuffle_switches`, 순서 추론 한 쌍 `order_cue`·`order_blind`)와 공 조립 프리셋(`mini_soccer`, `ball_ramp`, `bowling`, `color_sort`)입니다.
 - `random`은 에피소드마다 배치를 무작위로 바꾸는 범위입니다. 평가는 학습에 쓰지 않은 시드의 배치에서 합니다.
 - 문은 `require: all | any`로 여러 발판을 함께 요구할 수 있습니다.
 - 눈으로 구별할 부품(버튼과 발판, 센서판, 체크포인트, 문, 소켓, 워프, 바닥 타일)에는 ArUco 마커(`DICT_4X4_50`)가 빈 번호로 붙습니다. `marker: {id, size, face}`로 정하고 `marker: none`으로 뺍니다. 번호 중복, 0–49 밖 번호, 면보다 큰 마커는 방을 읽을 때 거절합니다.
@@ -97,6 +98,11 @@ net: [128, 128]
 n_envs: 12
 plugins: []                              # 직접 만든 부품·관측·보상 모듈
 ```
+
+- 보상 항목은 `progress`(풀이 순서의 다음 목표로 다가간 미터), `progress_free`(아직 풀리지 않은 **모든** 스위치·골 중 가장 가까운 것까지의 미터. 어느 부품이 정답인지 알려 주지 않아 순서를 스스로 찾아야 하는 방에 씁니다), `stage`(새로 켠 스위치마다), `success`, `fall`, 그리고 공·코인·되살림 항목입니다.
+- `randomize:`는 이번 학습에서 방이 허락한 무작위 범위를 얼마나 쓸지입니다(`{layout: 1.0, structure: 1.0, physics: 0.5, body: 1.0, rooms: 1.0}`, 0이면 기준값 고정). 방 쪽에 무엇이 어디까지 바뀔 수 있는지 적혀 있어야 하고, 자세한 것은 [부품과 프리셋 안내의 에피소드 무작위화](parts-guide.md#에피소드-무작위화)에 있습니다.
+- 무작위화와 함께 쓰는 관측 항목: `part_links`(이번 에피소드에 어느 부품이 어느 부품의 채널을 읽는지, 원-핫. 방이 `hidden: true`면 모두 0이라 정책이 탐색으로 찾아야 합니다), `part_used`(부품 칸마다 이번 에피소드에 방에 있는지), `randomized`(뽑힌 값을 방이 적은 범위로 나눈 수).
+- `target_pos`를 일부러 빼면 "어디로 갈지"를 정책이 관측에서 스스로 골라야 합니다. 순서 추론 시험 방들이 그렇게 합니다.
 
 ## 단계별 학습과 구간 평가
 

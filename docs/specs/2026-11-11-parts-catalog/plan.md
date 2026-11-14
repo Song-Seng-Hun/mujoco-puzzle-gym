@@ -601,6 +601,15 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - `laundry` task는 60 s 판이다(`four_flags`처럼). 40 s로는 두 번 나르기에 79/100.
      - R24의 `mpg demo <방>`(스크립트 해답 영상 명령)은 아직 없다. 영상은 시험의 그리기 도우미(`render_solution`)로 만든다.
    - 알려진 한계: `laundry.yaml`과 `cube_socket.yaml`의 해답은 시드 100개에서 90% 안팎이라 `mpg check` 18/20·19/20의 여유가 적다(둘레 자리 84–94%). 실패는 해답·몸의 한계(제자리 반시계 돌기, 나르다 놓친 물체가 바닥에 떨어지면 다시 못 잡음)이고 배치로는 더 줄이지 못했다. 낮은 벽 버튼은 누른 뒤 벽에서 물러나기가 85–88%다.
+   - (b) 구현 기록 (2026-11-14, 브랜치 `feat/m2-docs-17b`, 4d-3 머지 뒤 main `3751e25` 위): 상위 가이드에 R35를 적고, 에이전트 입구 두 개를 새로 만들었다.
+     - 가이드: `docs/guide.md`·`guide.en.md`·`guide.ja.md` 세 벌에 같은 네 곳. (1) 「주요 기능」에 "에피소드마다 다른 방" 항목(배선·종류·개수·방까지 뽑기, `holdout`) + parts-guide 절 링크. (2) 「학습 설정」의 task.yaml 아래에 보상 항목 목록(`progress`와 `progress_free`의 차이), `randomize:`의 층과 0의 뜻, 관측 `part_links`(`hidden: true`면 전부 0)·`part_used`·`randomized`, `target_pos`를 일부러 빼는 이유. (3) 명령 표 `mpg eval` 줄에 `--randomize nominal|train|wide`. (4) 예제 방 목록에 `shuffle_switches`·`order_cue`·`order_blind`.
+     - `AGENTS.md`(새 파일, 저장소 루트, 영어): 저장소가 하는 일과 에이전트 고리(build → check → train → diagnose → eval), 문서 지도 표(세 언어와 "한국어가 원본, 셋을 함께 고친다"), 설치, **프리셋으로 방 짜는 순서 5단계**(`mpg parts --markdown`으로 고르기 → 방 YAML → `in:`/`expr:` 배선 → `--static` 뒤 전체 `check` 18/20 → 그다음 task.yaml), 그리고 걸리는 규칙 다섯(`runs/` 밖 pickle 거부와 `--trust`, 값 표는 생성물이고 `tests/test_guide.py`가 막는다, 빠른/`-m slow`/`-m network` 구분, `--community` 한도, 숫자는 재서 기록한다), spec 문서 구조.
+     - `skills/mujoco-puzzle-gym/SKILL.md`(새 파일, 압축 영어, frontmatter `name`·`description`): 저장소만 받은 작업자가 바로 쓸 수 있게 AGENTS.md로 보낸 뒤, 읽을 문서를 일 종류로 갈라 주고, 설치부터 `check`까지의 명령 블록과 방 짜는 순서, "없는 부품·프리셋·필드를 만들지 않는다"를 포함한 지켜야 할 것 여섯을 담았다.
+     - 시험: `tests/test_guide.py`에 R25 몫 두 개. 입구 두 파일이 있고 그 안에서 `docs/guide.md`와 `parts-guide.md`를 가리키는지, 그리고 문서 11개(`AGENTS.md`, `SKILL.md`, `README.md`, guide 3종, parts-guide 3종, `parts.md`, `community.md`)의 상대 링크가 모두 실존하는지 — `#앵커`가 붙은 링크는 그 문서의 제목을 GitHub 방식으로 슬러그화해 맞춘다.
+     - 잰 값: 빠른 시험 1262 passed/1 skipped(138초; 전 1250 passed/1 skipped에서 링크 시험 12개 늘었다). 링크 점검에 걸린 상대 링크 수는 `AGENTS.md` 16개(앵커 1), `guide.md` 13개(앵커 5), `SKILL.md` 1개이고, 기존 문서에서 깨진 링크는 없었다.
+     - 계획·spec과 다른 점(보고만): (1) spec R25는 "M1의 `AGENTS.md`와 `skills/mujoco-puzzle-gym/SKILL.md`에서 가이드로 연결"이라고 적었지만 두 파일은 저장소에도 git 이력 전체에도 없었다(`git log --all -- AGENTS.md 'skills/**'`가 빈 결과). 연결이 아니라 새로 만드는 일이었다. (2) `parts-guide`(한·영·일)의 「에피소드 무작위화」가 R35를 이미 다 담고 있어(홀드아웃·뽑기 모드·`rooms` 후보·`part_links`/`part_used`·순서 추론 예제) "가이드 완성"은 상위 `guide.md` 세 벌에만 했다. (3) 계획에 없던 「주요 기능」 항목 하나를 더했다(기능 목록이 R35를 아예 안 적고 있었다). (4) 링크 점검 시험 범위를 계획의 "AGENTS.md·SKILL.md"에서 문서 11개로 넓혔다(같은 코드로 앵커까지 보게 되어 비용이 같다).
+     - 남은 일: R25의 본검사는 18단계(처음 보는 작업자에게 스킬과 저장소만 주고 방을 만들게 하기)다. 이 단계는 그 입구를 만든 것까지다.
+
 18. 처음 보는 작업자 시험(R25).
 
 ## Risks

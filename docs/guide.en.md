@@ -23,6 +23,7 @@ flowchart LR
 ## Features
 
 - **Rooms in YAML**: room size and walls, part layout, per-part randomisation ranges, start pose, and signal links between parts (`links`).
+- **A different room every episode**: not only places and values but the wiring, the kind and number of parts, and which room you are in are drawn each episode. Evaluation-only candidates (`holdout`) are kept aside, so evaluation runs on layouts training never saw. [Episode randomization](parts-guide.en.md#episode-randomization)
 - **Extensible parts, observations, rewards and algorithms**: all go through the same registration functions (`register_part`, `register_obs`, `register_reward`, `register_algo`). The built-in parts are registered the same way.
 - **Part presets**: load parts such as buttons, gates, doors, floor tiles and balls by preset name and change only the values you need. There are also assembly presets that bundle several parts. [Parts and presets](parts-guide.en.md)
 - **Two-phase check**: a static phase (values, signals, overlaps, solution order and more) and a dynamic phase (physics stability, scripted-solver success rate).
@@ -44,7 +45,7 @@ Every command accepts `--json` and exits non-zero on failure.
 | `mpg parts` | Registered parts, value schemas and the preset list (`--json`), value tables (`--markdown`) |
 | `mpg train <task.yaml> --minutes N` | Train for a set time; results in `runs/<id>/` |
 | `mpg diagnose runs/<id>` | Classify the failure cause, with evidence numbers and a failure video |
-| `mpg eval runs/<id>` | Success rate and mean time on held-out layouts (`--policy random` for a baseline). `--onnx policy.onnx --task task.yaml` evaluates an exported policy without pickle. `--difficulty k` runs at difficulty step k (default: the last) |
+| `mpg eval runs/<id>` | Success rate and mean time on held-out layouts (`--policy random` for a baseline). `--onnx policy.onnx --task task.yaml` evaluates an exported policy without pickle. `--difficulty k` runs at difficulty step k (default: the last). `--randomize nominal\|train\|wide` picks the draw mode (default `train`; `wide` draws only the evaluation-only values) |
 | `mpg export-onnx runs/<id>` | Export the policy as `policy.onnx` and `policy.json` (for sharing) |
 | `mpg render runs/<id>` | MP4 of a success episode |
 | `mpg demo` | Video of the bundled trained policy solving the example room (`demo.mp4`) |
@@ -74,7 +75,7 @@ links:
 ```
 
 - The floor switch `switch` is a floor button that keeps its M1 name. It is the same as the button preset `input/floor_oneshot` (stays on once the body steps on it); with `latch: false` it is `momentary`, on only while pressed.
-- New rooms are easier to build from presets. Write `{name: b, preset: input/floor_oneshot, pos: [x, y]}` and add only the values you want to change. The example rooms and how to use presets are in [Parts and presets](parts-guide.en.md). The examples are [`examples/rooms/`](../examples/rooms/) (buttons and logic gates, three doors, four flags, coins, a ball, text maps, an elevator and a spring, traps, a warp, a fleeing robot, a cube and a pressure plate, a key and a socket, a wall button, a laundry basket, a turret) and the ball assembly presets (`mini_soccer`, `ball_ramp`, `bowling`, `color_sort`).
+- New rooms are easier to build from presets. Write `{name: b, preset: input/floor_oneshot, pos: [x, y]}` and add only the values you want to change. The example rooms and how to use presets are in [Parts and presets](parts-guide.en.md). The examples are [`examples/rooms/`](../examples/rooms/) (buttons and logic gates, three doors, four flags, coins, a ball, text maps, an elevator and a spring, traps, a warp, a fleeing robot, a cube and a pressure plate, a key and a socket, a wall button, a laundry basket, a turret, shuffled wiring in `shuffle_switches`, and the order-reasoning pair `order_cue` and `order_blind`) and the ball assembly presets (`mini_soccer`, `ball_ramp`, `bowling`, `color_sort`).
 - `random` is the range within which the layout is randomized each episode. Evaluation uses layouts from seeds not used in training.
 - A door can require several switches together with `require: all | any`.
 - Parts meant to be told apart by sight (buttons and floor switches, sensor plates, checkpoints, doors, sockets, warps, floor tiles) get an ArUco marker (`DICT_4X4_50`) with a free id. Set it with `marker: {id, size, face}` and remove it with `marker: none`. Duplicate ids, ids outside 0–49 and markers larger than their face are rejected when the room is loaded.
@@ -97,6 +98,11 @@ net: [128, 128]
 n_envs: 12
 plugins: []                              # your own part / observation / reward modules
 ```
+
+- Reward terms: `progress` (metres gained toward the next target in the solution order), `progress_free` (metres toward the nearest of **all** switches and goals that are not solved yet; it does not say which part is the right one, so use it in rooms where the policy has to work the order out), `stage` (per switch newly turned on), `success`, `fall`, plus the ball, coin and respawn terms.
+- `randomize:` says how much of the room's allowed randomization this training run uses (`{layout: 1.0, structure: 1.0, physics: 0.5, body: 1.0, rooms: 1.0}`; 0 pins a layer to its nominal value). The room has to say what may vary and how far; see [Episode randomization](parts-guide.en.md#episode-randomization).
+- Observations that go with it: `part_links` (which part reads which part's channel this episode, one-hot; all zeros when the room sets `hidden: true`, so the policy has to search), `part_used` (whether each part slot is in the room this episode), `randomized` (drawn values divided by the room's ranges).
+- Leaving `target_pos` out of `obs` on purpose means the policy has to pick where to go from the rest of the observation. The order-reasoning rooms do that.
 
 ## Staged training and segment evaluation
 
