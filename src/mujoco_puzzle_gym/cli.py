@@ -200,7 +200,8 @@ def _eval(args: argparse.Namespace) -> dict[str, Any]:
                                "--full, --segments, --difficulty, --policy and --stochastic are for "
                                "run folders")
         try:
-            return evaluate_onnx(args.onnx, args.task, episodes=args.episodes, workers=args.workers)
+            return evaluate_onnx(args.onnx, args.task, episodes=args.episodes,
+                                 workers=args.workers, randomize=args.randomize)
         except _run_errors() as exc:
             raise CommandError(str(exc)) from exc
     if not args.run:
@@ -208,7 +209,8 @@ def _eval(args: argparse.Namespace) -> dict[str, Any]:
     try:
         return evaluate(args.run, episodes=args.episodes, policy=args.policy,
                         deterministic=not args.stochastic, workers=args.workers,
-                        full=args.full, segments=args.segments, difficulty=args.difficulty)
+                        full=args.full, segments=args.segments, difficulty=args.difficulty,
+                        randomize=args.randomize)
     except _run_errors() as exc:
         raise CommandError(str(exc)) from exc
 
@@ -224,6 +226,10 @@ def _configure_eval(p: argparse.ArgumentParser) -> None:
                    help="'random' = uniform random baseline on the same seeds")
     p.add_argument("--stochastic", action="store_true", help="sample actions instead of the mean")
     p.add_argument("--workers", type=int, default=12, help="parallel processes")
+    p.add_argument("--randomize", choices=["nominal", "train", "wide"], default="train",
+                   help="R35 draw mode for the eval episodes: the room's declared ranges "
+                        "(train), no draw at all (nominal), or the evaluation-only values "
+                        "only (wide: `holdout` entries, which the training never saw)")
     p.add_argument("--full", action="store_true",
                    help="report full_success_rate: start to goal, no snapshots (R22)")
     p.add_argument("--segments", action="store_true",

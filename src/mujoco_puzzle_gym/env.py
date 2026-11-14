@@ -209,11 +209,15 @@ class PuzzleEnv(gym.Env):
 
     # ---- snapshots (R6) -------------------------------------------------------
     def save_snapshot(self, **meta) -> snapshot.Snapshot:
-        """The state plus the wiring this episode drew (R35): a checkpoint restored into
-        another episode has to be read with the wiring it was recorded with."""
+        """The state plus what this episode drew (R35: the wiring, the room and the parts
+        it kept). A checkpoint restored into another episode has to be read with the
+        structure it was recorded with, which `restore_snapshot` puts back."""
+        drawn = getattr(self, "layout", {})
         return snapshot.save(self.model, self.data, self.parts, self.signals, self.body,
                              held=sorted(self.world.held), zone=self.zone,
-                             links=dict(getattr(self, "layout", {}).get("links") or {}), **meta)
+                             links=dict(drawn.get("links") or {}),
+                             used={k: list(v) for k, v in (drawn.get("used") or {}).items()},
+                             **meta)
 
     # ---- floor (R10) ----------------------------------------------------------
     def floor_height(self, xy) -> tuple[float | None, float]:
@@ -350,10 +354,25 @@ class PuzzleEnv(gym.Env):
         snapshot.restore(snap, self.model, self.data, self.parts, self.signals, self.body)
         self.world.held = set(snap.meta.get("held", []))
         self.zone = int(snap.meta.get("zone", 0))
+        self._restore_structure(snap)              # R35: the room and parts it was recorded with
         self.world.requests.clear()
         self.body_state = self.read_body()
         self.stage = self._stage()
         self._mark_target()
+
+    def _restore_structure(self, snap: snapshot.Snapshot) -> None:
+        """Put the storage shelf and the resting rooms back the way the snapshot was
+        recorded (R35): a snapshot restored in another episode would otherwise be read
+        with this episode's structure, which is not the one its state belongs to. A
+        snapshot from before the groups (no `used` in its meta) falls back to the
+        nominal room."""
+        if not (self.randomizer.choices or self.randomizer.rooms is not None):
+            return
+        layout = {"zone": self.zone,
+                  "used": {k: list(v) for k, v in (snap.meta.get("used") or {}).items()}}
+        self._apply_shelf(layout)
+        self._apply_zone(layout)
+        mujoco.mj_forward(self.model, self.data)
 
     # ---- layout and state ---------------------------------------------------
     def sample_layout(self, rng: np.random.Generator | None,
@@ -760,7 +779,22 @@ class PuzzleEnv(gym.Env):
             "plan_ok": self.plan["ok"],
             **({"difficulty": self.difficulty_level} if self.difficulty else {}),
             **({"draws": self.layout["draws"]} if "draws" in self.layout else {}),
+            **self._randomize_info(),
         }
+
+    def _randomize_info(self) -> dict[str, Any]:
+        """What this episode drew (R35), for the episode record: the draw mode, the room
+        a `rooms` draw picked, the drawn wiring and the parts it kept."""
+        if not self.randomizer:
+            return {}
+        out: dict[str, Any] = {"randomize": self.layout.get("mode", "train")}
+        if self.randomizer.rooms is not None:
+            out["room"] = self.room.zone_names[self.zone]
+        if self.layout.get("links"):
+            out["links"] = dict(self.layout["links"])
+        if self.layout.get("used"):
+            out["used"] = {k: list(v) for k, v in self.layout["used"].items()}
+        return out
 
     # ---- rendering ----------------------------------------------------------
     def render(self):

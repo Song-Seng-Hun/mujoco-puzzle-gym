@@ -553,6 +553,14 @@ PR E3 `feat/m2-grab` (큐브, 잡기, 부리 누르기)
      - 계획·spec과 다른 점(보고만): (1) 채널 접두사 `<방>/`를 자동으로 붙이지 않는다. 구역마다 부품 이름이 달라야 하고 겹치면 거절한다(부품 스키마에 "다른 부품을 가리키는 값"이라는 표시가 없어 `in`·`links`·`rest_on`·`to` 같은 참조를 자동으로 고쳐 쓸 수 없다. 방 작성자가 `a_`·`b_`처럼 붙인다). (2) 지도(`map:`) 방은 구역이 될 수 없다(구역의 바닥 타일·높이는 아직 자기 좌표계로만 만들어진다. spec 73줄의 "지도 방을 후보로" 항목은 `stages:`의 지도 지원과 함께 해야 한다). (3) 관측에 구역 원-핫을 따로 넣지 않았다. `part_used`가 이미 어느 방인지 알려 주는 마스크다. (4) 출발 위치를 `region`·`candidates`로 뽑는 방은 `rooms`와 함께 쓸 수 없다(좌표가 구역마다 다르다). `range`와 각 방의 `random:`은 된다. (5) `to: next_stage` 워프와 함께 쓸 수 없다(다음 구역은 이번 에피소드의 방이 아니다).
      - 알려진 한계: 구역마다 모델과 build 시간이 커진다(상한 8). 후보 방의 `demo:`는 쓰이지 않는다(해답은 격자 계획을 따른다). 쉬는 구역의 자유 물체는 물리로는 여전히 한 번 내려앉는다(갱신·채널·계획·관측에서만 빠진다).
 
+   - 4c-2 구현 기록 (2026-11-14, 브랜치 `feat/m2-randomize-4c2`, 4c-1 머지 뒤 main 위):
+     - `cli.py`·`evaluate.py`: `mpg eval --randomize nominal|train|wide`(기본 `train`). 모든 작업의 리셋 옵션에 모드를 넣고(`--onnx`도), 결과에 `randomize`를 적는다. `_check_mode`가 작업자를 띄우기 전에 모드 이름과 `wide` 가능 여부(`randomizer.wide_ok()`)를 본다. 방이 방을 뽑으면 `_report`가 방별 성공률 `success_by_room`을 더한다.
+     - `env.py`: `_randomize_info()`가 `info`에 `randomize`(모드)·`room`(뽑힌 방)·`links`·`used`를 넣고, `evaluate.run_episode`가 `randomize`·`room`을 에피소드 기록에 담는다.
+     - `env.py` 저장본: `save_snapshot`의 meta에 `used`를 더하고, `restore_snapshot`이 `_restore_structure`로 그 저장본의 구역·선반을 다시 적용한다(전에는 `zone` 숫자만 돌아오고 부품의 `parked`는 이번 에피소드 것이 남았다). `used`가 없는 옛 저장본은 기준 방으로 돌아간다.
+     - `tests/test_eval_modes.py` 10개(모드 전달·`nominal`/`wide`가 뽑는 값·`wide` 거절 두 경로·CLI·방별 성공률·`info` 기록·저장본 복원 둘), `tests/test_eval_full.py`의 작업 옵션 기대값 갱신.
+     - 잰 값: 빠른 시험 1213 passed/1 skipped, slow 묶음(eval·curriculum·checkpoint·rooms·groups·shuffle·train) 5 passed(380초). `mpg bench` 단독 668.1 env steps/s · 3340.5 body steps/s · 낙하 0(4c-1의 같은 세션 main 기준값 674.9 · 3374.6 — 잡음 범위. `_info`의 뽑기 기록은 무작위화를 선언하지 않은 방에서는 바로 빈 사전을 돌려준다).
+     - 계획·spec과 다른 점(보고만): (1) 구간(`--segments`) 작업에도 모드를 넘기지만, 저장본에서 시작하는 구간은 아직 모드를 쓰지 않는다(저장본의 배치를 그대로 쓴다). 물리·몸 층만 다시 뽑는 규칙은 4c-3이다. (2) `mpg render`·`record`에는 `--randomize`를 넣지 않았다(spec은 eval만 말한다).
+
 17. 예제 방(큐브·소켓, 벽 버튼, 빨래 `laundry.yaml`). 가이드 완성, AGENTS.md와 SKILL.md 연결.
    - 나누기 (2026-11-12, 사용자 결정 "추천대로 가자"): (a) 예제 방 3개는 지금 한다. (b) 가이드 완성, AGENTS.md와 SKILL.md 연결은 16g 뒤로 옮긴다.
    - (a) 구현 기록 (2026-11-12, 브랜치 `feat/m2-examples-beak`, `feat/m2-basket-exit` 위): 예제 `examples/rooms/cube_socket.yaml`·`wall_button.yaml`·`laundry.yaml`, task `examples/task_cube_socket.yaml`(`[move, head, grab]`)·`task_laundry.yaml`(`[move, head, grab]`, 60 s 판). 세 방 모두 표준 문틈(벽 끝 0.56 m 사이, 실제 틈 0.50 m, `device/sliding_door`)이고 격자 해답으로 풀며 `demo:`는 없다. 시험: `tests/test_examples.py`의 KINDS와 task 표, slow `test_demo_video_of_the_scripted_solution`(빨래·벽 버튼 방의 해답을 MP4로 그림, 성공·10 kB 이상), `tests/test_check2.py`의 예제 방 정적·20시드 점검에 새 task. 가이드 3종 예제 목록과 parts-guide 3종 조립 예 표.

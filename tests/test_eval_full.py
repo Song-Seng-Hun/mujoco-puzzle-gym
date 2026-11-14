@@ -101,7 +101,7 @@ def test_chain_gap_from_fake_episodes(monkeypatch, tmp_path):
         return e
 
     def fake_jobs(run_dir, jobs, policy, deterministic, workers):
-        assert [o for _, o in jobs[:n]] == [None] * n
+        assert [o for _, o in jobs[:n]] == [{"randomize": "train"}] * n
         assert [o["segment"] for _, o in jobs[n:]] == [i for i in range(3) for _ in range(n)]
         out = [ep(k, full_ok[k]) for k in range(n)]
         return out + [ep(k, seg_ok[i][k], i) for i in range(3) for k in range(n)]
