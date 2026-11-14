@@ -16,8 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 GUIDE = ROOT / "docs/parts-guide.md"
 ENTRY_POINTS = ["AGENTS.md", "skills/mujoco-puzzle-gym/SKILL.md"]
 LINKED = [*ENTRY_POINTS, "README.md", *(f"docs/{n}" for n in (
-    "guide.md", "guide.en.md", "guide.ja.md", "parts-guide.md", "parts-guide.en.md",
-    "parts-guide.ja.md", "parts.md", "community.md"))]
+    "README.en.md", "README.ja.md", "guide.md", "guide.en.md", "guide.ja.md",
+    "parts-guide.md", "parts-guide.en.md", "parts-guide.ja.md", "parts.md", "community.md"))]
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
 
