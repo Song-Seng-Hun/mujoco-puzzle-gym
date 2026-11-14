@@ -171,6 +171,14 @@ def part_links(env):
     return env.randomizer.link_observation(env.layout)
 
 
+@register_obs("part_group", replace=True)
+def part_group(env):
+    """Which member of each drawn group is in the room (R35 `type` / `count`): per group
+    one bit per member, 1 for the ones in play. A room that draws no group gives an
+    empty array."""
+    return env.randomizer.used_observation(env.layout)
+
+
 @register_obs("part_used", replace=True)
 def part_used(env):
     """Whether each part slot is in the room this episode (R35 structure layer), room

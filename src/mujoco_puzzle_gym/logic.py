@@ -15,6 +15,9 @@ is on and that Python logic plugins can turn on when any input is on.
 Trapdoors and pits (R20): a hole a part opens with the inputs in `on`
 (`Part.hole_mask`) is blocked like a wall, so the order goes round it.
 
+Parts off stage (R35 storage shelf, R28 a dispenser's stored copy) are left out
+of the plan: they block nothing, write nothing and cannot be a target.
+
 Warp pads (R14): when no reachable switch opens a gate, a reachable warp pad
 whose destination lies outside the reached area is taken: it joins the order
 (the body must step on it) and the search goes on from its destination.
@@ -37,6 +40,7 @@ def plan_channels(parts: dict[str, Any], on: set[str], broken=frozenset()) -> di
     the values settle. The parts named in `broken` report their broken values
     instead (R34: the parts the room's `demo:` breaks; `plan_broken_values`)."""
     order = parts.bus.order if hasattr(parts, "bus") else list(parts.values())
+    order = [p for p in order if not p.parked]      # off stage: writes nothing (R35)
     vals: dict[str, float] = {}
     get = lambda ch: vals.get(ch, 0.0)  # noqa: E731
     passes = len(order) + 1 if any(p.plan_driver is not None for p in order) else 1
@@ -79,10 +83,11 @@ def free_mask(grid: Grid, walls: list[Segment], parts: dict[str, Any], on: set[s
     vals = plan_channels(parts, on, broken)
     get = lambda ch: vals.get(ch, 0.0)  # noqa: E731
     segs = list(walls)
-    for p in parts.values():
+    live = [p for p in parts.values() if not p.parked]
+    for p in live:
         segs += p.blockers(p.role == "gate" and gate_open(p, vals))
     free = ~grid.blocked(segs, inflate)
-    for p in parts.values():
+    for p in live:
         if (hole := p.hole_mask(grid, get)) is not None:
             free &= ~grid.dilate(hole, inflate)
     return free
@@ -99,10 +104,11 @@ def live_free(grid: Grid, walls: list[Segment], parts: dict[str, Any], passable:
     """Free cells from the parts' state now: gates passable now (`gate_passable`) are
     open, holes (`hole_now`) are blocked. Used by the `demo:` executor."""
     segs = list(walls)
-    for p in parts.values():
+    live = [p for p in parts.values() if not p.parked]
+    for p in live:
         segs += p.blockers(gate_passable(p, passable))
     free = ~grid.blocked(segs, inflate)
-    for p in parts.values():
+    for p in live:
         if (hole := p.hole_now(grid)) is not None:
             free &= ~grid.dilate(hole, inflate)
     return free
@@ -122,7 +128,8 @@ def _take_warp(grid: Grid, parts: dict[str, Any], on: set[str], reach: np.ndarra
     """A reachable, unused warp pad leading out of `reach`: (part, destination xy) or None."""
     vals = plan_channels(parts, on, broken)
     for p in parts.values():
-        if p.role != "warp" or p.name in used or not (_grow(p.target_mask(grid)) & reach).any():
+        if (p.role != "warp" or p.parked or p.name in used
+                or not (_grow(p.target_mask(grid)) & reach).any()):
             continue
         dest = p.plan_dest(lambda ch: vals.get(ch, 0.0))
         if dest is not None and not reach[grid.cell(dest)]:
@@ -161,9 +168,9 @@ def solution_order(grid: Grid, walls: list[Segment], parts: dict[str, Any],
     order: list[str] = []
     opened: set[str] = set()
     warps_used: set[str] = set()
-    switches = [p for p in parts.values() if p.role == "switch"]
-    gates = [p for p in parts.values() if p.role == "gate"]
-    goals = [p for p in parts.values() if p.role == "goal"]
+    switches = [p for p in parts.values() if p.role == "switch" and not p.parked]
+    gates = [p for p in parts.values() if p.role == "gate" and not p.parked]
+    goals = [p for p in parts.values() if p.role == "goal" and not p.parked]
     while True:
         reach = grid.flood(free_mask(grid, walls, parts, on, broken=broken), start_xy)
         for g in goals:

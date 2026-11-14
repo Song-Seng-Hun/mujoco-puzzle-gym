@@ -124,6 +124,14 @@ class FreeObject(Part):
         """A receptacle consumed it (R5 `consume`): parked PARK_Z below where it is."""
         self.park(model, data, [*self.pos(data)[:2], PARK_Z])
 
+    def shelve(self, model, data, spot) -> None:
+        """R35 storage shelf: a free object is parked below the shelf spot (`park`),
+        which also unties a rope from it and stops it falling."""
+        self.park(model, data, [float(spot[0]), float(spot[1]), PARK_Z])
+
+    def unshelve(self, model, data) -> None:
+        self.unpark(model)
+
     def save_state(self):
         return {**super().save_state(), "parked": self.parked}
 
