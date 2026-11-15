@@ -9,8 +9,11 @@ already on the body with its other end loose ties that end) or unties the body's
 something); `handoff` moves the rope end on the body's hitch to the station's `to:`
 hitch (usually an anchor) in the same step: the knot goes onto that hitch and the tie
 switches over at once, so a rope holding a load (a rope door, R31 `cleat_hold`) never
-goes slack in between. The beak is not the way to move a tensioned end: the load is
-above the beak's `max_hold_force`. A hitch farther than the
+goes slack in between. The beak is not the way to move a tensioned end: a tied
+knot keeps the 3 N `max_hold_force` default (`Knot.TIED_HOLD`), and holding a loaded end
+passes it, so the weld lets go before `untie_time` (OQ8: the steady load is only
+0.71-0.72 N, but it takes the knot off the beak in one-step spikes of 5.7-7.3 N; raising
+that limit untied a door-bearing end in 4 of 4 `cleat_hold` runs). A hitch farther than the
 rope's length (along the rope, through its pulleys) pulses `<rope>.attach_failed` and
 ties nothing (a handoff then leaves the end on the body). Signal: with `in`
 channels, their turning on (later while they stay on, once the body is on the pad and

@@ -11,8 +11,9 @@ off and lays the knot on the floor where it is.
 
 Knots (`Knot`): a 20 g (`knot_mass`, no less: OQ9 stretch 0.35 cm at 20 g, 0.7 cm at
 10 g, 2.5-2.8 cm at 2 g with a 0.3 kg sled) flat disc with a rod and a ring on top at
-`handle_height` (the beak grabs the ring, R18; Open question 8 leaves the height open,
-0.16 m is within `grab_radius` of the lowered beak tip at 0.135 m). Knots collide with
+`handle_height` (the beak grabs the ring, R18; 0.16 m is within `grab_radius` of the
+lowered beak tip at 0.135 m, and OQ8 kept it: over 0.10-0.20 m the grab fired at 19-20
+of 20 seeds at every height, so the height is not what limits a knot grab). Knots collide with
 the floor only (explicit contact pairs with the floor plane, floor tiles, map ramps and
 floor parts), not with legs, walls or objects.
 
@@ -147,9 +148,29 @@ class Knot(Part):
     kind = "knot"
     object_kind = "knot"
     stage = "device"
-    #: R18 grab values (the beak holds the ring).
-    grab_radius = 0.04
-    max_hold_force = 3.0
+    grab_radius = 0.04        # R18 grab value (the beak holds the ring)
+    #: [N] `max_hold_force` while the knot is loose. A loose knot stays on the floor even
+    #: while the beak holds it, so the weld fights that contact in one-control-step spikes
+    #: — up to 7.46 N over 4,900 logged steps, between pulses at the knot's weight
+    #: (0.196 N). At the 3.0 N default that dropped a just-grabbed knot in 89 of 240 runs
+    #: (OQ8), so a loose knot rides the spikes out.
+    LOOSE_HOLD = 10.0
+    #: [N] `max_hold_force` while the knot is tied: the R18 default, kept deliberately.
+    #: A tied end carries its rope's load, and the beak is not the way to move a tensioned
+    #: one (`hitch_station` exists for that). Measured on `cleat_hold` (OQ8): the steady
+    #: load is only 0.71-0.72 N, so what takes the knot off the beak is the same kind of
+    #: one-step spike, 5.7-7.3 N. Raising this to 10 N let the weld outlast the spikes and
+    #: reach `untie_time`, untying a door-bearing end in 4 of 4 runs — the route the
+    #: handoff station is there to replace. `pit_bridge` (3.1 N when turning after a drag)
+    #: sits the same way. Holding a tied but slack knot to untie it is unaffected: with no
+    #: load and no floor contact the weld force stays far below 3 N.
+    TIED_HOLD = 3.0
+
+    @property
+    def max_hold_force(self) -> float:
+        """R18 limit now: `TIED_HOLD` while this end is tied, else `LOOSE_HOLD`. The beak
+        reads it every body step, so it follows the tie."""
+        return self.TIED_HOLD if self.rope.tied[self.end] is not None else self.LOOSE_HOLD
 
     def __init__(self, name: str, rope: "Rope", end: int, xy):
         super().__init__(name, {"pos": [float(xy[0]), float(xy[1])]})
