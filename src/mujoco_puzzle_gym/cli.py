@@ -43,16 +43,24 @@ def _version(_: argparse.Namespace) -> dict[str, Any]:
 
 def _fetch_assets(args: argparse.Namespace) -> dict[str, Any]:
     from . import assets
+    from .bodies import lock_for
 
     try:
-        return assets.fetch(root=args.cache_dir)
+        result = assets.fetch(lock_for(args.body), root=args.cache_dir)
     except (assets.AssetError, OSError) as exc:
         raise CommandError(str(exc)) from exc
+    except ValueError as exc:                      # unknown body name
+        raise CommandError(str(exc)) from exc
+    return {"body": args.body, **result}
 
 
 def _configure_fetch(p: argparse.ArgumentParser) -> None:
+    from .bodies import BODIES, DEFAULT_BODY
+
     p.add_argument("--cache-dir", default=None,
                    help="cache root (default: $MPG_CACHE_DIR or ~/.cache/mujoco-puzzle-gym)")
+    p.add_argument("--body", default=DEFAULT_BODY, choices=BODIES,
+                   help="which body's pinned assets to fetch (each body has its own lock)")
 
 
 def _bench(args: argparse.Namespace) -> dict[str, Any]:

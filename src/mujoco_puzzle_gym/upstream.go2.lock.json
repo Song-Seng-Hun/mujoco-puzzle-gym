@@ -1,0 +1,184 @@
+{
+  "schema": 1,
+  "name": "go2",
+  "sources": {
+    "github": {
+      "repo": "google-deepmind/mujoco_menagerie",
+      "commit": "370c43965323c0944b433b202aac5058b5f907a9",
+      "url_template": "https://raw.githubusercontent.com/google-deepmind/mujoco_menagerie/370c43965323c0944b433b202aac5058b5f907a9/{remote}"
+    },
+    "huggingface": {
+      "repo": "diasAiMaster/unitree-go2-velocity-flat",
+      "revision": "9a723b7ab0784cd86abb942836aa1f208ddde891",
+      "url_template": "https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat/resolve/9a723b7ab0784cd86abb942836aa1f208ddde891/{remote}"
+    }
+  },
+  "license": {
+    "mjcf_and_meshes": "BSD-3-Clause - robot/* (see robot/LICENSE)",
+    "policies": "BSD-3-Clause - policies/*",
+    "attribution": "Unitree Go2 MJCF and meshes from MuJoCo Menagerie (https://github.com/google-deepmind/mujoco_menagerie/tree/370c43965323c0944b433b202aac5058b5f907a9/unitree_go2), BSD-3-Clause. Walk policy policy.onnx and its deploy config from https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat (BSD-3-Clause), trained on the flat-terrain velocity task of unitree_rl_mjlab. This policy is a community checkpoint, NOT an official Unitree release: Unitree publishes training code (unitree_rl_gym, unitree_rl_mjlab), not a frozen policy. Trained without gait_phase, action scale 0.5. Files are downloaded unmodified; mujoco-puzzle-gym edits the MJCF only in memory to match the training dynamics (position actuators, calf armature, foot contact, init height). Unofficial project, not affiliated with Unitree Robotics or Google DeepMind."
+  },
+  "files": [
+    {
+      "path": "robot/go2.xml",
+      "source": "github",
+      "remote": "unitree_go2/go2.xml",
+      "size": 11678,
+      "sha256": "50adb09a4365293e2acdaf2010ae35a82b0f09fea18ae51806fef91e310ed04a"
+    },
+    {
+      "path": "robot/scene.xml",
+      "source": "github",
+      "remote": "unitree_go2/scene.xml",
+      "size": 816,
+      "sha256": "b56123ea2bf09070bf4054f0be9aa418e49041ddddce44dbbf7ab35e8b732641"
+    },
+    {
+      "path": "robot/LICENSE",
+      "source": "github",
+      "remote": "unitree_go2/LICENSE",
+      "size": 1537,
+      "sha256": "7e2dfda59b98e38d123f539b59ecb637ffd8908d19e09f7765884a309f010d40"
+    },
+    {
+      "path": "robot/assets/base_0.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/base_0.obj",
+      "size": 1330465,
+      "sha256": "8cdc53719002a5ee737d867904e534a6d6fa930b616bdcc1b3131e577d4e46c0"
+    },
+    {
+      "path": "robot/assets/base_1.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/base_1.obj",
+      "size": 811791,
+      "sha256": "39d2f4724ff64dd5a0640c308fd98902a2946660a8d033ec8dbf368fd5af0dd6"
+    },
+    {
+      "path": "robot/assets/base_2.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/base_2.obj",
+      "size": 294090,
+      "sha256": "29cae463f95d678e4ede863c36c9b19b0d356b8340412add10670d70bdcc3095"
+    },
+    {
+      "path": "robot/assets/base_3.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/base_3.obj",
+      "size": 379093,
+      "sha256": "f51ba43bf300e68957a0c1aa83eaf3e4926f4ac7e64a0d6c33ae5d21fcbcf5f6"
+    },
+    {
+      "path": "robot/assets/base_4.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/base_4.obj",
+      "size": 7776234,
+      "sha256": "49ddec0129546e5dd2075d5beacf7f207baa2860aeff7626818e64d2efbf3821"
+    },
+    {
+      "path": "robot/assets/hip_0.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/hip_0.obj",
+      "size": 2863864,
+      "sha256": "cc29932ab4d251ce3f72389ec4c1f757e44eee138b87e772b648c2bc76b506cd"
+    },
+    {
+      "path": "robot/assets/hip_1.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/hip_1.obj",
+      "size": 2767918,
+      "sha256": "3fd5bd9b2ef6abe622c0739d3c67eaa1679b19b47132951972c4892a779ea7cf"
+    },
+    {
+      "path": "robot/assets/thigh_0.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/thigh_0.obj",
+      "size": 2841868,
+      "sha256": "bb3edfe6a7b04f4f4dff1ce7b05d426ddce941e276cc6372fb542055893c71ec"
+    },
+    {
+      "path": "robot/assets/thigh_1.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/thigh_1.obj",
+      "size": 1491320,
+      "sha256": "3a631822f9f7d2114b1b79dcdff5abf95103630abb7d91d1f3b8b18117132ed2"
+    },
+    {
+      "path": "robot/assets/thigh_mirror_0.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/thigh_mirror_0.obj",
+      "size": 2817674,
+      "sha256": "07abaedce761f1dd48647384ac14ba1959276bc78d5a2a62051e8f1c6093933b"
+    },
+    {
+      "path": "robot/assets/thigh_mirror_1.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/thigh_mirror_1.obj",
+      "size": 1482261,
+      "sha256": "db984a3e983eabbc9b38183427cca9ab0bb3bdb049f9eab030e06edda36579d6"
+    },
+    {
+      "path": "robot/assets/calf_0.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/calf_0.obj",
+      "size": 877174,
+      "sha256": "4a818cd563c5b7e2a271504442d05fd777d38cbaa028d4a10ad29c9f87bb355e"
+    },
+    {
+      "path": "robot/assets/calf_1.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/calf_1.obj",
+      "size": 326865,
+      "sha256": "51950c3a153ae3208592df86ea11c9d6756f8f645ebca5caf6910c61aeb03817"
+    },
+    {
+      "path": "robot/assets/calf_mirror_0.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/calf_mirror_0.obj",
+      "size": 876538,
+      "sha256": "6dc0406207a1c08a5953fd5962aca1a270fd06593d30d100205e05c1b32d4af2"
+    },
+    {
+      "path": "robot/assets/calf_mirror_1.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/calf_mirror_1.obj",
+      "size": 327261,
+      "sha256": "f84f5af90b914633165beb3a5493ee499169144c5797dcf04c6eb5842f74b31a"
+    },
+    {
+      "path": "robot/assets/foot.obj",
+      "source": "github",
+      "remote": "unitree_go2/assets/foot.obj",
+      "size": 1144729,
+      "sha256": "df9e78a7c0110d02557439010f2a5f11f0ec4fd907b32704145dbd6aa7affc0b"
+    },
+    {
+      "path": "policies/policy.onnx",
+      "source": "huggingface",
+      "remote": "policy.onnx",
+      "size": 14196,
+      "sha256": "fbb8b61b12f2cd44dfc889f33566a8be2438124efee88b60c700b9605a94187a"
+    },
+    {
+      "path": "policies/policy.onnx.data",
+      "source": "huggingface",
+      "remote": "policy.onnx.data",
+      "size": 757248,
+      "sha256": "40474dd235917877d657085f3f0a2d485d10e947e3599cad5328337e32222a74"
+    },
+    {
+      "path": "policies/deploy.yaml",
+      "source": "huggingface",
+      "remote": "params/deploy.yaml",
+      "size": 1392,
+      "sha256": "a86582e599411ebaa011cb30f1711497a50a21230decf9c91bd02cb43d1e5300"
+    },
+    {
+      "path": "policies/env.yaml",
+      "source": "huggingface",
+      "remote": "params/env.yaml",
+      "size": 22339,
+      "sha256": "07aac8492b3119faea95577d9900c6dd1a6c57a2fb44454c3eda8c637a403c7c"
+    }
+  ]
+}
