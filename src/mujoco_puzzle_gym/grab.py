@@ -187,7 +187,10 @@ class Beak(Part):
         elif self.held is None and self.armed:
             near = self.nearest(data)
             if near is not None and near[1] <= self.objects[near[0]].grab_radius:
-                limit = float(w.body.capabilities.values.get("max_lift_mass", np.inf)) if w.body else np.inf
+                # A body that declares no lift limit gets 0, not unlimited: the grabber
+                # is the body's own beak, so an undeclared limit means it cannot carry
+                # (`bodies.declared_limit`). With no body at all there is no body limit.
+                limit = w.body.capabilities.limit("max_lift_mass") if w.body else np.inf
                 if self.objects[near[0]].mass > limit:
                     self.too_heavy = True
                 else:

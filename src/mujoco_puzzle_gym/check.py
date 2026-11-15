@@ -244,8 +244,8 @@ def map_steps(env: PuzzleEnv, start_xy) -> list[str]:
     reach = env.grid.flood(free_mask(env.grid, env.walls, env.parts, on), start_xy)
     cells = {m.cell_of(env.grid.center(iy, ix)) for iy, ix in zip(*np.nonzero(reach))}
     cells.discard(None)
-    vals = env.body.capabilities.values
-    return m.step_reasons(cells, float(vals.get("max_step", np.inf)), float(vals.get("max_slope", 90.0)))
+    caps = env.body.capabilities
+    return m.step_reasons(cells, caps.limit("max_step"), caps.limit("max_slope"))
 
 
 def check_resample(env: PuzzleEnv, seeds: int = RESAMPLE_SEEDS) -> dict[str, Any]:

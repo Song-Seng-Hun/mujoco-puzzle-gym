@@ -834,17 +834,21 @@ class Room:
 
     def grid(self, res: float | None = None, body_values: dict | None = None) -> Grid:
         """Planner grid. A map room's grid is aligned with its cells, and its walls,
-        cliffs, steps above `max_step` and ramps above `max_slope` (from
-        `body_values`, the body's capability values; no limit without) are blocked."""
+        cliffs, steps above `max_step` and ramps above `max_slope` (from `body_values`,
+        the body's capability values) are blocked. A body that declares neither gets 0
+        for both, so every step and ramp is blocked rather than every one allowed
+        (`bodies.declared_limit`); flat ground is unaffected either way."""
         kw = {"res": res} if res else {}
         if self.map is not None:
             m = self.map
             r = res or m.cell / math.ceil(m.cell / 0.04 - 1e-9)
             ext = m.extent()
             grid = Grid((ext.x1 - ext.x0, ext.y1 - ext.y0), res=r)
+            from .bodies import declared_limit
+
             vals = body_values or {}
-            grid.terrain, _ = m.terrain(grid, float(vals.get("max_step", math.inf)),
-                                        float(vals.get("max_slope", 90.0)))
+            grid.terrain, _ = m.terrain(grid, declared_limit(vals, "max_step"),
+                                        declared_limit(vals, "max_slope"))
             return grid
         if not self.stages:
             t = 2 * self.wall_thickness
