@@ -268,6 +268,30 @@ def test_beak_ties_and_unties_a_knot(make):
     assert rope.tied_hitch(1).name == "sled"
 
 
+def test_a_loose_knot_outlasts_the_floor_spikes_and_a_tied_one_does_not(make):
+    """OQ8: both limits exist for measured reasons that pull opposite ways. A loose knot
+    stays on the floor while held, so the weld fights that contact in one-step spikes up
+    to 7.46 N, and at 3 N the beak dropped a just-grabbed knot in 89 of 240 runs. A tied
+    knot must keep the 3 N default: at 10 N the weld outlasted the same kind of spike and
+    reached `untie_time`, untying a door-bearing end in 4 of 4 `cleat_hold` runs, which
+    is the route `hitch_station` exists to replace.
+
+    The values, not the physics: the spikes need the beak to walk up to the ring with the
+    head tracking its height, and the repo has no scripted knot grab to drive that (the
+    measurement used a scratchpad driver). Teleporting the ring to the beak tip lifts the
+    disc off the floor and peaks at 0.94 N, so a carry test built that way would pass at
+    3 N too and guard nothing."""
+    env = make([{**SLED, "pos": [0.5, 0.5]}, {**ROPE, "b": None, "tied": ["a"],
+                                              "rest": [[0, 0], [-0.8, -0.2]]}])
+    rope = rope_of(env)
+    ka, kb = rope.knots
+    assert rope.tied[0] is not None and rope.tied[1] is None
+    assert kb.max_hold_force > 7.46          # loose: rides out the floor-contact spikes
+    assert ka.max_hold_force == 3.0          # tied: a tensioned end stays out of reach
+    rope.tied[1] = rope.tied[0]              # tying the loose end lowers its limit at once
+    assert kb.max_hold_force == 3.0
+
+
 def test_tied_knots_sit_on_hitches_on_random_layouts(make):
     env = make([{**SLED, "random": [0.02, 0.05]}, ROPE])
     rope = rope_of(env)
