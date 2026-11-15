@@ -20,6 +20,15 @@ jobs:
     # GitHub's macOS VMs have no GPU (CGL rendering fails), so tests run on Linux with OSMesa.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    # Two shards, not for speed: a whole fast run's resident set grows to 12.1 GB, close
+    # enough to the runner's 16 GB that the runner was killed mid-suite ("The runner has
+    # received a shutdown signal") with no test failing. One shard peaks at 9.1-9.6 GB —
+    # only 21% less, because about 6 GB of that is a fixed floor sharding cannot split,
+    # but it buys roughly 2.4 GB of headroom. The suite's own 12 GB is still unfixed.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
     env:
       MUJOCO_GL: osmesa
       PYOPENGL_PLATFORM: osmesa
@@ -41,8 +50,9 @@ jobs:
       - name: Fetch assets
         run: uv run mpg fetch-assets
       - name: Tests (fast)
-        run: uv run pytest -q
+        run: uv run pytest -q --shard ${{ matrix.shard }}/2
       - name: Example room check
+        if: matrix.shard == 0
         run: uv run mpg check examples/switch_door.yaml --json
 
   banner:
