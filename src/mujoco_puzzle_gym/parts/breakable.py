@@ -119,6 +119,12 @@ class Breakable(Part):
             self.outputs += [name + ".broken", name + ".hp"]
             if self.repair_channel:
                 self.watch = list(dict.fromkeys([*self.watch, self.repair_channel]))
+            if "peck" in self.by:
+                # A peck is the beak tip plus the grab action (`_peck_step`): a body with
+                # no beak reads `World.beak_site` as -1 and can never land one (R2b). Found
+                # by the R46 audit (docs/bodies.md): a wall wire with `by: [peck]` passed
+                # every `mpg check` stage for a beakless body while being unbreakable.
+                self.needs_body("beak_grab")
         self.broken = False
         self.hp_left = self.hp
         self._break_reset_transients()

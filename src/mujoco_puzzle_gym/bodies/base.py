@@ -144,6 +144,17 @@ class BodyAdapter(ABC):
         """Id of the body's root (free-floating) MuJoCo body; sensors use it to tell
         the walking body from objects (`body_rootid`)."""
 
+    def total_mass(self, model: mujoco.MjModel) -> float:
+        """Mass [kg] of the whole body: every MuJoCo body under its root.
+
+        Parts whose numbers are forces or masses read it to say whether their setting
+        means anything for the body in the scene (`check_warnings`): a push sized for a
+        sub-kilogram body does nothing to one twenty times heavier, and a pressure plate
+        whose threshold is below the body's own mass is tripped by standing on it."""
+        root = self.root_body_id(model)
+        return float(sum(model.body_mass[i] for i in range(model.nbody)
+                         if model.body_rootid[i] == root))
+
     @abstractmethod
     def history_state(self) -> dict[str, Any]:
         """Controller memory outside `MjData` (last action, command queue, actuator

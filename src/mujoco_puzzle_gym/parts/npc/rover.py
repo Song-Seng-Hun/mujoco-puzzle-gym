@@ -25,8 +25,8 @@ or a direction and a speed (at most `speed`, run-time). The robot then
 Channels: `<name>.moving` (1 while it moves faster than MOVING m/s) and
 `<name>.on` (marker id of the first button, room order, its centre is over;
 -1 on none or on a button without a marker). Observation item `npcs`.
-`speed` at or above the walking body's speed (DUCK_SPEED) is a `mpg check`
-warning: the body could not catch a fleeing robot.
+`speed` at or above the walking body's own speed (its `walk_speed` capability,
+R2b) is a `mpg check` warning: that body could not catch a fleeing robot.
 
 Snapshots (R6) hold the joints in the MuJoCo state, the leash limits
 (`jnt_range`, snapshot.MODEL_FIELDS) and the rule memory in `state_keys`.
@@ -65,7 +65,6 @@ LOOSE_BOX = 1.0e3      # [m] slide limits while a tow rope holds it (R31): none 
 #: Slide-joint damping [N s/m] while a rope tows it (R31): with its motors off and no floor
 #: friction it would coast on after the body stops.
 TOW_DAMPING = 1.0
-DUCK_SPEED = 0.16      # [m/s] walking body speed (spec R29 "about 0.16 m/s")
 BODY_RGBA = (0.3, 0.45, 0.85, 1.0)
 WHEEL_RGBA = (0.15, 0.15, 0.15, 1.0)
 SEEN = ".seen"
@@ -503,7 +502,14 @@ class Npc(Part):
         return grid.disk(self.now, float(np.hypot(*self.half[:2])))
 
     def check_warnings(self, env) -> list[str]:
-        if float(self.cfg["speed"]) >= DUCK_SPEED:
+        """The speed to beat is this body's, not one body's (R46 audit, docs/bodies.md):
+        this read a single hardcoded 0.16 m/s whatever walked, so a robot at 0.5 m/s was
+        called uncatchable for a body measured at four times that.
+
+        A body that declares no `walk_speed` reads 0 (`bodies.declared_limit`), so every
+        robot is reported as uncatchable - the direction that asks rather than assumes."""
+        walk = env.body.capabilities.limit("walk_speed")
+        if float(self.cfg["speed"]) >= walk:
             return [f"part {self.name!r}: speed {self.cfg['speed']:g} m/s is not below the body's "
-                    f"walking speed (~{DUCK_SPEED:g} m/s); the body cannot catch it"]
+                    f"walking speed (~{walk:g} m/s); the body cannot catch it"]
         return []

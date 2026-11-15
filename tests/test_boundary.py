@@ -8,12 +8,15 @@ import mujoco_puzzle_gym
 PKG = Path(mujoco_puzzle_gym.__file__).parent
 FORBIDDEN = [
     "microduck", "velstand", "trunk_base",
+    # The second body's names (R46 audit): this list only ever guarded the first body, so
+    # the rule it exists to enforce was half off while a second body was being added.
+    "go2", "unitree",
     "left_hip_yaw", "left_hip_roll", "left_hip_pitch", "left_knee", "left_ankle",
     "neck_pitch", "head_pitch", "head_yaw", "head_roll",
     "right_hip_yaw", "right_hip_roll", "right_hip_pitch", "right_knee", "right_ankle",
 ]
 # Pinned asset manifest: data that says which upstream files to fetch, not code.
-ALLOWLIST = {"upstream.lock.json"}
+ALLOWLIST = {"upstream.lock.json", "upstream.go2.lock.json"}
 PATTERN = re.compile("|".join(map(re.escape, FORBIDDEN)), re.IGNORECASE)
 
 

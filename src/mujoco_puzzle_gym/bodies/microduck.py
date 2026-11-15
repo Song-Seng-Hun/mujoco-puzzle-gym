@@ -163,9 +163,19 @@ class MicroduckAdapter(BodyAdapter):
     # without a fall; 5 deg slopes up 10/10 (6 deg 9/10, 7 deg 2/10). beak_height
     # [m]: the beak tip above the floor with the head level (OQ2; `mpg check`
     # asks for the `head` action below it, R19).
-    capabilities = Capabilities(names=frozenset({"walk", "beak_grab", "roller"}),
+    #
+    # tow: the tow-rope hitch site (`tow_site`, R31); chest_push: the chest drives a
+    # paddle or spoke 0.07-0.12 m above the floor over by walking into it (R28 push
+    # lever, dial), with the feet passing under.
+    #
+    # walk_speed [m/s]: the walking speed a part compares against (an NPC the body
+    # cannot catch, R29). 0.16 is the spec R29 figure, kept as the number this body
+    # has always been checked at; a steady run at the top command (vx 0.4) measures
+    # 0.220 m/s on flat ground (2026-11-16), so the declared value is conservative.
+    capabilities = Capabilities(names=frozenset({"walk", "beak_grab", "roller", "tow",
+                                                "chest_push"}),
                                 values={"max_lift_mass": 0.05, "max_step": 0.01, "max_slope": 5.0,
-                                        "beak_height": 0.21})
+                                        "beak_height": 0.21, "walk_speed": 0.16})
 
     def __init__(self, asset_dir: Path | None = None, vin: float = BAM_VIN,
                  vin_drop_gain: float | None = BAM_VIN_DROP_GAIN,

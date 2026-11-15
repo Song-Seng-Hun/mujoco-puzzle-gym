@@ -114,9 +114,15 @@ class Go2Adapter(BodyAdapter):
     #: nothing to carry with. An undeclared limit would also read as 0
     #: (`bodies.declared_limit`); these are written out so a reader sees they were
     #: measured rather than skipped.
+    #:
+    #: `walk_speed` 1.0 [m/s]: a steady run at the top command this body is given
+    #: (vx 1.0) covers 1.019 m/s on flat ground, measured over the last 3 s of a 6 s
+    #: run (2026-11-16). Parts compare an NPC's speed against it (R29); 4.6x the
+    #: microduck's declared 0.16.
     capabilities = Capabilities(
         names=frozenset({"walk"}),
-        values={"max_lift_mass": 0.0, "max_step": 0.03, "max_slope": 6.0},
+        values={"max_lift_mass": 0.0, "max_step": 0.03, "max_slope": 6.0,
+                "walk_speed": 1.0},
     )
 
     def __init__(self, asset_dir: Path | None = None, full_command_range: bool = False):

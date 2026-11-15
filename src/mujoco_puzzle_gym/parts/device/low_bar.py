@@ -54,6 +54,11 @@ class LowBar(Part):
         self.half = np.array([DEPTH / 2, self.length / 2]) if self.axis == "y" else \
             np.array([self.length / 2, DEPTH / 2])
         self.glide_ok = False          # a station in the room puts the roller on
+        # `bottom` is clamped to the window measured for one body's crouch, so no room
+        # setting can let a taller body under: the bar is a wall to anything that cannot
+        # glide. Declaring `roller` (R2b) makes `mpg check` say so by name instead of
+        # leaving the way silently blocked (R46 audit, docs/bodies.md).
+        self.needs_body("roller")
 
     @classmethod
     def add_room_parts(cls, parts):

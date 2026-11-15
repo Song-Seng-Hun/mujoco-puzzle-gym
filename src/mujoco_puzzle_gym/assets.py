@@ -69,8 +69,8 @@ def _download(lock: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, 
     src = lock["sources"]["github"] if gh else None
     if gh and "url_template" in src:
         # Per-file raw fetch. The tarball path below reads the whole repo archive into
-        # memory, which is fine for a small robot repo but not for a large one: the Go2
-        # model lives in mujoco_menagerie (~657 MB) and we need 19 files from it.
+        # memory, which is fine for a small robot repo but not for a large one: one of the
+        # bodies takes 19 files out of a model collection of about 657 MB.
         for e in gh:
             out[e["path"]] = _http_get(src["url_template"].format(remote=e["remote"]))
         gh = []                                   # nothing left for the archive path
