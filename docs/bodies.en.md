@@ -765,6 +765,29 @@ that hands the object over at a new spot cannot be expected to work while the gr
 rather than a region. Both move from "room unfinished" to **"held until the scripted grab works
 over a region"**.
 
+#### What that "point" actually is: an equilibrium, not a joint limit (measured 2026-11-17)
+
+One failing cell (the block moved +20 mm) was followed to the end. The tip **sits frozen at
+(-0.048, +0.133, 0.064)** from k=200 to k=375, 0.231 m short of the handle, and does not move
+at all. The working cell over the same stretch descends z 0.119 -> 0.064 -> 0.020 and sweeps y
+from +0.151 to -0.060, grabbing at k=71. Measured at the frozen pose:
+
+- **no joint is anywhere near a limit** (all five mid-range: -0.588, -0.444, +1.068, +0.045, -0.579)
+- the aim's z is 0.020 against a tip at 0.0645 - **a standing 0.044 m error to descend**
+- the xy lead is exactly 0.03 m = `MAX_LEAD`, the anti-windup clamp, and it is active
+
+So it is an equilibrium with a standing command error: the IK rebuilds each substep's joint
+target as `measured qpos + dq*dt`, and the arm settles wherever the position servos'
+steady-state droop cancels that increment. Not the envelope, not a joint limit, not the room -
+which is why a centimetre away it works.
+
+The obvious remedy - integrate the joint target from **itself** rather than the measured angles -
+measured **0/20 on the shipped room** and was not shipped. It is the same ground as the warning
+already in `step`'s docstring ("the first version integrated joint targets from the measured
+angles ... which accumulated the actuators' lag"). So what is left is not a patch but an **IK
+redesign** (a solve that handles limits and singular directions, or an analytic seed), which is
+a body-side spec item.
+
 #### Found alongside: clearing `_pick_z` per sub-goal is a bug AND a **guard**
 
 `Carrier._pick_z` - the height an object was picked up at - is cleared in `reset()`, and the
