@@ -820,6 +820,14 @@ So success for this body is not one limit but a **path-dependent pocket**. What 
 a constant but a **designed loaded carry** (retract, turn, extend, and the height for each
 phase), judged by `tools/grab_grid.py`.
 
+**And the wedge room cannot be rescued by room design - that is measured.** In the geometry
+where the belt hands the block over at r=0.300, the spot where the grab works, the receptacle
+was moved over 25 positions (x 0.05-0.35, y -0.30 to +0.02) and **every one is 0**. Against
+that, `pick_and_place` picks at r=0.277 and only the destination 0.331 solves. So the pocket
+belongs to the **pair** (pick spot, destination), and the wedge room's hand-over point has no
+partner. R70 and R74 are therefore not "more geometry" but items to revisit once the loaded
+carry exists.
+
 #### The two sections below predate that correction
 
 #### What that "point" actually is: an equilibrium, not a joint limit (measured 2026-11-17)
