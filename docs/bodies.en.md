@@ -265,6 +265,17 @@ Not one line of `BodyAdapter` changed.
 | Mass | 0.645 kg | The model's `body_subtreemass` |
 | Gripper tracking | about 1 cm of error over a 10 cm move at mid radius | Measured by giving the command 2 seconds. Folded back toward the base it grows to 5 cm |
 
+**This body's rooms are not training tasks yet** (measured 2026-11-17, R78). Success here
+is "a part with `role: goal` is satisfied", and every shipped room makes its puzzle by
+putting a door in the way. That does not transfer to this body: everything behind a door is
+outside its 0.48 m ring, so the door is scenery and the goal in front of it is reachable
+from the start. `tabletop/pick_and_place` still succeeds **5/5** with its demo cut to a
+single `goto goal` step. The grab and the carry were measured - the scripted solver cannot
+skip a demo step, and before the holonomic fix it scored 0/20 - but the win condition was
+not. Gating the goal with `enable: box.ok` is not the fix (the solver then fails at the
+grab step), and no shipped room gates a goal at all, so that path is untested. What is
+needed is a goal part whose satisfaction *is* a channel.
+
 **The reach it declares is now used by `mpg check`** (R77). For a body whose base does not
 move - one that declares `reach_max` and no `walk` - every part the room's `demo:` says it
 must touch by hand has to lie inside the ring around its base. Outside it, the `body` stage

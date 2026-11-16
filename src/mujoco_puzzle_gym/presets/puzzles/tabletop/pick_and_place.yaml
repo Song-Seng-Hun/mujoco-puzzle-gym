@@ -14,6 +14,21 @@
 # inside the 0.48 m reach and clear of the fold near the base where tracking degrades. The
 # block is 3 cm and 20 g; the jaw's own footprint is 5 cm.
 #
+# **Known defect, measured 2026-11-17 (M5): winning this room does not require the block.**
+# Success in this environment is "a part with `role: goal` is satisfied", and every shipped
+# room makes its puzzle by putting a door in the way. That does not transfer to this body:
+# anything behind a door here is outside its 0.48 m ring, so the door at 0.42 m (0.72 m
+# from the base) is scenery and the goal in front of it is reachable from the start. With
+# the demo cut down to a single `goto goal` step the room still succeeded 5/5.
+#
+# What the 20/20 below did measure is the scripted solver, which works through the demo in
+# order and cannot skip a step: before the holonomic fix in `carry.steer` it could not
+# complete `grab block` and scored 0/20. So the grab and the carry are measured; the win
+# condition is not. Gating the goal with `enable: box.ok` was tried and is not a fix - the
+# solver then fails at the grab step (demo_step 0, the block never moves), and no shipped
+# room gates a goal, so the machinery is untested. A part whose `role` is goal and whose
+# satisfaction *is* a channel is the fix, and it is a requirement of its own.
+#
 # `box.ok` is the channel, not `box`: a receptacle writes `.ok`, `.count`, `.mass` and
 # `.wrong`, and reading the bare name is rejected by the `channels` stage.
 name: table_pick
