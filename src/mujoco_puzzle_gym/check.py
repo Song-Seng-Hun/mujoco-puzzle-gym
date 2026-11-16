@@ -87,15 +87,83 @@ OVERLAP_DEPTH = 0.005    # [m] penetration that counts as an overlap
 SNAP_DIR = Path("runs/check")
 
 
+def solution_touches(env: PuzzleEnv) -> list[str]:
+    """Part names the room's `demo:` says the body itself has to reach.
+
+    Every element of a demo tuple that names a part, which needs no table of verbs: the
+    other elements are numbers (`wait 2`, `turn lever 0.5`), a cause (`break x peck`) or
+    a coordinate (`herd npc 1 0`). A part nothing in the demo names is one the body never
+    has to touch - a door is opened by a signal, not by hand - and must not be required
+    to be within reach.
+    """
+    seen: dict[str, None] = {}
+    for entry in list(getattr(env.room, "demo", []) or []):
+        for word in entry[1:]:
+            if isinstance(word, str) and word in env.parts:
+                seen.setdefault(word, None)
+    return list(seen)
+
+
+def check_reach(env: PuzzleEnv) -> dict[str, Any]:
+    """Static: a body whose base cannot move must reach what the solution touches (R77).
+
+    Only for a body that declares a `reach_max` *and* no `walk`: its reach ring is fixed
+    around its spawn, so a part outside the ring can never be touched however the policy
+    behaves. A walking body carries its ring with it and nothing is checked.
+
+    This closes a hole, not a theory: the arm declared `reach_max` and `reach_min` from
+    its measured envelope and nothing in the package read either, so a tabletop room with
+    a target at 0.6 m passed every static stage and only failed the scripted solver -
+    with the uninformative "the solver did not reach the goal" rather than "that is
+    outside what this body can touch". M4's design said the planner grid would mask the
+    cells outside the ring; it never did.
+
+    The nominal layout is checked, as the other static stages do; `random:` offsets are
+    the `resample` stage's business. The envelope's *sector* is not checked here (the arm
+    reaches 220 degrees, not a full annulus) because no body declares one yet, so a part
+    inside the ring but behind the base still passes this stage.
+    """
+    caps = env.body.capabilities
+    far, near = caps.limit("reach_max"), caps.limit("reach_min")
+    if far <= 0.0 or "walk" in caps.names:
+        return {"ok": True, "checked": False}
+    base = np.asarray(env.room.spawn_pos, dtype=float)[:2]
+    out: dict[str, float] = {}
+    for name in solution_touches(env):
+        part = env.parts[name]
+        xy = np.asarray(getattr(part, "base_xy", base), dtype=float)[:2]
+        d = float(np.linalg.norm(xy - base))
+        if not (near - 1e-9) <= d <= (far + 1e-9):
+            out[name] = round(d, 3)
+    res: dict[str, Any] = {"ok": not out, "checked": True,
+                           "reach": [round(near, 3), round(far, 3)],
+                           "touches": solution_touches(env)}
+    if out:
+        res["out_of_reach"] = out
+        res["reason"] = "; ".join(
+            f"the solution touches {n!r} at {d} m from the body's base, outside its "
+            f"reach [{round(near, 3)}, {round(far, 3)}] m" for n, d in out.items())
+    return res
+
+
 def check_body(env: PuzzleEnv) -> dict[str, Any]:
-    """Static: parts whose `requires_body` names a capability the body lacks (R2b)."""
+    """Static: parts whose `requires_body` names a capability the body lacks (R2b), and
+    for a body that cannot move, whether the solution stays inside its reach (R77)."""
     caps = env.body.capabilities
     missing = {n: m for n, p in env.parts.items() if (m := caps.missing(p.requires_body))}
-    res: dict[str, Any] = {"ok": not missing, "capabilities": sorted(caps.names)}
+    reach = check_reach(env)
+    res: dict[str, Any] = {"ok": not missing and reach["ok"],
+                           "capabilities": sorted(caps.names)}
+    if reach.get("checked"):
+        res["reach"] = reach
+    reasons = [f"part {n!r} needs body capabilities {m} the body lacks"
+               for n, m in missing.items()]
     if missing:
         res["missing"] = missing
-        res["reason"] = "; ".join(f"part {n!r} needs body capabilities {m} the body lacks"
-                                  for n, m in missing.items())
+    if not reach["ok"]:
+        reasons.append(reach["reason"])
+    if reasons:
+        res["reason"] = "; ".join(reasons)
     return res
 
 

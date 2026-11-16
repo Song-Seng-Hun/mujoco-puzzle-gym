@@ -234,3 +234,66 @@ def test_the_jaw_is_the_grab_site(scene):
     body, model, data = scene
     name = body.grab_site()
     assert name and model.site(name).id == body._site
+
+
+# ---- R77: the reach the body declares is what the room is checked against -------------
+def _room(tmp_path, goal_x, name="far"):
+    import yaml
+
+    path = tmp_path / f"{name}.yaml"
+    path.write_text(yaml.safe_dump(
+        {"name": name, "size": [1.6, 1.0], "wall": {"thickness": 0.02, "height": 0.1},
+         "spawn": {"pos": [-0.3, 0.0], "yaw": 0.0},
+         "parts": [{"name": "goal", "type": "goal", "pos": [goal_x, 0.0], "radius": 0.06}],
+         "demo": ["goto goal"]}))
+    return path
+
+
+def _body_stage(path, body):
+    import warnings
+
+    from mujoco_puzzle_gym.check import check_body
+    from mujoco_puzzle_gym.env import PuzzleEnv
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        env = PuzzleEnv(task={"room": str(path), "body": body})
+    try:
+        return check_body(env)
+    finally:
+        env.close()
+
+
+def test_a_target_outside_the_envelope_is_refused_by_name(tmp_path, so101_asset_dir):
+    """The hole this closes: `reach_max` and `reach_min` were declared from the measured
+    envelope and nothing read either, so a room with an unreachable target passed every
+    static stage and failed only the scripted solver - as "the solver did not reach the
+    goal", which does not say the body could never have."""
+    res = _body_stage(_room(tmp_path, 0.3), "so101")        # 0.6 m from the base
+    assert not res["ok"]
+    assert "'goal' at 0.6 m" in res["reason"] and "[0.0, 0.48]" in res["reason"]
+
+
+def test_a_target_inside_it_passes(tmp_path, so101_asset_dir):
+    res = _body_stage(_room(tmp_path, 0.1, "near"), "so101")  # 0.4 m from the base
+    assert res["ok"], res
+    assert res["reach"]["touches"] == ["goal"]
+
+
+def test_a_part_the_solution_never_touches_is_not_required_to_be_in_reach(so101_asset_dir):
+    """`puzzles/tabletop/pick_and_place` puts its door 0.72 m from the base, well outside
+    the 0.48 m envelope, and solves 20/20: a door is opened by a signal, not by hand. A
+    stage that checked every part would refuse a room that demonstrably works."""
+    from mujoco_puzzle_gym import catalog
+
+    res = _body_stage(catalog.PRESET_ROOT / "puzzles/tabletop/pick_and_place.yaml", "so101")
+    assert res["ok"], res
+    assert "door" not in res["reach"]["touches"]
+    assert set(res["reach"]["touches"]) == {"block", "box", "goal"}
+
+
+def test_a_walking_body_is_not_checked_against_a_fixed_ring(tmp_path, asset_dir):
+    """A walking body carries its reach with it, so the stage does not run: the ring is
+    only fixed for a body that declares no `walk`."""
+    res = _body_stage(_room(tmp_path, 0.3), "microduck")
+    assert res["ok"] and "reach" not in res

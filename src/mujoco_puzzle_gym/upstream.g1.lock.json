@@ -28,6 +28,13 @@
       "sha256": "106adfe8ad759da081d4eaef3a34fc28d6c4c99f3c7f4a385decbac402a51489"
     },
     {
+      "path": "humanoid/g1_with_hands.xml",
+      "source": "github",
+      "remote": "unitree_g1/g1_with_hands.xml",
+      "size": 34372,
+      "sha256": "a6d88c9efde50e9715c71e590ce1a8d3515a0099df7f36e62add8204dae758ad"
+    },
+    {
       "path": "humanoid/scene.xml",
       "source": "github",
       "remote": "unitree_g1/scene.xml",
@@ -414,4 +421,3 @@
     }
   ]
 }
-

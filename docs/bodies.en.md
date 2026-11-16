@@ -264,6 +264,21 @@ Not one line of `BodyAdapter` changed.
 | Mass | 0.645 kg | The model's `body_subtreemass` |
 | Gripper tracking | about 1 cm of error over a 10 cm move at mid radius | Measured by giving the command 2 seconds. Folded back toward the base it grows to 5 cm |
 
+**The reach it declares is now used by `mpg check`** (R77). For a body whose base does not
+move - one that declares `reach_max` and no `walk` - every part the room's `demo:` says it
+must touch by hand has to lie inside the ring around its base. Outside it, the `body` stage
+refuses with the distance and the range: `the solution touches 'goal' at 0.6 m from the
+body's base, outside its reach [0.0, 0.48] m`. Before this, nothing in the package read
+`reach_max` or `reach_min`, so a room with a target at 0.6 m passed every static stage and
+failed only the scripted solver - and "the solver did not reach the goal" does not say the
+body never could.
+
+A part the `demo:` does not name is not checked. The door in `tabletop/pick_and_place` sits
+0.72 m from the base, outside the envelope, and that room solves 20/20, because a door is
+opened by a signal rather than by hand: a stage that checked every part would refuse a room
+that demonstrably works. The envelope's **sector is not checked yet**: a part inside the
+ring but behind the base (the dead wedge) still passes, because no body declares a sector.
+
 The four ways this body behaves differently are exposed, not hidden.
 
 - **The base is fixed.** With no free joint, `reset` cannot move the body to the room's start
