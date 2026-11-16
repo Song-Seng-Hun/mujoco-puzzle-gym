@@ -113,6 +113,18 @@ class BodyAdapter(ABC):
     #: were tried (always stand, a heading-error threshold, target closer than the arc, and
     #: the Dubins reachability condition) and each one broke the other body's rooms.
     stand_to_turn_above: float = math.inf
+    #: True when this body can move in any direction without turning first, so steering it
+    #: means picking a direction rather than a heading and a speed (R61).
+    #:
+    #: A walking body is not holonomic in this sense even though its command has a lateral
+    #: channel: it walks forward and turns, and the shared steering drives it that way. A
+    #: fixed-base arm is the opposite - measured on the arm in `bodies/so101.py`, the only
+    #: joint that changes where its gripper points is the shoulder pan, which is also the
+    #: joint that decides where the gripper *is*, so the jaw always faces radially outward
+    #: from the base and its heading cannot be commanded at all. Steering it with "turn to
+    #: face the target, then drive forward" can only ever drive radially outward; the
+    #: lateral channel is the only way to reach anything else.
+    holonomic: bool = False
 
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:

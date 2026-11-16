@@ -190,3 +190,47 @@ def test_cli_fetch_assets_rejects_an_unknown_body():
         capture_output=True, text=True)
     assert out.returncode != 0
     assert "invalid choice" in out.stderr and "go2" in out.stderr
+
+
+# ---- one upstream commit, two bodies (M4 R64) ----------------------------------------
+
+def test_no_two_locks_claim_the_same_cache_path_for_different_content():
+    """Two bodies pinned from the same upstream commit must not share a local path.
+
+    `cache_dir` keys the cache on the commit, so bodies from one commit land in one
+    directory, and a path like `robot/scene.xml` means a different file for each of them.
+    It happened: adding the arm, whose model is in the same Menagerie commit as the
+    quadruped's, overwrote the quadruped's `robot/scene.xml` and `robot/LICENSE` and then
+    renamed them `.bad` for failing the arm's hashes. The arm's paths are under `arm/` now,
+    and this is the check that keeps the next body from repeating it.
+    """
+    from pathlib import Path
+
+    from mujoco_puzzle_gym.bodies import BODIES, lock_for
+
+    claims: dict[tuple[str, str], tuple[str, str]] = {}     # (cache key, path) -> (body, sha)
+    for body in BODIES:
+        path = lock_for(body)
+        lock = json.loads(Path(path).read_text()) if path else json.loads(
+            (Path(assets.__file__).parent / "upstream.lock.json").read_text())
+        key = lock["sources"]["github"]["commit"]
+        for entry in lock["files"]:
+            seen = claims.get((key, entry["path"]))
+            assert seen is None or seen[1] == entry["sha256"], (
+                f"{body} and {seen[0]} both write {entry['path']!r} into the cache for "
+                f"commit {key[:7]}, with different content")
+            claims[(key, entry["path"])] = (body, entry["sha256"])
+
+
+def test_a_lock_may_pin_a_model_without_a_policy():
+    """`fetch` used to read both a github and a huggingface source unconditionally, which
+    is the shape of a body that pins a model *and* a policy. A body whose control needs no
+    policy pins a model alone, and the report built at the end raised a KeyError after
+    every file had already been verified."""
+    from mujoco_puzzle_gym.bodies.so101 import LOCK
+
+    lock = json.loads(LOCK.read_text())
+    assert set(lock["sources"]) == {"github"}
+    result = assets.fetch(LOCK)
+    assert result["verified"] is True
+    assert set(result["source"]) == {"github"}

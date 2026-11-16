@@ -487,6 +487,17 @@ class ScriptedSolver:
             if np.isfinite(field[iy, ix]):
                 aim = target_xy
         d = aim - s.pos[:2]
+        if env.body.holonomic:
+            # This body goes where it is told without turning first, and its heading is not
+            # a channel at all (`BodyAdapter.holonomic`). Steering it is picking a
+            # direction: the unit vector to the aim point, rotated into the body's frame
+            # because the command is read there.
+            n = float(np.hypot(*d))
+            if n < 1e-9:
+                return np.zeros(3, dtype=np.float32)
+            c, si = math.cos(-s.yaw), math.sin(-s.yaw)
+            return np.array([(c * d[0] - si * d[1]) / n, (si * d[0] + c * d[1]) / n, 0.0],
+                            dtype=np.float32)
         err = math.atan2(d[1], d[0]) - s.yaw
         err = (err + math.pi) % (2 * math.pi) - math.pi
         turn = float(np.clip(TURN_GAIN * err, -1.0, 1.0))

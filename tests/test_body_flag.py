@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from mujoco_puzzle_gym.bodies import BODIES, DEFAULT_BODY, resolve
+from mujoco_puzzle_gym.bodies import BODIES, DEFAULT_BODY, make_body, resolve
 from mujoco_puzzle_gym.task import TaskError, load_task
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,22 +92,32 @@ def test_build_differs_between_bodies(asset_dir, go2_asset_dir, tmp_path):
 
 
 @pytest.mark.parametrize("body", list(BODIES))
-def test_check_answers_for_that_body(body, asset_dir, go2_asset_dir):
+def test_check_answers_for_that_body(body, asset_dir, go2_asset_dir, so101_asset_dir):
+    """The flag decides which body every stage answers for, and the answer is allowed to
+    be "this body cannot". The example room has a floor switch, which needs walking, so a
+    body with no legs is refused by name - that is the capability gate working, not a
+    failure of `--body`."""
     out = run("check", "--json", "--body", body, ROOM, "--static")
-    assert out.returncode == 0, out.stderr
     result = json.loads(out.stdout)
     assert body_of(result) == body
-    assert result["body"]["ok"] is True
+    walks = "walk" in make_body(body).capabilities.names
+    assert result["body"]["ok"] is walks, result["body"]
+    assert out.returncode == (0 if walks else 1)
+    if not walks:
+        assert "walk" in result["body"]["reason"]
 
 
-def test_check_capability_sets_are_the_bodies_own(asset_dir, go2_asset_dir):
-    """The gate is not decoration: the two bodies really report different capabilities."""
+def test_capability_sets_are_each_bodys_own(asset_dir, go2_asset_dir, so101_asset_dir):
+    """The gate is not decoration: no two bodies report the same capabilities, and only
+    the ones with legs declare `walk`."""
     caps = {}
     for body in BODIES:
         out = run("check", "--json", "--body", body, ROOM, "--static")
-        caps[body] = set(json.loads(out.stdout)["body"]["capabilities"])
-    assert caps[DEFAULT_BODY] != caps[OTHER]
-    assert all("walk" in c for c in caps.values())
+        caps[body] = frozenset(json.loads(out.stdout)["body"]["capabilities"])
+    assert len(set(caps.values())) == len(BODIES), caps
+    walkers = {b for b, c in caps.items() if "walk" in c}
+    assert walkers == {b for b in BODIES if "walk" in make_body(b).capabilities.names}
+    assert walkers and walkers != set(BODIES)
 
 
 # --- a finished run: checked, not applied ---------------------------------------------

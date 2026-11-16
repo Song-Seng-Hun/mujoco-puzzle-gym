@@ -39,16 +39,27 @@ def test_the_readme_says_it_too(doc):
     assert READMES[doc] in (ROOT / doc).read_text(), doc
 
 
+#: Words that mean "the walking policy" in each language. The word "official" may be used
+#: about other things - that no official reach figure is published, for instance - so the
+#: rule is scoped to lines that are about a policy.
+POLICY_WORDS = {"docs/bodies.md": ("\uc815\ucc45",),
+                "docs/bodies.en.md": ("policy", "checkpoint"),
+                "docs/bodies.ja.md": ("\u30dd\u30ea\u30b7\u30fc", "\u30c1\u30a7\u30c3\u30af\u30dd\u30a4\u30f3\u30c8")}
+
+
 @pytest.mark.parametrize("doc", list(LANGS))
-def test_official_is_only_ever_used_to_deny_it(doc):
-    """Every line that uses the word at all must be one of the denials above. A line that
-    says the policy *is* official fails here, whichever way it is phrased."""
+def test_official_is_never_used_about_that_policy(doc):
+    """A line that says the policy *is* official fails here, whichever way it is phrased.
+
+    Scoped to lines about a policy on purpose: the same word is needed elsewhere to say
+    that no official reach figure is published for the arm, and a test that forbade the
+    word outright would have made that sentence unwriteable instead of catching a claim.
+    """
     text, (denial, word) = (ROOT / doc).read_text(), LANGS[doc]
     stray = [line.strip() for line in text.splitlines()
-             if word in line and denial not in line]
-    # The first body's policy really is the published one from its own repository, so a
-    # line about that body may use the word: it names that repository's own file.
-    stray = [line for line in stray if "velstand" not in line]
+             if word in line and denial not in line
+             and any(w in line for w in POLICY_WORDS[doc])
+             and "velstand" not in line]
     assert not stray, f"{doc}: {stray}"
 
 

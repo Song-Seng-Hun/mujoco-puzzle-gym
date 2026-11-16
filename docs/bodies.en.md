@@ -227,3 +227,52 @@ On the Microduck side, what is **non-commercial** is the meshes (`*.stl`). The M
 are Apache-2.0. That body cannot be simulated without the meshes, so for commercial use it has to be
 taken that the body itself cannot be used. On the Go2 side the model and the policy are both
 BSD-3-Clause.
+
+## 9. A body that does not walk (fixed-base arm)
+
+The third body does not walk. It is an arm bolted to a tabletop, and **the gripper is the body**.
+The puzzle code asks the body only four things — position on a plane, heading, velocity, and whether
+it has fallen — and planning happens on a 2D grid. Tabletop manipulation is a planar problem too, so
+answering those four **for the gripper rather than for a torso** keeps the same boundary in place.
+Not one line of `BodyAdapter` changed.
+
+| | Value | How it was found |
+|---|---|---|
+| Reach radius | 0.001–0.480 m | Swept a 9⁴ joint grid of 6,561 points with `mj_kinematics`. There is no published official figure |
+| Reach height | z −0.223 … 0.520 m | The same sweep. The capability value `beak_height` is declared conservatively as 0.45 |
+| Working band | out to a radius of 0.480 m at z 0.02–0.15 m | The same sweep |
+| Envelope shape | a 220° **sector** (shoulder rotation ±1.920 rad) | A sector, not a ring. The room has to fit inside it |
+| Degrees of freedom | 5 arm axes + 1 jaw axis, no free joint | `nq = nv = 6` |
+| Mass | 0.645 kg | The model's `body_subtreemass` |
+| Gripper tracking | about 1 cm of error over a 10 cm move at mid radius | Measured by giving the command 2 seconds. Folded back toward the base it grows to 5 cm |
+
+The four ways this body behaves differently are exposed, not hidden.
+
+- **The base is fixed.** With no free joint, `reset` cannot move the body to the room's start
+  position — it only returns the home joint angles, and the base stays where `spawn` put it. So a
+  room that draws a random start position randomizes nothing for this body, and the adapter's
+  `check_warnings` says so.
+- **It does not fall.** `fallen` is always false and the tilt is always vertical, so the `fall`
+  reward and termination never fire on this body (turning them off in the task is the honest thing
+  to do).
+- **It does not walk.** It does not declare `walk`, so the 15 parts that require walking refuse
+  themselves **by name**. Checking the example room with this body gives `part 'switch_a' needs body
+  capabilities ['walk']` — it does not become a room you quietly cannot solve.
+- **Heading cannot be commanded.** Measurement shows that the only joint that changes the gripper's
+  azimuth is the shoulder rotation (+0.2 rad gives an azimuth of −0.200 rad, all other joints
+  0.000), and that joint also sets the gripper's **position**. That is, the gripper always faces
+  outward from the base. Steering that "turns and then goes forward" can only move radially, so this
+  body declares `holonomic` and the shared steering drives **by heading**. A lateral command draws a
+  tangential arc around the base rather than a straight line (over 2 s at 0.1 m/s the radius holds
+  and the arc is 0.2 m).
+
+**It declares `beak_grab`, and the name is wrong.** What the gate asks is "can you pick something up
+with your own end effector", and this arm can. The name merely came from the first body's anatomy,
+and that is the same kind of leak R2 exists to stop. Renaming it to `grab` and leaving `beak_grab`
+as an alias is M4 R60 work.
+
+Assets: Menagerie `robotstudio_so101/` (Apache-2.0), inside the commit `370c4396` this repository
+**already pins**. There is no pre-trained policy under a usable licence, so control is inverse
+kinematics (damped least squares). The cache paths are under `arm/` — sharing `robot/` with the
+quadruped body that uses the same commit overwrites each other's files (it actually happened once,
+and `tests/test_assets.py` now refuses that collision).

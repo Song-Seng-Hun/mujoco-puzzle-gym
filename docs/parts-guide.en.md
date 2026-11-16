@@ -603,6 +603,16 @@ A `dispenser` is a cabinet that hands out one item each time its signal turns on
   | 2 | 0.70 N | 1.04 N | 0.43–0.51 N | 20/20 | 0/20 |
 - Known limits: the knot ring height 0.16 m is a chosen value; Open question 8 (the R31 height) is still open. Relay (R34) hitches do not exist yet. A snapped rope stays unusable until reset. A spring kicking the body does not untie the rope. `drop_and_go`'s cart (0.12 m) is not wider than the door: the narrowest wall gap the solver walks through is about 0.40 m (0.40 m passes, 0.36 m does not; 3 seeds each), wider than the largest cube with its handles (0.33 m), so the zone and its door make the untie necessary instead. `overload`'s margin is narrow (empty cart M at most 0.19 N, rope 0.3 N, two cubes M at least 0.43 N); unloading only one cube snaps half the time (10/20). After the delivery the rope stays tied on the way to the goal and can snap at the door (not a failure: `on_snap` default `none`). If the beak loses a cube on the way, the `drop` step still ends as if placed (a solver limit). The `drag` step aims along a straight line: keep the way from the towed thing through the target straight.
 
+## Rooms for a body that does not walk
+
+`puzzles/tabletop/` holds rooms for a body with no legs: an arm bolted to a table. The directory is named for what it requires, not for a body (which body plays it is said by the task file beside it, `examples/task_reach_target.yaml`). What that body can do, and why, is in [bodies and parts](bodies.en.md).
+
+| Preset | What it is | Numbers |
+|---|---|---|
+| `puzzles/tabletop/reach_target` | A 1.0 x 0.8 m table. Put the end effector on the target | Task `examples/task_reach_target.yaml` (10 s, `fall` termination off). 20/20 (0.6 s) |
+
+What this room proves is not a puzzle but the **boundary**: the grid planner, the steering, the scripted solution and the capability gate drive a body with no legs without a line of them changing. The dimensions come from the measured envelope - 0.48 m of reach over a 220-degree sector, so the **whole room has to sit inside that sector**, and the fold near the base, where tracking error grows from 1 cm to 5 cm, is kept clear of the target. There is no randomization: the body is bolted to the table, so a spawn draw would change nothing, and the adapter says so as a warning.
+
 ## Rooms for a large body
 
 `puzzles/wide/` holds rooms whose dimensions were set for a body with a large footprint (each one a whole room with its `demo:`, checked over 20 `mpg check` seeds). The rooms do not name a body: a room carries dimensions, and which body plays it is decided by `body:` in the task file next to it, `examples/task_wide_*.yaml` (or on the command line, `mpg check <preset> --body <name>`). Which part works with which body is in [bodies and parts](bodies.en.md).
@@ -1686,6 +1696,7 @@ Role `switch`, update stage `input`.
 - `puzzles/roller/roll_delivery`
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
+- `puzzles/tabletop/reach_target`
 - `puzzles/tow/chain_dropoff`
 - `puzzles/tow/cleat_hold`
 - `puzzles/tow/drop_and_go`

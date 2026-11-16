@@ -20,6 +20,14 @@ def go2_asset_dir():
 
 
 @pytest.fixture(scope="session")
+def so101_asset_dir():
+    """The verified arm asset cache (R40, its own lock); downloads only when missing."""
+    from mujoco_puzzle_gym.bodies.so101 import LOCK
+
+    return assets.fetch(LOCK)["cache_dir"]
+
+
+@pytest.fixture(scope="session")
 def repo_root():
     from pathlib import Path
     return Path(__file__).resolve().parents[1]

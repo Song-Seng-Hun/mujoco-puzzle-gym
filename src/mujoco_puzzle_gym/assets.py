@@ -132,17 +132,20 @@ def fetch(lock_path: Path | None = None, root: Path | None = None) -> dict[str, 
         if bad:
             raise AssetError(f"downloaded file SHA256 mismatch, saved as .bad: {bad}")
 
-    gh, hf = lock["sources"]["github"], lock["sources"]["huggingface"]
+    # Only the sources this lock declares. It used to read both github and huggingface
+    # unconditionally, which is the shape of a body that pins a model and a policy; a body
+    # whose control needs no policy pins a model alone and used to fail here with a
+    # KeyError after every file had already been verified.
+    tree = {"github": lambda s: f"https://github.com/{s['repo']}/tree/{s['commit']}",
+            "huggingface": lambda s: f"https://huggingface.co/{s['repo']}/tree/{s['revision']}"}
     return {
         "verified": True,
         "downloaded": len(missing),
         "files": len(entries),
         "bytes": sum(e["size"] for e in entries),
         "cache_dir": str(base),
-        "source": {
-            "github": f"https://github.com/{gh['repo']}/tree/{gh['commit']}",
-            "huggingface": f"https://huggingface.co/{hf['repo']}/tree/{hf['revision']}",
-        },
+        "source": {kind: tree[kind](src) for kind, src in lock["sources"].items()
+                   if kind in tree},
         "license": lock["license"],
     }
 

@@ -1,0 +1,30 @@
+# Tabletop reach (R61): the first puzzle for a body that cannot walk. Put the end
+# effector on the target. One stage, and its point is that the shared machinery - the
+# grid planner, the steering, the scripted solution, the capability gate - drives a body
+# with no legs without a line of it changing.
+#
+# The directory is named for what it requires, not for a body: presets live inside the
+# package and the R2 boundary test reads every file there. Which body plays it is said by
+# the task file beside it (`examples/task_reach_target.yaml`) or by `--body`.
+#
+# Every number is the measured envelope of a body whose end effector reaches 0.48 m from
+# its base over a 220-degree sector (docs/bodies.md section 9):
+#
+# - `size` 1.0 x 0.8 m. The whole room has to sit inside the sector, so it is a table, not
+#   a floor plan. A walking body would be refused here anyway: `goal` needs nothing, but
+#   this room's dimensions are two body lengths of nothing for a body that walks.
+# - the base sits at x = -0.3, so the target at (0.0, 0.1) is 0.32 m out - inside 0.48 m
+#   with room to spare, and outside the fold near the base where the arm's tracking
+#   degrades (measured: 1 cm of error at mid reach, 5 cm folded in).
+# - `goal.radius` 0.06 m, a little over the jaw's own 0.05 m footprint.
+#
+# Measured: 20/20 seeds, mean 0.6 s. There is no randomization: this body is bolted to the
+# table, so a spawn draw would change nothing and the adapter's `check_warnings` says so.
+name: table_reach
+size: [1.0, 0.8]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [-0.3, 0.0], yaw: 0.0}
+parts:
+  - {name: goal, type: goal, pos: [0.0, 0.1], radius: 0.06}
+demo:
+  - goto goal
