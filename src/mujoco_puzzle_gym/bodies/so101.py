@@ -72,9 +72,20 @@ REACH_MAX = 0.48
 REACH_MIN = 0.0
 #: Shoulder pan range [rad], so the envelope is a sector of +/-110 degrees, not an annulus.
 PAN_LIMIT = 1.92
-#: Highest z the gripper site reaches is 0.520 m; declared conservatively (the asking
-#: direction: a wall plate above this is refused, and `button.check_static` reads it).
-REACH_HEIGHT = 0.45
+#: The height a part may sit at and still be worked by this body [m] - which is the height
+#: the gripper can be *driven* to, not the highest the joints reach.
+#:
+#: Those are different numbers and the first version declared the wrong one. The joint
+#: sweep reaches z 0.520 m, so 0.45 was declared; but the shared command is `(vx, vy, wz)`
+#: and has no vertical axis, and `step` holds the gripper at `WORK_Z` through `Z_GAIN`.
+#: Driven to every command limit for 4 s the gripper site stays within z 0.111-0.122 m
+#: (forward, lateral and wrist alike); the only excursion is a full-reverse command folding
+#: the arm in against the base, which lifts the jaw to 0.316 m on the way and is a fold,
+#: not a height anyone can aim at. So 0.45 would have admitted a wall plate at 0.40 m that
+#: this body can never touch - the body-side version of the declaration lies the M4 audit
+#: found on the part side. Declared at the work height, which is what the control holds;
+#: `tests/test_so101.py` measures it and fails if the two drift apart.
+REACH_HEIGHT = WORK_Z
 
 
 class So101Adapter(BodyAdapter):

@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from mujoco_puzzle_gym.bodies import BODIES, flat_floor_spec, make_body
-from mujoco_puzzle_gym.bodies.so101 import HOME, PAN_LIMIT, REACH_MAX, So101Adapter
+from mujoco_puzzle_gym.bodies.so101 import HOME, PAN_LIMIT, REACH_MAX, WORK_Z, So101Adapter
 
 ROOM = {
     "name": "table_touch",
@@ -85,7 +85,7 @@ def test_it_declares_what_it_can_do_and_not_walking(arm):
     # effector", and this arm can.
     assert caps.names == frozenset({"grab"})
     assert caps.limit("reach_max") == pytest.approx(REACH_MAX)
-    assert caps.limit("reach_height") == pytest.approx(0.45)
+    assert caps.limit("reach_height") == pytest.approx(WORK_Z)
 
 
 def test_a_forward_command_moves_the_gripper_outward(scene):
@@ -297,3 +297,26 @@ def test_a_walking_body_is_not_checked_against_a_fixed_ring(tmp_path, asset_dir)
     only fixed for a body that declares no `walk`."""
     res = _body_stage(_room(tmp_path, 0.3), "microduck")
     assert res["ok"] and "reach" not in res
+
+
+def test_the_declared_reach_height_is_one_the_control_can_hold(scene):
+    """What a part may sit at is the height the gripper can be *driven* to, not the
+    highest the joints reach.
+
+    The first version declared 0.45 m from the joint sweep (which reaches 0.520 m) while
+    the shared command has no vertical axis and `step` holds the gripper at `WORK_Z`: a
+    wall plate at 0.40 m would have passed `button.check_static` for a body that can never
+    touch it. Driven to each command limit here, the site stays within a few millimetres
+    of the work height, and `reach_height` is declared as that.
+    """
+    body, model, data = scene
+    site = model.site(body.grab_site()).id
+    for cmd in ((0.15, 0.0, 0.0), (0.0, 0.15, 0.0), (0.0, 0.0, 1.0)):
+        body.reset(data)
+        zs = []
+        for _ in range(int(4.0 / body.control_dt)):
+            body.step(data, cmd)
+            zs.append(float(data.site_xpos[site][2]))
+        assert max(zs) <= WORK_Z + 0.01, (cmd, max(zs))
+        assert min(zs) >= WORK_Z - 0.02, (cmd, min(zs))
+    assert body.capabilities.limit("reach_height") == pytest.approx(WORK_Z)

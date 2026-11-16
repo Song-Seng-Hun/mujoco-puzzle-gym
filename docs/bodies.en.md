@@ -257,7 +257,8 @@ Not one line of `BodyAdapter` changed.
 | | Value | How it was found |
 |---|---|---|
 | Reach radius | 0.001–0.480 m | Swept a 9⁴ joint grid of 6,561 points with `mj_kinematics`. There is no published official figure |
-| Reach height | z −0.223 … 0.520 m | The same sweep. The capability value `reach_height` is declared conservatively as 0.45 |
+| Reach height (kinematic) | z −0.223 … 0.520 m | The same sweep |
+| Reach height (**controlled**) | z 0.111–0.122 m | Measured by driving each command limit for 4 s. The shared command `(vx, vy, wz)` has no vertical axis and `step` holds the gripper at `WORK_Z` 0.12 m, so the capability value `reach_height` is **0.12** - the 0.45 first declared was the kinematic figure and would have admitted a wall button at 0.40 m |
 | Working band | out to a radius of 0.480 m at z 0.02–0.15 m | The same sweep |
 | Envelope shape | a 220° **sector** (shoulder rotation ±1.920 rad) | A sector, not a ring. The room has to fit inside it |
 | Degrees of freedom | 5 arm axes + 1 jaw axis, no free joint | `nq = nv = 6` |

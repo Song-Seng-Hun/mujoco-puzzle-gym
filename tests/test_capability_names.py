@@ -140,7 +140,7 @@ def test_the_old_name_still_works(all_asset_dirs):
         assert caps.missing(["grab"]) == []
     assert walker.missing(["beak_grab"]) == ["beak_grab"]  # reported as the caller wrote it
     assert duck.limit("beak_height") == duck.limit("reach_height") == 0.21
-    assert arm.limit("beak_height") == arm.limit("reach_height") == 0.45
+    assert arm.limit("beak_height") == arm.limit("reach_height") == 0.12
 
 
 def test_a_body_declaring_only_the_old_name_is_read_as_the_new_one():
