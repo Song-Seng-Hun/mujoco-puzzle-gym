@@ -111,6 +111,7 @@ class Carrier:
         self._settle = 0
         self._stuck = 0
         self._at = None              # where `_let_go` let the object go
+        self._pick_z = None          # tip height this object was picked up at (`_let_go`)
 
     # ---- walking ---------------------------------------------------------------------
     def _stand(self) -> np.ndarray:
@@ -218,6 +219,9 @@ class Carrier:
             self._handle = self._pick_handle(cube)
         pts = cube.handle_points(env.data)
         h = pts[self._handle]
+        #: The height the tip takes to hold this object where it lay. Put down at the same
+        #: height, the object is set down rather than dropped (`_let_go`).
+        self._pick_z = float(h[2])
         n = h[:2] - cube.pos(env.data)[:2]
         n = n / max(float(np.linalg.norm(n)), 1e-9)
         return self._close_in(h[:2] + n * APPROACH, h)
@@ -305,6 +309,15 @@ class Carrier:
         rest = self._settle > SETTLE * env.hz or (not obj.parked and self._settle > 2      # consumed: let the
                                                   and np.linalg.norm(obj.vel(env.data)) < REST_SPEED)  # body settle
         if self.phase == "still":
+            # Put it down rather than drop it. The tip goes to where the object would rest
+            # on the floor it is being placed on, which a beak already nearly is - its
+            # grab point rides at the height it picked the object up from - and which a
+            # fixed arm is not: measured, the jaw holds a block 0.115 m up, inside the
+            # box's footprint, and opening there drops it in from 0.1 m so it bounces out
+            # and lands 0.08 m away. `_hold_tip_at` is a no-op for a body whose task has
+            # no `head` channel, so nothing changes for a room that never had one.
+            if self._pick_z is not None:
+                self._hold_tip_at(self._pick_z)
             if rest:
                 self.phase, self._settle = "drop", 0
             return self._stand()
