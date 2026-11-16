@@ -144,6 +144,8 @@ class ScriptedSolver:
         self.carrier.head = self.carrier.grab = -1.0
         self.carrier.wall = None
         self.step_i = 0                    # current `demo:` entry
+        #: `demo:` sub-goals that ended without their effect (`_unfinished`).
+        self.demo_unfinished: list[str] = []
         self._wait = 0                     # env steps left in a `wait`
         self._worked = None                # grid-answer device / look target the carrier works
         self.taken: dict[str, object] = {}     # dispenser -> copy its last `take` handed out
@@ -178,6 +180,36 @@ class ScriptedSolver:
         move = self._move()
         return self.env.scripted_action(move, c.head, c.grab, 1.0 if self._crouch else -1.0)
 
+    #: Postconditions for the demo sub-goals that have lied (R78). A sub-goal ends when
+    #: its act returns None, which is meant to mean "done" - and for `grab` and `place` it
+    #: has meant "I gave up" instead, because the carrier's own stuck counter walks it off
+    #: and the next step starts as if the object had been moved. Three claims measured on
+    #: this project came from exactly that: a room reported 20/20 while the block never
+    #: moved, the same room's `place` never put anything in its box, and both read as
+    #: success because a timeout looks like progress. So the effect is checked where the
+    #: step ends, and `mpg check` fails on it rather than reporting a clean run.
+    #:
+    #: Only the two verbs that have been caught: a postcondition guessed for the other
+    #: nineteen would be a rule nobody measured, and a wrong one fails honest rooms.
+    def _unfinished(self, entry: tuple) -> str | None:
+        cmd = entry[0]
+        if cmd == "grab":
+            obj = self._object(entry[1])
+            if self.carrier.held() is not obj:
+                return f"`grab {entry[1]}` ended without holding it"
+        elif cmd in ("place", "drop"):
+            part = self.env.parts.get(entry[2]) if len(entry) > 2 else None
+            inside = getattr(part, "inside", None)
+            # *This* object is in that part - not "the part is satisfied", which was the
+            # first version of this check and was wrong: `puzzles/tow/overload` drops two
+            # crates into one dump, so after the first `drop` the dump is legitimately not
+            # satisfied yet and the sub-goal had done its job. The slow suite caught it on
+            # the guard's first full run, which is the argument for running guards over
+            # every shipped room before trusting them.
+            if inside is not None and entry[1] not in inside:
+                return f"`{cmd} {entry[1]} {entry[2]}` ended with it not in {entry[2]!r}"
+        return None
+
     def _move(self) -> np.ndarray:
         act = self.carrier.off_wall()
         if act is not None:
@@ -186,6 +218,8 @@ class ScriptedSolver:
             act = self._demo_act(self.demo[self.step_i])
             if act is not None:
                 return act
+            if (why := self._unfinished(self.demo[self.step_i])) is not None:
+                self.demo_unfinished.append(why)
             self.step_i += 1
             self.pusher.reset()
             self.herder.reset()
@@ -849,4 +883,5 @@ def run_episode(env, seed: int, solver: ScriptedSolver | None = None) -> dict:
     return {"seed": seed, "success": bool(info.get("success")), "fallen": bool(info.get("fallen")),
             "nan": bool(info.get("nan")), "steps": steps, "seconds": steps / env.hz,
             "stage": info.get("stage"), "target": info.get("target"),
-            "demo_step": solver.step_i if solver.demo else None, "snaps": snaps}
+            "demo_step": solver.step_i if solver.demo else None, "snaps": snaps,
+            "demo_unfinished": list(solver.demo_unfinished)}

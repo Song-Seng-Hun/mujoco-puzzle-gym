@@ -67,3 +67,57 @@ def test_switch_in_wall_fails_solver_only(asset_dir, repo_root):
     code, res = mpg_check(repo_root / IN_WALL)
     assert code != 0 and res["failed"] == ["solver"], res
     assert res["solver"]["successes"] < 18
+
+
+# ---- R78: a sub-goal that ends without its effect fails the stage --------------------
+def test_an_unfinished_subgoal_is_named(tmp_path, so101_asset_dir):
+    """The predicate itself. A `demo:` sub-goal ends when its act returns None, which is
+    meant to mean "done" - and `grab` and `place` return None when they give up too,
+    because the carrier's stuck counter walks it off and the next step starts as if the
+    object had moved. Three false claims on this project came from that, so the effect is
+    checked where the step ends.
+
+    Tested as a unit rather than through an episode on purpose: the failure it guards
+    against is no longer reachable in the arm's rooms (that was the bug, and it is fixed),
+    and a room crafted to fake it either fails for an ordinary reason or stops advancing.
+    """
+    import warnings
+
+    import yaml
+
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+
+    room = tmp_path / "unfinished.yaml"
+    room.write_text(yaml.safe_dump(
+        {"name": "unfinished", "size": [1.2, 1.0], "wall": {"thickness": 0.02, "height": 0.1},
+         "spawn": {"pos": [-0.3, 0.0], "yaw": 0.0},
+         "parts": [
+             {"name": "block", "type": "cube", "pos": [-0.05, -0.12], "size": 0.03, "mass": 0.02},
+             {"name": "box", "type": "receptacle", "pos": [0.0, 0.14], "size": [0.12, 0.12],
+              "accept": ["block"]},
+             {"name": "goal", "type": "goal", "pos": [0.05, -0.25], "radius": 0.05}],
+         "demo": ["grab block", "place block box", "goto goal"]}))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        env = PuzzleEnv(task={"room": str(room), "body": "so101",
+                              "actions": ["move", "head", "grab"],
+                              "env": {"hz": 10, "episode_seconds": 40}})
+    try:
+        env.reset(seed=0)
+        solver = ScriptedSolver(env)
+        solver.reset()
+        # nothing held, nothing in the box: both sub-goals would be lying if they ended now
+        why = solver._unfinished(("grab", "block"))
+        assert why and "grab block" in why and "without holding" in why
+        why = solver._unfinished(("place", "block", "box"))
+        assert why and "place block box" in why and "not in 'box'" in why
+        # the box reports what is physically in it, so putting the name there clears it
+        env.parts["box"].inside.append("block")
+        assert solver._unfinished(("place", "block", "box")) is None
+        # a verb with no postcondition is never reported: guessing one for the other
+        # nineteen would be a rule nobody measured
+        assert solver._unfinished(("goto", "goal")) is None
+        assert solver.demo_unfinished == []
+    finally:
+        env.close()

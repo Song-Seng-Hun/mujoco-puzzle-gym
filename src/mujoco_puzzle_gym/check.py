@@ -386,9 +386,22 @@ def check_solver(env: PuzzleEnv, seeds: int = 20, need: int = 18,
     keys = ("seed", "fallen", "nan", "target", "seconds") + (("demo_step",) if solver.demo else ())
     failures = [{k: e[k] for k in keys} for e in episodes if not e["success"]]
     times = [e["seconds"] for e in episodes if e["success"]]
-    res = {"ok": wins >= need, "successes": wins, "seeds": seeds, "need": need,
+    # A sub-goal that ended without its effect fails the stage even when the episode
+    # succeeded (R78): three measured claims on this project came from a demo step that
+    # gave up and a goal that happened to be reachable anyway, and every one of them read
+    # as a clean 20/20. A timeout must not look like progress.
+    unfinished: dict[str, int] = {}
+    for e in episodes:
+        for why in e.get("demo_unfinished", ()):
+            unfinished[why] = unfinished.get(why, 0) + 1
+    res = {"ok": wins >= need and not unfinished,
+           "successes": wins, "seeds": seeds, "need": need,
            "mean_success_seconds": round(float(np.mean(times)), 2) if times else None,
            "failures": failures}
+    if unfinished:
+        res["demo_unfinished"] = unfinished
+        res["reason"] = "; ".join(f"{why} (in {n} of {seeds} episodes)"
+                                  for why, n in sorted(unfinished.items()))
     snaps: dict = {}
     for e in sorted(episodes, key=lambda e: not e["success"]):      # successful first
         for flag, snap in e["snaps"].items():
