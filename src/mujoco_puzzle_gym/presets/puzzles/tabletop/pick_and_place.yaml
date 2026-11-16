@@ -21,6 +21,12 @@
 # from the base) is scenery and the goal in front of it is reachable from the start. With
 # the demo cut down to a single `goto goal` step the room still succeeded 5/5.
 #
+# **And the block never reaches the box**: measured, `box.ok` is 0 at the end of every
+# episode and the block sits (-0.05, -0.26) m from the box centre - where it started. The
+# demo's `place` step finishes on its own criterion (the gripper is over the box and the jaw
+# opens), and that criterion is not "it went in". So this room measures grabbing and
+# carrying, and nothing about putting down.
+#
 # What the 20/20 below did measure is the scripted solver, which works through the demo in
 # order and cannot skip a step: before the holonomic fix in `carry.steer` it could not
 # complete `grab block` and scored 0/20. So the grab and the carry are measured; the win
