@@ -666,4 +666,9 @@ belt's end (radius 0.25 m, azimuth 0) and **the arm picks it up**. The wedge is 
 belt's end rather than in the receptacle (block ends at (0.252, -0.023), box at
 (0.22, 0.12)). And **R78's guard catches exactly that, by name** - `` `place block box`
 ended with it not in 'box' ``, in 3 of 3 seeds. That is the guard's first catch outside the
-case it was written for. Fixing that place is next, and until then this room is not shipped.
+case it was written for. Fixing that place is next, and until then this room is not shipped. Narrowed further: **the
+hold is lost during the place** - at k=56, with the block still on the belt at
+(0.065, 0.004), 0.194 m from the box, while the phase is `approach`. The belt is **not** the
+cause: `conveyor` goes through `candidates()`, which skips objects the body holds, the same
+convention the sensing parts follow. So the next measurement is "why does the weld let go
+while approaching".
