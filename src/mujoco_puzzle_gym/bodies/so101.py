@@ -1,0 +1,328 @@
+"""A fixed-base arm as a `BodyAdapter` (M4 R61): the gripper is the body.
+
+The puzzle side of this project asks a body four things - where it is on the plane, which
+way it faces, how fast it is going, and whether it has fallen - and it plans on a 2D grid.
+Tabletop manipulation is a plane problem too. So this adapter answers those four questions
+about the **gripper** rather than about a trunk, and the planar command `(vx, vy, wz)`
+becomes the gripper's velocity across the table plus its wrist rotation. Nothing in
+`BodyAdapter` had to change, and the M3 judgement that an arm would need a separate base
+class was wrong.
+
+What differs from a walking body, and is handled here rather than hidden:
+
+- **The base is bolted down.** The model has no free joint (`nq == nv == 6`), so `reset`
+  cannot move the arm to an episode's spawn pose: it restores the home joint angles and
+  leaves the base where `spawn` put it. A room that randomizes its spawn therefore
+  randomizes nothing for this body; `check_warnings` says so rather than leaving the user
+  to wonder why the layout never changes.
+- **It cannot fall.** `fallen` is always False and the tilt is always upright, so the
+  `fall` reward and termination never fire for it.
+- **It cannot walk.** `walk` is not declared, so the 15 built-in parts that need walking
+  refuse themselves by name through the capability gate (R2b) instead of silently
+  producing an unsolvable room.
+- **`beak_grab` is declared, and the name is wrong.** The gate's question is "can this
+  body pick an object up with its own end effector", which this arm can; the name is
+  anatomy borrowed from the first body, which is the same kind of leak R2 exists to stop.
+  Renaming it to `grab` (keeping `beak_grab` as an alias the first body also declares) is
+  M4 R60 work. Declaring it here is the honest answer to the question the gate asks.
+
+Measured on the pinned model (2026-11-16, `mj_kinematics` over a 9^4 joint sweep, 6,561
+samples): the gripper site reaches 0.001-0.480 m from the base and z -0.223 to 0.520 m,
+and within the tabletop band z 0.02-0.15 m it covers radius up to 0.480 m. The shoulder
+pan range is +/-1.920 rad, so the envelope is a 220-degree sector, not a full annulus.
+No official reach or payload figure is published for this arm, so these are the numbers
+this project uses (R64).
+"""
+
+from __future__ import annotations
+
+import math
+from pathlib import Path
+from typing import Any, Sequence
+
+import mujoco
+import numpy as np
+
+from .base import BodyAdapter, BodyState, Capabilities, Pose, SubstepFn
+
+#: This body's pinned assets (R40): the Menagerie model, no policy. Its paths live under
+#: `arm/`, not `robot/`: this body and the quadruped are pinned from the same upstream
+#: commit and the asset cache is keyed by that commit, so body-agnostic paths overwrite
+#: each other's files. That happened once during this build; `tests/test_assets.py` now
+#: refuses the collision.
+LOCK = Path(__file__).resolve().parents[1] / "upstream.so101.lock.json"
+PREFIX = "so101/"
+ROBOT_XML = "arm/so101.xml"
+TIMESTEP = 0.005
+CONTROL_DT = 0.02
+#: Arm joints in model order; `gripper` is the jaw and is driven separately.
+ARM_JOINTS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll")
+JAW_JOINT = "gripper"
+SITE = "gripperframe"
+#: Home joint angles for the five arm joints, chosen by the sweep above to put the gripper
+#: in front of the base at (0.215, 0.000, 0.122) m.
+HOME = (0.0, -0.873, 0.563, 1.382, 0.0)
+#: Gripper height held by the z term while a planar command runs [m].
+WORK_Z = 0.12
+Z_GAIN = 12.0           # [1/s] P gain pulling the gripper back to `WORK_Z`
+IK_GAIN = 8.0           # [1/s] how hard the solve chases the aim point
+DAMPING = 0.05          # damped-least-squares lambda for the inverse kinematics
+#: Measured envelope (see the module docstring).
+REACH_MAX = 0.48
+REACH_MIN = 0.0
+#: Shoulder pan range [rad], so the envelope is a sector of +/-110 degrees, not an annulus.
+PAN_LIMIT = 1.92
+#: Highest z the gripper site reaches is 0.520 m; declared conservatively (the asking
+#: direction: a wall plate above this is refused, and `button.check_static` reads it).
+REACH_HEIGHT = 0.45
+
+
+class So101Adapter(BodyAdapter):
+    """The SO-101 arm, driven by inverse kinematics on its position actuators."""
+
+    control_dt = CONTROL_DT
+    timestep = TIMESTEP
+    #: The gripper's own girth, not an arm span: this is the clearance the planner inflates
+    #: walls by, and what moves through a gap is the jaw.
+    footprint_radius = 0.05
+    #: It is bolted to the table; nothing about it falls.
+    fall_height = 0.0
+    #: It does not turn by driving, so it never needs a standing turn (R47).
+    stand_to_turn_above = math.inf
+    #: Measured: the shoulder pan is the only joint that changes where the jaw points, and
+    #: it is also the joint that decides where the jaw is, so the gripper always faces
+    #: radially outward from the base and its heading cannot be commanded (+0.2 rad of pan
+    #: turns the jaw -0.200 rad; every other joint turns it 0.000). The shared steering
+    #: drives it by direction instead of by heading (R61).
+    holonomic = True
+    #: The gripper's planar speed [m/s] and wrist rate [rad/s]. Chosen so one control step
+    #: moves the gripper at most 3 mm, which the damped least-squares solve tracks without
+    #: the arm snapping; `tests/test_so101.py` measures the tracking error.
+    cmd_limits = ((-0.15, 0.15), (-0.15, 0.15), (-1.0, 1.0))
+    capabilities = Capabilities(
+        names=frozenset({"reach", "gripper", "beak_grab"}),
+        values={"max_lift_mass": 0.1, "reach_max": REACH_MAX, "reach_min": REACH_MIN,
+                "beak_height": REACH_HEIGHT, "walk_speed": 0.0,
+                "max_step": 0.0, "max_slope": 0.0},
+    )
+
+    def __init__(self, asset_dir: Path | None = None):
+        from .. import assets
+
+        base = Path(asset_dir) if asset_dir else Path(assets.fetch(LOCK)["cache_dir"])
+        self.robot_xml = base / ROBOT_XML
+        if not self.robot_xml.is_file():
+            raise FileNotFoundError(f"{self.robot_xml} missing; run `mpg fetch-assets --body so101`")
+        self._data: mujoco.MjData | None = None
+        self._base_pose: Pose = (0.0, 0.0, 0.0)
+        self._aim = np.zeros(3)            # the aim point `step` drives (world frame)
+        self.jaw_target = 0.0
+
+    # ---- scene -------------------------------------------------------------
+
+    def robot_spec(self) -> mujoco.MjSpec:
+        return mujoco.MjSpec.from_file(str(self.robot_xml))
+
+    def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:
+        """Bolt the arm's base to the world at `pose`. Unlike a walking body this is the
+        only time its position is decided: `reset` cannot move it afterwards."""
+        x, y, yaw = pose
+        self._base_pose = (float(x), float(y), float(yaw))
+        frame = spec.worldbody.add_frame(
+            pos=[x, y, 0.0], quat=[np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2)])
+        robot = self.robot_spec()
+        # Scene options do not come along with `attach`, and this model ships its own:
+        # an implicit integrator, an elliptic friction cone and a high impratio, which are
+        # what hold a grasped object instead of letting it slide out of the jaw. Set them
+        # on the parent *before* attaching, or `attach` reports a conflict, keeps the
+        # parent's defaults, and the user sees a warning for values we then fix anyway.
+        spec.option.timestep = TIMESTEP
+        spec.option.integrator = robot.option.integrator
+        spec.option.cone = robot.option.cone
+        spec.option.impratio = robot.option.impratio
+        spec.option.iterations = robot.option.iterations
+        spec.option.ls_iterations = robot.option.ls_iterations
+        spec.attach(robot, frame=frame, prefix=PREFIX)
+        return spec
+
+    # ---- runtime -----------------------------------------------------------
+
+    def _bind(self, data: mujoco.MjData) -> None:
+        model = data.model
+        self._data = data
+        self._qpos = np.array([model.jnt_qposadr[model.joint(PREFIX + n).id] for n in ARM_JOINTS])
+        self._qvel = np.array([model.jnt_dofadr[model.joint(PREFIX + n).id] for n in ARM_JOINTS])
+        self._ctrl = np.array([model.actuator(PREFIX + n).id for n in ARM_JOINTS])
+        self._jaw_q = int(model.jnt_qposadr[model.joint(PREFIX + JAW_JOINT).id])
+        self._jaw_ctrl = int(model.actuator(PREFIX + JAW_JOINT).id)
+        self._site = int(model.site(PREFIX + SITE).id)
+        self._base_body = int(model.body(PREFIX + "base").id)
+        self._range = model.jnt_range[[model.joint(PREFIX + n).id for n in ARM_JOINTS]]
+
+    def reset(self, data: mujoco.MjData, pose: Pose = (0.0, 0.0, 0.0)) -> None:
+        """Restore the home pose. **`pose` is ignored**: the base is welded to the world
+        where `spawn` put it, so an episode cannot place this body somewhere else."""
+        if self._data is not data:
+            self._bind(data)
+        data.qpos[self._qpos] = HOME
+        data.qvel[self._qvel] = 0.0
+        data.ctrl[self._ctrl] = HOME
+        data.qpos[self._jaw_q] = 0.0
+        data.ctrl[self._jaw_ctrl] = 0.0
+        self.jaw_target = 0.0
+        mujoco.mj_forward(data.model, data)
+        self._aim = self._clamp(np.array(data.site_xpos[self._site], dtype=float))
+
+    def _clamp(self, aim: np.ndarray) -> np.ndarray:
+        """Hold an aim point inside the measured envelope, in the base's own frame."""
+        bx, by, byaw = self._base_pose
+        d = np.array([aim[0] - bx, aim[1] - by])
+        r = float(np.hypot(*d))
+        if r > REACH_MAX:
+            d *= REACH_MAX / r
+        ang = math.atan2(d[1], d[0]) - byaw
+        ang = (ang + math.pi) % (2 * math.pi) - math.pi
+        if abs(ang) > PAN_LIMIT:                  # outside the sector: slide along its edge
+            edge = math.copysign(PAN_LIMIT, ang) + byaw
+            d = np.hypot(*d) * np.array([math.cos(edge), math.sin(edge)])
+        return np.array([bx + d[0], by + d[1], WORK_Z])
+
+    def step(self, data: mujoco.MjData, cmd: Sequence[float],
+             on_substep: SubstepFn | None = None) -> None:
+        """Move the gripper across the table at `cmd` for one control period.
+
+        The command drives a **moving aim point**, not the joint targets directly: the aim
+        advances by `cmd * control_dt` and the arm solves towards wherever it now is. The
+        first version integrated joint targets from the measured angles instead, which
+        accumulated the position actuators' lag - a 0.1 m/s command for 2 s travelled
+        0.243 m with 0.036 m of sideways drift, and the gripper sagged 18 mm. Tracking a
+        setpoint has no such integral error, and clamping the aim to the measured envelope
+        is what keeps the solve away from the edge where the Jacobian loses rank.
+        """
+        if self._data is not data:
+            self._bind(data)
+        model = data.model
+        vx, vy, wz = self.clip_cmd(cmd)
+        # The command is in the body's own frame, and here the body is the gripper: `vx` is
+        # along the way the jaw faces, `vy` across it. The first version advanced the aim
+        # in world coordinates, which happens to agree at the home pose (yaw 0) and
+        # disagrees everywhere else - and the shared steering turns to face a target before
+        # driving at it, so world coordinates would have sent the arm sideways.
+        yaw = self.state(data).yaw
+        c, s = math.cos(yaw), math.sin(yaw)
+        step_xy = np.array([c * vx - s * vy, s * vx + c * vy, 0.0]) * self.control_dt
+        self._aim = self._clamp(self._aim + step_xy)
+        steps = max(1, round(self.control_dt / model.opt.timestep))
+        for _ in range(steps):
+            jacp = np.zeros((3, model.nv))
+            mujoco.mj_jacSite(model, data, jacp, None, self._site)
+            err = self._aim - data.site_xpos[self._site]
+            err[2] *= Z_GAIN / IK_GAIN         # hold the working height a little harder
+            j = jacp[:, self._qvel]
+            # Damped least squares: J^T (J J^T + lambda^2 I)^-1 e. The damping is what
+            # keeps the solve finite near the envelope's edge, where the Jacobian loses
+            # rank and an undamped pseudo-inverse would ask for an enormous joint rate.
+            dq = j.T @ np.linalg.solve(j @ j.T + DAMPING ** 2 * np.eye(3), err * IK_GAIN)
+            dq[4] += wz            # the wrist roll spins the jaw about its own axis
+            target = data.qpos[self._qpos] + dq * model.opt.timestep
+            data.ctrl[self._ctrl] = np.clip(target, self._range[:, 0], self._range[:, 1])
+            data.ctrl[self._jaw_ctrl] = self.jaw_target
+            mujoco.mj_step(model, data)
+            if on_substep is not None:
+                on_substep(model, data)
+
+    def state(self, data: mujoco.MjData, floor_z: float = 0.0) -> BodyState:
+        """Where the gripper is, which way it faces, and how fast it is moving.
+
+        `fallen` is always False and the gravity vector is always upright: a bolted arm
+        has no posture to lose, so the fall reward and termination never fire for it.
+        """
+        if self._data is not data:
+            self._bind(data)
+        model = data.model
+        pos = np.array(data.site_xpos[self._site], dtype=float)
+        rot = data.site_xmat[self._site].reshape(3, 3)
+        yaw = math.atan2(rot[1, 0], rot[0, 0])
+        jacp = np.zeros((3, model.nv))
+        mujoco.mj_jacSite(model, data, jacp, None, self._site)
+        vel = jacp @ data.qvel
+        c, s = math.cos(-yaw), math.sin(-yaw)
+        lin = np.array([c * vel[0] - s * vel[1], s * vel[0] + c * vel[1], vel[2]])
+        return BodyState(pos=pos, yaw=yaw, lin_vel=lin,
+                         ang_vel=np.zeros(3), gravity=np.array([0.0, 0.0, -1.0]),
+                         fallen=False)
+
+    def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:
+        """Put the gripper at `pose` by solving for it, since the base cannot move.
+
+        Warps (R14) are the only caller, and a tabletop room has none; it is implemented
+        so that a room which does use one gets the arm's nearest honest answer rather than
+        a silent no-op. The solve is iterated Jacobian steps, not an analytic inverse, so
+        a target outside the measured envelope lands as close as the arm reaches.
+        """
+        if self._data is not data:
+            self._bind(data)
+        model = data.model
+        target = np.array([pose[0], pose[1], max(z + WORK_Z, WORK_Z)])
+        for _ in range(200):
+            mujoco.mj_kinematics(model, data)
+            jacp = np.zeros((3, model.nv))
+            mujoco.mj_jacSite(model, data, jacp, None, self._site)
+            err = target - data.site_xpos[self._site]
+            if np.linalg.norm(err) < 1e-4:
+                break
+            j = jacp[:, self._qvel]
+            dq = j.T @ np.linalg.solve(j @ j.T + DAMPING ** 2 * np.eye(3), err)
+            data.qpos[self._qpos] = np.clip(data.qpos[self._qpos] + dq,
+                                            self._range[:, 0], self._range[:, 1])
+        data.qvel[self._qvel] = 0.0
+        data.ctrl[self._ctrl] = data.qpos[self._qpos]
+        mujoco.mj_forward(model, data)
+        self._aim = self._clamp(np.array(data.site_xpos[self._site], dtype=float))
+
+    def grab_site(self) -> str:
+        """The jaw's own site: what the weld grab (R18) attaches an object to.
+
+        The same site `state` reports as the body's position, because for this body the
+        end effector *is* the body. A walking body's grab site is its beak tip, out in
+        front of a trunk that the puzzle tracks separately.
+        """
+        return PREFIX + SITE
+
+    def root_body_id(self, model: mujoco.MjModel) -> int:
+        """The arm's base body.
+
+        Caution for callers that compare `model.body_rootid`: every body welded to the
+        world has rootid 0, so this body cannot be told from the room's static parts that
+        way. Sensing that needs "is this the body" must use this id directly or the
+        gripper site. The walking bodies have a free joint and so a root of their own,
+        which is why the existing sensing code reads rootid.
+        """
+        return int(model.body(PREFIX + "base").id)
+
+    def command_from_action(self, action: Sequence[float]) -> np.ndarray:
+        """Action to command. Unlike a walking body the middle of the range is standing
+        still, because there is no gait to keep going: a gripper at rest is a gripper at
+        rest, and the solver's "slowest" command (`action[0] = -1`) is full speed
+        backwards rather than a stop."""
+        a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        return np.array([a[0] * self.cmd_limits[0][1], a[1] * self.cmd_limits[1][1],
+                         a[2] * self.cmd_limits[2][1]])
+
+    #: `wz` rolls the jaw about its own approach axis. It does not change where the jaw
+    #: points across the table (measured: 0.000 rad of azimuth for 0.2 rad of roll), so it
+    #: is not a steering channel - see `holonomic`.
+
+    def check_warnings(self, env) -> list[str]:
+        """A room that randomizes its spawn randomizes nothing for a bolted body."""
+        spawn = (getattr(env.room, "spawn", None) or {})
+        if any(float(v) for v in (spawn.get("random") or [])):
+            return ["the body is bolted to the table, so the room's `spawn: random:` "
+                    "changes nothing for it; randomize the parts instead"]
+        return []
+
+    def history_state(self) -> dict[str, Any]:
+        return {"jaw_target": float(self.jaw_target), "base_pose": list(self._base_pose)}
+
+    def load_history(self, data: mujoco.MjData, state: dict[str, Any]) -> None:
+        self.jaw_target = float(state.get("jaw_target", 0.0))

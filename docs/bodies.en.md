@@ -227,3 +227,107 @@ On the Microduck side, what is **non-commercial** is the meshes (`*.stl`). The M
 are Apache-2.0. That body cannot be simulated without the meshes, so for commercial use it has to be
 taken that the body itself cannot be used. On the Go2 side the model and the policy are both
 BSD-3-Clause.
+
+## 9. A body that does not walk (fixed-base arm)
+
+The third body does not walk. It is an arm bolted to a tabletop, and **the gripper is the body**.
+The puzzle code asks the body only four things — position on a plane, heading, velocity, and whether
+it has fallen — and planning happens on a 2D grid. Tabletop manipulation is a planar problem too, so
+answering those four **for the gripper rather than for a torso** keeps the same boundary in place.
+Not one line of `BodyAdapter` changed.
+
+| | Value | How it was found |
+|---|---|---|
+| Reach radius | 0.001–0.480 m | Swept a 9⁴ joint grid of 6,561 points with `mj_kinematics`. There is no published official figure |
+| Reach height | z −0.223 … 0.520 m | The same sweep. The capability value `beak_height` is declared conservatively as 0.45 |
+| Working band | out to a radius of 0.480 m at z 0.02–0.15 m | The same sweep |
+| Envelope shape | a 220° **sector** (shoulder rotation ±1.920 rad) | A sector, not a ring. The room has to fit inside it |
+| Degrees of freedom | 5 arm axes + 1 jaw axis, no free joint | `nq = nv = 6` |
+| Mass | 0.645 kg | The model's `body_subtreemass` |
+| Gripper tracking | about 1 cm of error over a 10 cm move at mid radius | Measured by giving the command 2 seconds. Folded back toward the base it grows to 5 cm |
+
+The four ways this body behaves differently are exposed, not hidden.
+
+- **The base is fixed.** With no free joint, `reset` cannot move the body to the room's start
+  position — it only returns the home joint angles, and the base stays where `spawn` put it. So a
+  room that draws a random start position randomizes nothing for this body, and the adapter's
+  `check_warnings` says so.
+- **It does not fall.** `fallen` is always false and the tilt is always vertical, so the `fall`
+  reward and termination never fire on this body (turning them off in the task is the honest thing
+  to do).
+- **It does not walk.** It does not declare `walk`, so the 15 parts that require walking refuse
+  themselves **by name**. Checking the example room with this body gives `part 'switch_a' needs body
+  capabilities ['walk']` — it does not become a room you quietly cannot solve.
+- **Heading cannot be commanded.** Measurement shows that the only joint that changes the gripper's
+  azimuth is the shoulder rotation (+0.2 rad gives an azimuth of −0.200 rad, all other joints
+  0.000), and that joint also sets the gripper's **position**. That is, the gripper always faces
+  outward from the base. Steering that "turns and then goes forward" can only move radially, so this
+  body declares `holonomic` and the shared steering drives **by heading**. A lateral command draws a
+  tangential arc around the base rather than a straight line (over 2 s at 0.1 m/s the radius holds
+  and the arc is 0.2 m).
+
+**It declares `beak_grab`, and the name is wrong.** What the gate asks is "can you pick something up
+with your own end effector", and this arm can. The name merely came from the first body's anatomy,
+and that is the same kind of leak R2 exists to stop. Renaming it to `grab` and leaving `beak_grab`
+as an alias is M4 R60 work.
+
+Assets: Menagerie `robotstudio_so101/` (Apache-2.0), inside the commit `370c4396` this repository
+**already pins**. There is no pre-trained policy under a usable licence, so control is inverse
+kinematics (damped least squares). The cache paths are under `arm/` — sharing `robot/` with the
+quadruped body that uses the same commit overwrites each other's files (it actually happened once,
+and `tests/test_assets.py` now refuses that collision).
+
+## 10. Humanoid (Unitree G1)
+
+The fourth body is a 29-joint humanoid that walks on two legs. The structure is the same as the
+quadruped body's — a pinned MJCF, a **frozen policy** that takes a velocity command `(vx, vy, wz)`,
+planar commands in and `BodyState` out. The three differences are written into the code rather than
+hidden.
+
+| | Value | How it was found |
+|---|---|---|
+| Mass | 33.34 kg | The model's `body_subtreemass` (agrees with the manufacturer's published figure of about 35 kg) |
+| Standing height | pelvis 0.79 m | The model's `stand` keyframe |
+| Footprint radius | 0.316 m → **declared 0.32** | The farthest distance in the standing pose, geom sizes included |
+| Walking speed | **0.455 m/s** at the command ceiling of 0.6 | A 6 s run. It follows about 3/4 of the command |
+| Lateral speed | 0.211 m/s at command 0.3 | The same method. It does not fall |
+| Turn on the spot | **0.44 rad/s** at command 0.5 (0.096 m of travel) | The same method |
+| Turning arc | 0.34 m at mid command, 1.03 m at the ceiling | Speed ÷ turn rate. The middle is small, so `stand_to_turn_above` is left at infinity (the default) |
+| `fall_height` | **0.45 m** | A lateral kick while walking: 1.0 m/s holds (low of 0.722 → back up to 0.766), 2.0 m/s falls (0.058–0.118, body-frame gravity +0.18) |
+| A 20 s run | 6.21 m, no falls | Command 0.4 |
+
+**The policy is for 12 leg joints and the model has 29.** The upstream observation puts 12 values
+into `obs[9:21] = d.qpos[7:]`, so that robot has exactly 12 joints — a legs-only model. This body
+feeds the policy the **12 leg joints** of the 29-joint model and holds the waist and both arms at
+the model's own standing pose. The policy has never seen arms, so whether it still walks is **a
+measurement, not an assumption**, and the table above is that measurement.
+
+**There is a gait clock in the observation.** The last two of the 47 values are the sin and cos of a
+phase with a 0.8 s period. The quadruped body's policy was trained without a phase, so this adapter
+runs the clock off simulation time, the way upstream does.
+
+**The checkpoint is TorchScript, not ONNX.** It is read with `torch.jit.load`.
+
+**It solves the existing large-body rooms unchanged.** `puzzles/wide/switch_door` 20/20 (18.29 s
+mean), `puzzles/wide/pit_detour` 20/20 (19.62 s mean), 0 falls in either, and **the episode length
+stays at the default 40 s**. The rooms were sized for a body with a footprint radius of 0.41 m and
+this body is 0.32 m, so every gap already fits. The mean time is shorter even though the speed is
+45 % of the quadruped's, because this body does not swing wide — it **walks sideways**.
+
+Two bugs of mine came before that conclusion. Neither was "code that assumes one body": both were
+**newly written by me**. ① Leaving `action[0] = -1` on the default linear mapping made it full-speed
+**reverse**, and the solution's "turn on the spot when a wall is ahead" value walked the body
+backwards for 13 s, out of the room and over (5/5). Following the repository convention,
+`command_from_action` is now overridden (the same thing the quadruped body did for the same reason
+in R44). ② The upper body was computed as "every actuator the policy does not use", and that is
+**the whole scene**, so this body overwrote the room's door actuator with its own pose every step. A
+door linked to a pressed button stayed closed to the end. Now it touches only actuators that carry
+its own prefix, and a test keeps it that way.
+
+Assets: the model is Menagerie `unitree_g1/` (BSD-3-Clause), inside the commit `370c4396` this
+repository **already pins**. The policy is `deploy/pre_train/g1/motion.pt` from
+`unitreerobotics/unitree_rl_gym` (BSD-3-Clause, 145,745 B). **This policy, too, is not an official
+Unitree release of a frozen policy** — it is the checkpoint that repository uploaded along with its
+deployment example. The cache path is `humanoid/`, and the observation order was copied from
+`deploy/deploy_mujoco/deploy_mujoco.py` at the pinned commit. The numbers (gains, default pose,
+scales) are read from `policies/g1.yaml` and not written twice in the code.

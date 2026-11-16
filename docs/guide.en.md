@@ -161,4 +161,6 @@ The puzzle code does not know which body is walking. `BodyAdapter` is the bounda
 
 The Microduck adapter runs the official walking policy `velstand.onnx` at 50 Hz with the motor model (BAM) from the official repository. Body names (joints, sites) are handled only inside `bodies/`. To add another body, implement these four methods and its command limits, register the new body name in `bodies.make_body()`, and set that name as `body:` in `task.yaml`.
 
+Four bodies are included today: two legs, four legs, a humanoid, and a fixed-base arm that does not walk. The last one uses `BodyAdapter` unchanged - the puzzle side reads a body as a point, a heading and a velocity on a plane, so answering those three about the **gripper** rather than a trunk is all it takes.
+
 Bodies differ in what they can do. An adapter declares its capabilities (`walk`, `beak_grab`, …) and numeric limits (step height, walking speed, …), a part states what it needs with `requires_body`, and the `body` stage of `mpg check` compares the two. **Which part works with which body, and the measurements behind each answer**, is in [bodies and parts](bodies.en.md).

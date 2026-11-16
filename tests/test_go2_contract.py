@@ -42,8 +42,8 @@ def deploy(body):
 def test_make_body_knows_go2(go2_asset_dir):
     assert "go2" in BODIES
     assert isinstance(make_body("go2"), Go2Adapter)
-    with pytest.raises(ValueError, match="unknown body 'g1'"):
-        make_body("g1")
+    with pytest.raises(ValueError, match="unknown body 'spot'"):
+        make_body("spot")
 
 
 def test_onnx_signature(body):

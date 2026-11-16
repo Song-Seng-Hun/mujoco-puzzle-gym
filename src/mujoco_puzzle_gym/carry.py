@@ -145,6 +145,19 @@ class Carrier:
     def steer(self, aim, forward: float) -> np.ndarray:
         s = self.env.body_state
         d = np.asarray(aim) - s.pos[:2]
+        if self.env.body.holonomic:
+            # A body that goes where it is told without turning first, and whose heading is
+            # not a channel (`BodyAdapter.holonomic`): `forward` is a speed, not a signed
+            # drive, so it scales a direction. Read as a walking body's action it would be
+            # the opposite - the slow approach here is `SLOW = -0.5`, which on a symmetric
+            # mapping is half speed *backwards*, and the arm drove away from the object it
+            # was told to pick up (0/5 seeds before this).
+            n = float(np.hypot(*d))
+            if n < 1e-9:
+                return np.zeros(3, dtype=np.float32)
+            c, si = math.cos(-s.yaw), math.sin(-s.yaw)
+            unit = np.array([c * d[0] - si * d[1], si * d[0] + c * d[1]]) / n
+            return np.array([*(unit * max(abs(forward), 0.25)), 0.0], dtype=np.float32)
         err = _wrap(math.atan2(d[1], d[0]) - s.yaw)
         if abs(err) < FACING:
             return np.array([forward, 0.0, float(np.clip(TURN_GAIN * err, -1.0, 1.0))], dtype=np.float32)
