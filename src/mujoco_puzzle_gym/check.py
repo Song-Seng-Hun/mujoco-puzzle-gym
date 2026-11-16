@@ -21,7 +21,7 @@ actions:   the task actions cover what the plan needs (R19): `grab` when an
            held by its knob (a `pull` sub-goal, a pull cord or grab lever in the
            order, R28), `head` when a wall button
            the plan presses sits wholly below the level beak tip (the body's
-           `beak_height`; a dispenser's wall plate counts when the plan takes
+           `reach_height`; a dispenser's wall plate counts when the plan takes
            from it: a `take` sub-goal, or its item for a receptacle in the
            order, R28); `crouch` for a `glide` sub-goal (R30); without them a policy
            can never do it. Checked after
@@ -87,15 +87,83 @@ OVERLAP_DEPTH = 0.005    # [m] penetration that counts as an overlap
 SNAP_DIR = Path("runs/check")
 
 
+def solution_touches(env: PuzzleEnv) -> list[str]:
+    """Part names the room's `demo:` says the body itself has to reach.
+
+    Every element of a demo tuple that names a part, which needs no table of verbs: the
+    other elements are numbers (`wait 2`, `turn lever 0.5`), a cause (`break x peck`) or
+    a coordinate (`herd npc 1 0`). A part nothing in the demo names is one the body never
+    has to touch - a door is opened by a signal, not by hand - and must not be required
+    to be within reach.
+    """
+    seen: dict[str, None] = {}
+    for entry in list(getattr(env.room, "demo", []) or []):
+        for word in entry[1:]:
+            if isinstance(word, str) and word in env.parts:
+                seen.setdefault(word, None)
+    return list(seen)
+
+
+def check_reach(env: PuzzleEnv) -> dict[str, Any]:
+    """Static: a body whose base cannot move must reach what the solution touches (R77).
+
+    Only for a body that declares a `reach_max` *and* no `walk`: its reach ring is fixed
+    around its spawn, so a part outside the ring can never be touched however the policy
+    behaves. A walking body carries its ring with it and nothing is checked.
+
+    This closes a hole, not a theory: the arm declared `reach_max` and `reach_min` from
+    its measured envelope and nothing in the package read either, so a tabletop room with
+    a target at 0.6 m passed every static stage and only failed the scripted solver -
+    with the uninformative "the solver did not reach the goal" rather than "that is
+    outside what this body can touch". M4's design said the planner grid would mask the
+    cells outside the ring; it never did.
+
+    The nominal layout is checked, as the other static stages do; `random:` offsets are
+    the `resample` stage's business. The envelope's *sector* is not checked here (the arm
+    reaches 220 degrees, not a full annulus) because no body declares one yet, so a part
+    inside the ring but behind the base still passes this stage.
+    """
+    caps = env.body.capabilities
+    far, near = caps.limit("reach_max"), caps.limit("reach_min")
+    if far <= 0.0 or "walk" in caps.names:
+        return {"ok": True, "checked": False}
+    base = np.asarray(env.room.spawn_pos, dtype=float)[:2]
+    out: dict[str, float] = {}
+    for name in solution_touches(env):
+        part = env.parts[name]
+        xy = np.asarray(getattr(part, "base_xy", base), dtype=float)[:2]
+        d = float(np.linalg.norm(xy - base))
+        if not (near - 1e-9) <= d <= (far + 1e-9):
+            out[name] = round(d, 3)
+    res: dict[str, Any] = {"ok": not out, "checked": True,
+                           "reach": [round(near, 3), round(far, 3)],
+                           "touches": solution_touches(env)}
+    if out:
+        res["out_of_reach"] = out
+        res["reason"] = "; ".join(
+            f"the solution touches {n!r} at {d} m from the body's base, outside its "
+            f"reach [{round(near, 3)}, {round(far, 3)}] m" for n, d in out.items())
+    return res
+
+
 def check_body(env: PuzzleEnv) -> dict[str, Any]:
-    """Static: parts whose `requires_body` names a capability the body lacks (R2b)."""
+    """Static: parts whose `requires_body` names a capability the body lacks (R2b), and
+    for a body that cannot move, whether the solution stays inside its reach (R77)."""
     caps = env.body.capabilities
     missing = {n: m for n, p in env.parts.items() if (m := caps.missing(p.requires_body))}
-    res: dict[str, Any] = {"ok": not missing, "capabilities": sorted(caps.names)}
+    reach = check_reach(env)
+    res: dict[str, Any] = {"ok": not missing and reach["ok"],
+                           "capabilities": sorted(caps.names)}
+    if reach.get("checked"):
+        res["reach"] = reach
+    reasons = [f"part {n!r} needs body capabilities {m} the body lacks"
+               for n, m in missing.items()]
     if missing:
         res["missing"] = missing
-        res["reason"] = "; ".join(f"part {n!r} needs body capabilities {m} the body lacks"
-                                  for n, m in missing.items())
+    if not reach["ok"]:
+        reasons.append(reach["reason"])
+    if reasons:
+        res["reason"] = "; ".join(reasons)
     return res
 
 
@@ -318,9 +386,38 @@ def check_solver(env: PuzzleEnv, seeds: int = 20, need: int = 18,
     keys = ("seed", "fallen", "nan", "target", "seconds") + (("demo_step",) if solver.demo else ())
     failures = [{k: e[k] for k in keys} for e in episodes if not e["success"]]
     times = [e["seconds"] for e in episodes if e["success"]]
-    res = {"ok": wins >= need, "successes": wins, "seeds": seeds, "need": need,
+    # A sub-goal that ended without its effect fails the stage even when the episode
+    # succeeded (R78): three measured claims on this project came from a demo step that
+    # gave up and a goal that happened to be reachable anyway, and every one of them read
+    # as a clean 20/20. A timeout must not look like progress.
+    unfinished: dict[str, int] = {}
+    for e in episodes:
+        for why in e.get("demo_unfinished", ()):
+            unfinished[why] = unfinished.get(why, 0) + 1
+    res = {"ok": wins >= need and not unfinished,
+           "successes": wins, "seeds": seeds, "need": need,
            "mean_success_seconds": round(float(np.mean(times)), 2) if times else None,
            "failures": failures}
+    if unfinished:
+        res["demo_unfinished"] = unfinished
+        res["reason"] = "; ".join(f"{why} (in {n} of {seeds} episodes)"
+                                  for why, n in sorted(unfinished.items()))
+    # Say when the seeds did not actually differ. Measured on this project: a room that
+    # draws nothing can still answer the seed - `examples/rooms/laundry.yaml` declares no
+    # `randomize:` and seed 1 of 5 fails where the others pass, twice over - while
+    # `puzzles/tabletop/pick_and_place` returns the identical outcome and the identical
+    # 27.9 s for every seed. So this is measured per room rather than inferred from the
+    # declaration: when every episode came out the same, `'successes': 20, 'seeds': 20` is
+    # one outcome repeated twenty times and not twenty trials, and it was read here as a
+    # trial count and reported as one ("20/20" for a solution that works at a single object
+    # position and fails a few millimetres away, `docs/bodies.md` section 9).
+    same = {(e["success"], e["seconds"]) for e in episodes}
+    if seeds > 1 and len(same) == 1:
+        res["distinct_outcomes"] = 1
+        res["note"] = (f"every one of these {seeds} seeds came out the same (success "
+                       f"{episodes[0]['success']}, {episodes[0]['seconds']} s), so the count "
+                       "is one outcome repeated, not a rate: vary the room with "
+                       "`randomize:` to measure how often it solves")
     snaps: dict = {}
     for e in sorted(episodes, key=lambda e: not e["success"]):      # successful first
         for flag, snap in e["snaps"].items():
@@ -334,6 +431,53 @@ def check_solver(env: PuzzleEnv, seeds: int = 20, need: int = 18,
             path.write_bytes(pickle.dumps(snap))
             res["checkpoints"][flag] = str(path)
     return res
+
+
+#: Episodes `check_jitter` runs, and how far it nudges, when `--jitter` is given with no
+#: millimetres of its own.
+JITTER_SEEDS = 10
+JITTER_MM = 10.0
+
+
+def check_jitter(env: PuzzleEnv, mm: float = JITTER_MM, seeds: int = JITTER_SEEDS) -> dict[str, Any]:
+    """How often the solution still works when what it picks up starts a few mm off (R79).
+
+    Informational: it fails nothing, because no room declares a bar for it. It exists
+    because the number it reports was missing when it was needed. `puzzles/tabletop/
+    pick_and_place` was reported here as "20/20" while every one of those seeds was the same
+    episode; swept by hand afterwards, the solution worked at 3 of 25 block positions over
+    80x80 mm, and at 9/10, 8/10, 6/10 and 3/10 for a block nudged +-2, +-5, +-10 and +-20 mm
+    (`docs/bodies.md` section 9). A room can now be asked that question instead of trusted.
+
+    Nudges the free objects the demo names (`solution_touches`), each by up to `mm` in x and
+    y from the episode's own generator, and runs the scripted solution. A room whose demo
+    names no movable object is skipped, since there would be nothing to move.
+    """
+    objects = [env.parts[n] for n in solution_touches(env)
+               if getattr(env.parts.get(n), "object_kind", None) is not None]
+    if not objects:
+        return {"ok": True, "skipped": "the demo names no object to nudge"}
+    m = float(mm) / 1000.0
+
+    def nudge(e, rng):
+        for part in objects:
+            bid = e.model.body(part.body_name).id
+            adr = int(e.model.jnt_qposadr[e.model.body_jntadr[bid]])
+            e.data.qpos[adr:adr + 2] += rng.uniform(-m, m, 2)
+        mujoco.mj_forward(e.model, e.data)
+
+    solver = ScriptedSolver(env)
+    episodes = [run_episode(env, s, solver, after_reset=nudge) for s in range(seeds)]
+    wins = sum(e["success"] for e in episodes)
+    unfinished: dict[str, int] = {}
+    for e in episodes:
+        for why in e.get("demo_unfinished", ()):
+            unfinished[why] = unfinished.get(why, 0) + 1
+    out: dict[str, Any] = {"ok": True, "mm": round(float(mm), 1), "seeds": seeds,
+                           "successes": wins, "nudged": [p.name for p in objects]}
+    if unfinished:
+        out["demo_unfinished"] = unfinished
+    return out
 
 
 def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
@@ -366,7 +510,7 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
         if bars:
             why.append(f"`glide` under {bars} needs the crouch but the task actions {env.actions} "
                        "have no `crouch`")
-    level = env.body.capabilities.values.get("beak_height")
+    level = env.body.capabilities.values.get("reach_height")
     if "head" not in env.actions and level is not None:
         pressed = set(order) | {e[1] for e in demo if e[0] in ("press", "take")}
         pressed |= {d.name for d in env.parts.values() if hasattr(d, "copies") and isinstance(d.copies[0], Grabbable)
@@ -412,7 +556,7 @@ def _summary(result: dict[str, Any]) -> None:
 def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
           need: int = 18, static_only: bool = False,
           snap_dir: str | Path | None = SNAP_DIR, community: bool = False,
-          body: str | None = None) -> dict[str, Any]:
+          body: str | None = None, jitter_mm: float | None = None) -> dict[str, Any]:
     """All stages; `static_only` stops after the static phase (no simulation);
     `community` adds the shared-room limits (community.py) and stops on a failure.
     `body` picks the body the room is checked with (`--body`, R49): every stage from the
@@ -457,6 +601,8 @@ def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
         failed = [k for k in STATIC if k in result and not result[k]["ok"]]
         if not failed:
             result["solver"] = check_solver(env, seeds, need, snap_dir)
+            if jitter_mm:
+                result["jitter"] = check_jitter(env, jitter_mm)
         else:
             why = {"order": "no solution order (a)", "body": "missing body capabilities",
                    "parts": "part static check", "resample": "a drawn room has no solution", "actions": "task actions miss what the plan needs"}.get(failed[0], f"static stage {failed[0]} failed")
@@ -465,3 +611,71 @@ def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
     result["wall_seconds"] = round(time.perf_counter() - t0, 1)
     env.close()
     return result
+
+#: What a body's attempt at a room came to, worst-to-best, and the stage that decided it.
+#: A room claimed to be for one body has to fail the others *for a reason*, and these are
+#: the reasons `mpg check` can tell apart.
+OUTCOMES = ("capability", "unreachable", "static", "unplannable", "actions", "solver", "pass")
+
+
+def _outcome(result: dict[str, Any]) -> tuple[str, str]:
+    """(outcome, one line of why) for one body's `check` result."""
+    body = result.get("body") or {}
+    if not body.get("ok", True):
+        reach = body.get("reach") or {}
+        if body.get("missing"):
+            names = sorted({c for m in body["missing"].values() for c in m})
+            return "capability", f"needs {names}"
+        if not reach.get("ok", True):
+            return "unreachable", reach.get("reason", "")
+        return "capability", body.get("reason", "")
+    # `actions` before `solver`: a task whose `actions:` lack what the plan needs makes the
+    # solver stage report zero successes, which reads as "this body cannot solve it" when the
+    # truth is that the *task* was wrong. Seen on the first run of this matrix over every
+    # room: `pick_and_place` without its own task file showed every body failing.
+    for stage, name in (("parts", "static"), ("order", "unplannable"), ("actions", "actions")):
+        if not result.get(stage, {}).get("ok", True):
+            return name, result[stage].get("reason", "")
+    solver = result.get("solver") or {}
+    if not solver.get("ok", True):
+        return "solver", (f"{solver.get('successes', 0)}/{solver.get('seeds', 0)} seeds"
+                          + (f", {solver['skipped']}" if solver.get("skipped") else ""))
+    for stage in STAGES:
+        if not result.get(stage, {}).get("ok", True):
+            return "static", f"stage {stage}: {result[stage].get('reason', '')}"
+    return "pass", f"{solver.get('successes', 0)}/{solver.get('seeds', 0)} seeds"
+
+
+def check_all_bodies(room: str | Path, task: str | Path | None = None, seeds: int = 20,
+                     need: int = 18, static_only: bool = False,
+                     snap_dir: str | Path | None = None) -> dict[str, Any]:
+    """Run `check` once per registered body and say what each one came to (R76).
+
+    A room written for one body is a claim about the other bodies too, and until this
+    existed that claim could not be checked: a capability the gate names is refused out
+    loud, but a body excluded by geometry - a gap narrower than its footprint, a target
+    outside its reach, a speed it cannot hold - only produces "the solver did not reach the
+    goal", which looks the same as a room that is simply hard. Every "only this body solves
+    it" in a preset comment was my word for it. Now it is a table, and `OUTCOMES` names the
+    stage that decided each cell, so a room's comment can be compared against what the
+    package actually does.
+
+    A body whose assets are not fetched yet is reported rather than raising: the matrix is
+    a diagnostic, and one missing download should not hide the rest of the row.
+    """
+    from .bodies import BODIES
+
+    rows: dict[str, Any] = {}
+    for name in BODIES:
+        try:
+            result = check(room, task=task, seeds=seeds, need=need, static_only=static_only,
+                           snap_dir=snap_dir, body=name)
+        except FileNotFoundError as exc:                 # assets for that body not fetched
+            rows[name] = {"outcome": "unavailable", "why": str(exc)}
+            continue
+        outcome, why = _outcome(result)
+        rows[name] = {"outcome": outcome, "why": why,
+                      "mean_seconds": (result.get("solver") or {}).get("mean_success_seconds")}
+    solved = [b for b, r in rows.items() if r["outcome"] == "pass"]
+    return {"room": Path(room).stem, "bodies": rows, "solved_by": solved,
+            "exclusive": len(solved) == 1}

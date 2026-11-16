@@ -36,6 +36,18 @@ def g1_asset_dir():
 
 
 @pytest.fixture(scope="session")
+def all_asset_dirs():
+    """Every registered body's verified assets, so a test may make all of them (R67).
+
+    Asks `lock_for` per body instead of naming the four fixtures above, so a fifth body
+    is covered the moment it is registered rather than when someone remembers this file.
+    """
+    from mujoco_puzzle_gym.bodies import BODIES, lock_for
+
+    return {b: assets.fetch(lock_for(b))["cache_dir"] for b in BODIES}
+
+
+@pytest.fixture(scope="session")
 def repo_root():
     from pathlib import Path
     return Path(__file__).resolve().parents[1]

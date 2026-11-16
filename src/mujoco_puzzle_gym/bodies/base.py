@@ -36,6 +36,20 @@ class BodyState:
 #: What a numeric limit means when the body never declared it: nothing, not everything.
 UNDECLARED_LIMIT = 0.0
 
+#: Capability names and limit keys renamed in R67, old name -> current one. The first
+#: body had a beak, so the vocabulary it created said `beak`: a jaw, a hand and a
+#: 29-joint humanoid all had to declare `beak_grab` to be allowed to pick anything up,
+#: which is the first body's anatomy leaking into shared vocabulary - the same leak R2
+#: exists to stop. Renaming would break every room, preset and plugin part written
+#: against the old names, so the old names keep working: a requested name and a declared
+#: limit key are both read through `canonical` before anything is compared.
+ALIASES = {"beak_grab": "grab", "beak_height": "reach_height"}
+
+
+def canonical(name: str) -> str:
+    """The current name for a capability or limit, whichever name the caller used."""
+    return ALIASES.get(name, name)
+
 
 def declared_limit(values: Mapping[str, float] | None, name: str) -> float:
     """A body's numeric capability limit, or `UNDECLARED_LIMIT` when it declares none.
@@ -48,24 +62,40 @@ def declared_limit(values: Mapping[str, float] | None, name: str) -> float:
     reason they can read. Flat ground is unaffected: the terrain checks block a step or
     ramp only when it is *greater* than the limit.
     """
-    try:
-        return float(values[name])                      # type: ignore[index]
-    except (KeyError, TypeError):
+    if values is None:
         return UNDECLARED_LIMIT
+    key = canonical(name)
+    for k in (key, *(old for old, new in ALIASES.items() if new == key)):
+        try:
+            return float(values[k])                     # type: ignore[index]
+        except (KeyError, TypeError):
+            continue
+    return UNDECLARED_LIMIT
 
 
 @dataclass(frozen=True)
 class Capabilities:
-    """What a body can do (R2b): capability names (e.g. `walk`, `beak_grab`) and
+    """What a body can do (R2b): capability names (e.g. `walk`, `grab`) and
     numeric limits (e.g. `max_lift_mass` [kg]). The body adapter sets both; parts
     state what they need with `requires_body: [...]` and `mpg check` compares."""
 
     names: frozenset[str] = frozenset()
     values: Mapping[str, float] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Store declared names under their current spelling, so a body written against
+        the old vocabulary (a plugin's, say) is compared on equal terms with this one."""
+        object.__setattr__(self, "names", frozenset(canonical(n) for n in self.names))
+
     def missing(self, required: Iterable[str]) -> list[str]:
-        """Required names this body lacks, in the order given."""
-        return [r for r in required if r not in self.names]
+        """Required names this body lacks, in the order given.
+
+        A request is read through `canonical`, so a room or plugin part asking for an
+        old name (`beak_grab`) is answered by a body declaring the current one (`grab`).
+        The name reported back is the one the caller used, since that is the string they
+        can find in their own file.
+        """
+        return [r for r in required if canonical(r) not in self.names]
 
     def limit(self, name: str) -> float:
         """This body's `name` limit, 0 when undeclared (see `declared_limit`)."""
@@ -113,6 +143,30 @@ class BodyAdapter(ABC):
     #: were tried (always stand, a heading-error threshold, target closer than the arc, and
     #: the Dubins reachability condition) and each one broke the other body's rooms.
     stand_to_turn_above: float = math.inf
+    #: How far this body takes its grab point from something it has just put down [m].
+    #:
+    #: A walking body backs off a third of a metre, which is about its own length: it has
+    #: to get its trunk and its beak clear of what it placed before it turns. A body whose
+    #: grab point is its whole self needs only to clear the object - and cannot do more,
+    #: because its base never moves and 0.35 m from a placed object can be outside its
+    #: envelope entirely. Measured: with the walking number the arm's place step never
+    #: ended, the carrier circling in its "away" phase for the rest of the episode after
+    #: the block was already resting where it was asked for (0.033 m from the patch centre
+    #: against a 0.04 m tolerance). None keeps the shared default (`carry.AWAY`).
+    place_clearance: float | None = None
+
+    #: The command that means "stay where you are", as an action (R78).
+    #:
+    #: `(-1, 0, 0)` for a walking body, because this repository's convention is that
+    #: `action[0] = -1` is the slowest the body goes. On a body whose action maps
+    #: symmetrically onto a signed velocity - a fixed-base arm, whose holonomic steering
+    #: needs that symmetry to drive backwards along its own facing - the same vector is
+    #: full speed *backwards*, so the shared solver and carrier told it to drive away
+    #: every time they meant for it to wait. Measured on the arm: at the moment it
+    #: released a block into a box, the "stand still" action carried the block 0.066 m
+    #: further and lifted it to 0.077 m, out of the box. Third of this shape, after
+    #: `SLOW` in the carrier and the humanoid's `command_from_action`.
+    stand_action: tuple[float, float, float] = (-1.0, 0.0, 0.0)
     #: True when this body can move in any direction without turning first, so steering it
     #: means picking a direction rather than a heading and a speed (R61).
     #:

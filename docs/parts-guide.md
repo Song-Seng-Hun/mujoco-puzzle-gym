@@ -1419,6 +1419,18 @@ def majority(inputs, state, dt):
 | `cooldown` | float | s | `1.0` | [0.1, 60] |  | time a launched body or object ignores this spring |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
 
+### `stack`
+
+역할 `sensor`, 갱신 단계 `input`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.2, 0.2]` | [0.05, 2] |  | floor rectangle the stack is counted on |
+| `need` | int |  | `3` | [2, 10] | 예 | accepted objects that must be stacked |
+| `height` | float | m | `0.09` | [0.02, 1] | 예 | the topmost object's centre must be at least this high: a row is not a stack |
+| `accept` | list |  | — |  |  | object part names, kinds or marker ids that count (empty: every object) |
+| `settle` | float | s | `0.3` | [0, 5] |  | everything counted must rest this long before it reads on |
+
 ### `stick`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -1693,6 +1705,7 @@ def majority(inputs, state, dt):
 - `puzzles/roller/timed_corridor`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
+- `puzzles/tabletop/weigh_it_down`
 - `puzzles/tow/chain_dropoff`
 - `puzzles/tow/cleat_hold`
 - `puzzles/tow/drop_and_go`

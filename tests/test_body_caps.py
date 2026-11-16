@@ -36,7 +36,7 @@ def test_capabilities_missing():
 
 def test_default_body_capabilities(asset_dir):
     caps = make_body().capabilities
-    assert {"walk", "beak_grab"} <= caps.names
+    assert {"walk", "grab"} <= caps.names
     assert caps.values["max_lift_mass"] > 0
 
 
@@ -70,11 +70,11 @@ def test_missing_capability_fails_check(asset_dir, repo_root, tmp_path):
 # M2 parts declare what they need from the body, using only Microduck capabilities.
 M2_PARTS = [
     ({"type": "button", "pos": [0, 0]}, ["walk"]),
-    ({"type": "button", "pos": [0, 0], "trigger": "object"}, ["beak_grab"]),
+    ({"type": "button", "pos": [0, 0], "trigger": "object"}, ["grab"]),
     ({"type": "zone", "pos": [0, 0]}, ["walk"]),
     ({"type": "laser", "pos": [0, -0.3], "to": [0, 0.3]}, ["walk"]),
-    ({"type": "pressure", "pos": [0, 0]}, ["beak_grab"]),
-    ({"type": "receptacle", "pos": [0, 0]}, ["beak_grab"]),
+    ({"type": "pressure", "pos": [0, 0]}, ["grab"]),
+    ({"type": "receptacle", "pos": [0, 0]}, ["grab"]),
     ({"type": "checkpoint", "pos": [0, 0]}, ["walk"]),
     ({"type": "gate", "expr": "1"}, []),
     ({"type": "counter", "up": "p"}, []),

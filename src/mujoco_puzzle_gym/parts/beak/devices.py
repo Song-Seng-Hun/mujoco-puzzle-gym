@@ -106,7 +106,7 @@ class HandleDevice(Part):
         self.grab_radius = float(self.cfg["grab_radius"])
         self.max_hold_force = float(self.cfg["max_hold_force"])
         if self.grab_handle:
-            self.needs_body("beak_grab")
+            self.needs_body("grab")
 
     @classmethod
     def add_room_parts(cls, parts):

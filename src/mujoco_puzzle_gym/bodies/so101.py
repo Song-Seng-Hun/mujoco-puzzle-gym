@@ -20,10 +20,10 @@ What differs from a walking body, and is handled here rather than hidden:
 - **It cannot walk.** `walk` is not declared, so the 15 built-in parts that need walking
   refuse themselves by name through the capability gate (R2b) instead of silently
   producing an unsolvable room.
-- **`beak_grab` is declared, and the name is wrong.** The gate's question is "can this
+- **`grab` is declared, and the name is wrong.** The gate's question is "can this
   body pick an object up with its own end effector", which this arm can; the name is
   anatomy borrowed from the first body, which is the same kind of leak R2 exists to stop.
-  Renaming it to `grab` (keeping `beak_grab` as an alias the first body also declares) is
+  Renaming it to `grab` (keeping `grab` as an alias the first body also declares) is
   M4 R60 work. Declaring it here is the honest answer to the question the gate asks.
 
 Measured on the pinned model (2026-11-16, `mj_kinematics` over a 9^4 joint sweep, 6,561
@@ -64,6 +64,26 @@ SITE = "gripperframe"
 HOME = (0.0, -0.873, 0.563, 1.382, 0.0)
 #: Gripper height held by the z term while a planar command runs [m].
 WORK_Z = 0.12
+#: Jaw height at `set_head(1.0)` [m] - the table, where an object lying on it has its
+#: handle. The shared `head` channel means "lower the thing that grabs" (`BodyAdapter.
+#: set_head`: 0 level, 1 the lowest the body takes), and for this body that is the jaw's
+#: height rather than a head pitch. Without it this arm could not pick anything off a
+#: table at all: measured, the approach brings the jaw to within 2 mm of a block's handle
+#: horizontally and parks 0.102 m above it, against a 0.04 m grab radius, so the weld
+#: never armed and every grasping number for this body was really a number about reaching
+#: a goal. The kinematic sweep covers the band z 0.02-0.15 m out to the full 0.480 m
+#: radius, so the table is inside the envelope; the IK gets there through the same z term.
+GRAB_Z = 0.02
+#: How far the aim point may run ahead of where the gripper actually is [m].
+#:
+#: The aim advances by `cmd * control_dt` every step, so while the gripper is blocked -
+#: pressing a block against the inside of a box, say - the aim keeps integrating and ends
+#: up far ahead of the jaw. The command then stops and the arm *keeps going*, because it
+#: is still solving toward an aim that ran away: measured, a block released into a box
+#: travelled another 0.22 m and climbed to z 0.146 m, out of the box, with a zero command
+#: the whole time. Integrator windup, and this is the anti-windup: ten control steps'
+#: worth of travel at the command ceiling (0.15 m/s x 0.02 s x 10).
+MAX_LEAD = 0.03
 Z_GAIN = 12.0           # [1/s] P gain pulling the gripper back to `WORK_Z`
 IK_GAIN = 8.0           # [1/s] how hard the solve chases the aim point
 DAMPING = 0.05          # damped-least-squares lambda for the inverse kinematics
@@ -72,9 +92,20 @@ REACH_MAX = 0.48
 REACH_MIN = 0.0
 #: Shoulder pan range [rad], so the envelope is a sector of +/-110 degrees, not an annulus.
 PAN_LIMIT = 1.92
-#: Highest z the gripper site reaches is 0.520 m; declared conservatively (the asking
-#: direction: a wall plate above this is refused, and `button.check_static` reads it).
-REACH_HEIGHT = 0.45
+#: The height a part may sit at and still be worked by this body [m] - which is the height
+#: the gripper can be *driven* to, not the highest the joints reach.
+#:
+#: Those are different numbers and the first version declared the wrong one. The joint
+#: sweep reaches z 0.520 m, so 0.45 was declared; but the shared command is `(vx, vy, wz)`
+#: and has no vertical axis, and `step` holds the gripper at `WORK_Z` through `Z_GAIN`.
+#: Driven to every command limit for 4 s the gripper site stays within z 0.111-0.122 m
+#: (forward, lateral and wrist alike); the only excursion is a full-reverse command folding
+#: the arm in against the base, which lifts the jaw to 0.316 m on the way and is a fold,
+#: not a height anyone can aim at. So 0.45 would have admitted a wall plate at 0.40 m that
+#: this body can never touch - the body-side version of the declaration lies the M4 audit
+#: found on the part side. Declared at the work height, which is what the control holds;
+#: `tests/test_so101.py` measures it and fails if the two drift apart.
+REACH_HEIGHT = WORK_Z
 
 
 class So101Adapter(BodyAdapter):
@@ -95,14 +126,28 @@ class So101Adapter(BodyAdapter):
     #: turns the jaw -0.200 rad; every other joint turns it 0.000). The shared steering
     #: drives it by direction instead of by heading (R61).
     holonomic = True
+    #: Standing still is the zero command here: the command maps symmetrically onto the
+    #: gripper's velocity, so a walking body's `(-1, 0, 0)` would be full speed backwards.
+    stand_action = (0.0, 0.0, 0.0)
+    #: Clearing a placed object means moving the jaw its own footprint plus the object's
+    #: size away, not a walking body's 0.35 m, which can be outside this body's envelope.
+    place_clearance = 0.10
     #: The gripper's planar speed [m/s] and wrist rate [rad/s]. Chosen so one control step
     #: moves the gripper at most 3 mm, which the damped least-squares solve tracks without
     #: the arm snapping; `tests/test_so101.py` measures the tracking error.
     cmd_limits = ((-0.15, 0.15), (-0.15, 0.15), (-1.0, 1.0))
+    #: `grab` and nothing else. The first version also declared `reach` and `gripper`,
+    #: and no part requires either (R67): the gate compares names, so a name nothing asks
+    #: for can neither refuse nor admit a room - it reads as a promise the environment
+    #: does not keep. The two dimensions they were meant to carry are already compared as
+    #: numbers, which is where R2b puts them: height against `reach_height` (0.45 here,
+    #: 0.21 on the first body) and mass against `max_lift_mass`. `two_hands` was left
+    #: unbuilt on the same reasoning in M4, and `tests/test_capability_names.py` now fails
+    #: on either body rather than leaving the rule to be remembered.
     capabilities = Capabilities(
-        names=frozenset({"reach", "gripper", "beak_grab"}),
+        names=frozenset({"grab"}),
         values={"max_lift_mass": 0.1, "reach_max": REACH_MAX, "reach_min": REACH_MIN,
-                "beak_height": REACH_HEIGHT, "walk_speed": 0.0,
+                "reach_height": REACH_HEIGHT, "walk_speed": 0.0,
                 "max_step": 0.0, "max_slope": 0.0},
     )
 
@@ -117,6 +162,8 @@ class So101Adapter(BodyAdapter):
         self._base_pose: Pose = (0.0, 0.0, 0.0)
         self._aim = np.zeros(3)            # the aim point `step` drives (world frame)
         self.jaw_target = 0.0
+        #: Height the z term holds the jaw at [m]; `set_head` moves it (WORK_Z .. GRAB_Z).
+        self.work_z = WORK_Z
 
     # ---- scene -------------------------------------------------------------
 
@@ -170,6 +217,7 @@ class So101Adapter(BodyAdapter):
         data.qpos[self._jaw_q] = 0.0
         data.ctrl[self._jaw_ctrl] = 0.0
         self.jaw_target = 0.0
+        self.work_z = WORK_Z               # `set_head` is held until changed; reset levels it
         mujoco.mj_forward(data.model, data)
         self._aim = self._clamp(np.array(data.site_xpos[self._site], dtype=float))
 
@@ -185,7 +233,7 @@ class So101Adapter(BodyAdapter):
         if abs(ang) > PAN_LIMIT:                  # outside the sector: slide along its edge
             edge = math.copysign(PAN_LIMIT, ang) + byaw
             d = np.hypot(*d) * np.array([math.cos(edge), math.sin(edge)])
-        return np.array([bx + d[0], by + d[1], WORK_Z])
+        return np.array([bx + d[0], by + d[1], self.work_z])
 
     def step(self, data: mujoco.MjData, cmd: Sequence[float],
              on_substep: SubstepFn | None = None) -> None:
@@ -211,7 +259,16 @@ class So101Adapter(BodyAdapter):
         yaw = self.state(data).yaw
         c, s = math.cos(yaw), math.sin(yaw)
         step_xy = np.array([c * vx - s * vy, s * vx + c * vy, 0.0]) * self.control_dt
-        self._aim = self._clamp(self._aim + step_xy)
+        aim = self._clamp(self._aim + step_xy)
+        # Anti-windup (`MAX_LEAD`): the aim may not run away from the gripper. Without
+        # this the arm carries on travelling after its command stops, by however far the
+        # aim got ahead while the jaw was blocked.
+        now = np.asarray(data.site_xpos[self._site], dtype=float)
+        lead = aim - now
+        n = float(np.linalg.norm(lead[:2]))
+        if n > MAX_LEAD:
+            aim[:2] = now[:2] + lead[:2] * (MAX_LEAD / n)
+        self._aim = aim
         steps = max(1, round(self.control_dt / model.opt.timestep))
         for _ in range(steps):
             jacp = np.zeros((3, model.nv))
@@ -263,7 +320,7 @@ class So101Adapter(BodyAdapter):
         if self._data is not data:
             self._bind(data)
         model = data.model
-        target = np.array([pose[0], pose[1], max(z + WORK_Z, WORK_Z)])
+        target = np.array([pose[0], pose[1], max(z + self.work_z, self.work_z)])
         for _ in range(200):
             mujoco.mj_kinematics(model, data)
             jacp = np.zeros((3, model.nv))
@@ -279,6 +336,17 @@ class So101Adapter(BodyAdapter):
         data.ctrl[self._ctrl] = data.qpos[self._qpos]
         mujoco.mj_forward(model, data)
         self._aim = self._clamp(np.array(data.site_xpos[self._site], dtype=float))
+
+    def set_head(self, level: float) -> None:
+        """Lower the jaw: 0 the working height, 1 the table (`GRAB_Z`).
+
+        The same channel a walking body pitches its head with, answered the way this body
+        can answer it. The shared carrier already drives it - `carry._hold_tip_at` asks for
+        the tip to be at the object's height - so a task that lists `head` in its `actions`
+        lets this arm reach down to something lying on the table. A task without it leaves
+        the jaw at the working height, exactly as before.
+        """
+        self.work_z = WORK_Z + float(np.clip(level, 0.0, 1.0)) * (GRAB_Z - WORK_Z)
 
     def grab_site(self) -> str:
         """The jaw's own site: what the weld grab (R18) attaches an object to.

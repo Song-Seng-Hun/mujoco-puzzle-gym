@@ -126,6 +126,15 @@ class ScriptedSolver:
         self.carrier = Carrier(env)        # `grab` / `place` / `drop` sub-goals, wall buttons (R18)
         self.reset()
 
+    def _stand(self) -> np.ndarray:
+        """The action that means "stay where you are", as this body defines it.
+
+        `STAND` is a walking body's: `action[0] = -1` is its slowest. A body whose action
+        maps symmetrically onto a signed velocity reads the same vector as full speed
+        backwards, so it is asked for `BodyAdapter.stand_action` instead.
+        """
+        return np.array(self.env.body.stand_action, dtype=np.float32)
+
     def reset(self) -> None:
         self._fields = {}
         self._live = {}
@@ -135,6 +144,8 @@ class ScriptedSolver:
         self.carrier.head = self.carrier.grab = -1.0
         self.carrier.wall = None
         self.step_i = 0                    # current `demo:` entry
+        #: `demo:` sub-goals that ended without their effect (`_unfinished`).
+        self.demo_unfinished: list[str] = []
         self._wait = 0                     # env steps left in a `wait`
         self._worked = None                # grid-answer device / look target the carrier works
         self.taken: dict[str, object] = {}     # dispenser -> copy its last `take` handed out
@@ -169,6 +180,36 @@ class ScriptedSolver:
         move = self._move()
         return self.env.scripted_action(move, c.head, c.grab, 1.0 if self._crouch else -1.0)
 
+    #: Postconditions for the demo sub-goals that have lied (R78). A sub-goal ends when
+    #: its act returns None, which is meant to mean "done" - and for `grab` and `place` it
+    #: has meant "I gave up" instead, because the carrier's own stuck counter walks it off
+    #: and the next step starts as if the object had been moved. Three claims measured on
+    #: this project came from exactly that: a room reported 20/20 while the block never
+    #: moved, the same room's `place` never put anything in its box, and both read as
+    #: success because a timeout looks like progress. So the effect is checked where the
+    #: step ends, and `mpg check` fails on it rather than reporting a clean run.
+    #:
+    #: Only the two verbs that have been caught: a postcondition guessed for the other
+    #: nineteen would be a rule nobody measured, and a wrong one fails honest rooms.
+    def _unfinished(self, entry: tuple) -> str | None:
+        cmd = entry[0]
+        if cmd == "grab":
+            obj = self._object(entry[1])
+            if self.carrier.held() is not obj:
+                return f"`grab {entry[1]}` ended without holding it"
+        elif cmd in ("place", "drop"):
+            part = self.env.parts.get(entry[2]) if len(entry) > 2 else None
+            inside = getattr(part, "inside", None)
+            # *This* object is in that part - not "the part is satisfied", which was the
+            # first version of this check and was wrong: `puzzles/tow/overload` drops two
+            # crates into one dump, so after the first `drop` the dump is legitimately not
+            # satisfied yet and the sub-goal had done its job. The slow suite caught it on
+            # the guard's first full run, which is the argument for running guards over
+            # every shipped room before trusting them.
+            if inside is not None and entry[1] not in inside:
+                return f"`{cmd} {entry[1]} {entry[2]}` ended with it not in {entry[2]!r}"
+        return None
+
     def _move(self) -> np.ndarray:
         act = self.carrier.off_wall()
         if act is not None:
@@ -177,13 +218,15 @@ class ScriptedSolver:
             act = self._demo_act(self.demo[self.step_i])
             if act is not None:
                 return act
+            if (why := self._unfinished(self.demo[self.step_i])) is not None:
+                self.demo_unfinished.append(why)
             self.step_i += 1
             self.pusher.reset()
             self.herder.reset()
             self.carrier.reset()
         env = self.env
         if env.current_target() is None:
-            return STAND.copy()
+            return self._stand()
         target = env.current_target()
         if self._step is not None and self._step[0] == "place" and self._worked is not target:
             act = self._deliver(self._worked)          # the receptacle turned on: let go, walk off
@@ -196,7 +239,7 @@ class ScriptedSolver:
         if hasattr(target, "push_target"):
             return self.pusher.act(target)
         if getattr(target, "mount", None) == "wall":
-            return self.carrier.press_wall_act(target) if not target.satisfied() else STAND.copy()
+            return self.carrier.press_wall_act(target) if not target.satisfied() else self._stand()
         act = self._deliver(target)
         if act is not None:
             return act
@@ -225,7 +268,7 @@ class ScriptedSolver:
             act = c.dial_act(target, target.lo)
         else:
             act = c.pull_act(target)
-        return STAND.copy() if act is None else act
+        return self._stand() if act is None else act
 
     def _deliver(self, target) -> np.ndarray | None:
         """Grid answer: carry an object receptacle `target` accepts to it, taking one from a
@@ -262,7 +305,7 @@ class ScriptedSolver:
                else self.take_act(part))
         if act is None:
             self._step = None
-            return STAND.copy()
+            return self._stand()
         return act
 
     def _in_use(self, obj) -> bool:
@@ -296,25 +339,25 @@ class ScriptedSolver:
                 self.taken[disp.name] = copy
                 self._take_from = None
                 return None
-            return STAND.copy()
+            return self._stand()
         self._take_from = disp.dispensed
         b = disp.press_plate
         if b is None:
-            return STAND.copy()               # the `in` channels hand it out
+            return self._stand()               # the `in` channels hand it out
         if b.on:                              # pressed, nothing came (cooldown, or pressed before):
             self.carrier.head = -1.0          # let go of it (a wall plate: head up, the tip clears
             if b.mount == "wall":             # its top), press again when ready
-                return STAND.copy()
+                return self._stand()
             act = self.carrier._walk_off(b.xy, float(max(b.half)) + env.body.footprint_radius + CLEARANCE)
-            return STAND.copy() if act is None else act
+            return self._stand() if act is None else act
         if not disp.ready(float(env.data.time)):
             if b.mount == "wall":             # wait off the plate: coming in again square on
                 act = self.carrier._walk_off(b.xy, WALL_WAIT)     # (turning in place to it is slow)
-                return STAND.copy() if act is None else act
-            return STAND.copy()
+                return self._stand() if act is None else act
+            return self._stand()
         if b.mount == "wall":
             act = self.carrier.press_wall_act(b)
-            return STAND.copy() if act is None else act
+            return self._stand() if act is None else act
         return self._walk_to(b)
 
     def addon_act(self, station) -> np.ndarray | None:
@@ -330,7 +373,7 @@ class ScriptedSolver:
             return None
         s = env.body_state
         if in_rect(s.pos[:2], station.xy, np.maximum(station.half - ADDON_MARGIN, 0.02)):
-            return STAND.copy()
+            return self._stand()
         return self._walk_to(station)
 
     def tow_act(self, rope, hitch: str | None) -> np.ndarray | None:
@@ -349,7 +392,7 @@ class ScriptedSolver:
             modes = ("attach", "toggle")
         sts = [p for p in env.parts.values() if getattr(p, "rope", None) is rope and getattr(p, "mode", None) in modes]
         if not sts:
-            return STAND.copy()
+            return self._stand()
         if h is not None:
             hp = env.data.site_xpos[rope.hitches[h].sid][:2]
             sts.sort(key=lambda p: float(np.linalg.norm(p.xy - hp)))
@@ -363,7 +406,7 @@ class ScriptedSolver:
                 return act
             self._tow_off = False
         if in_rect(env.body_state.pos[:2], st.xy, np.maximum(st.half - ADDON_MARGIN, 0.02)):
-            return STAND.copy()
+            return self._stand()
         return self._walk_to(st)
 
     def towed_hitch(self, rope):
@@ -397,7 +440,7 @@ class ScriptedSolver:
             if self._drag is not None:     # let go on the way (a zone's detach channel): done
                 self._drag = None
                 return None
-            return STAND.copy()            # nothing towed through it (yet)
+            return self._stand()            # nothing towed through it (yet)
         hp = env.data.site_xpos[h.sid][:2].copy()
         if in_rect(hp, target.xy, np.maximum(target.half - DRAG_MARGIN, 0.02)):
             self._drag = None
@@ -412,7 +455,7 @@ class ScriptedSolver:
             self._drag = {"aim": self._free_along(target.xy, d / n, gap + DRAG_PAST)}
         aim = self._drag["aim"]
         if float(np.linalg.norm(aim - env.body_state.pos[:2])) < DRAG_STOP:
-            return STAND.copy()            # there, and the hitch did not follow in
+            return self._stand()            # there, and the hitch did not follow in
         return self._steer(self._point_field(aim), aim)
 
     def _free_along(self, xy, d, dist: float) -> np.ndarray:
@@ -538,7 +581,7 @@ class ScriptedSolver:
         free, field = self._live_field(part)
         start = env.grid.nearest_free(free, env.body_state.pos[:2])
         if start is None or not np.isfinite(field[start]):
-            return STAND.copy()        # behind a closed door or a hole: wait for it to change
+            return self._stand()        # behind a closed door or a hole: wait for it to change
         return self._steer(field, part.xy)
 
     def _walk_point(self, xy) -> np.ndarray:
@@ -584,7 +627,7 @@ class ScriptedSolver:
         if act is None:
             self.carrier.reset()
             self.carrier.grab = self.carrier.head = -1.0
-            return STAND.copy()
+            return self._stand()
         return act
 
     def peck_act(self, part) -> np.ndarray | None:
@@ -607,7 +650,7 @@ class ScriptedSolver:
             return self._walk_to(part)
         self._peck_on = not self._peck_on
         c.grab = 1.0 if self._peck_on else -1.0
-        return STAND.copy()
+        return self._stand()
 
     def crush_act(self, part) -> np.ndarray | None:
         """Drop a carried object on the part: from beak height a 30 g cube peaks at
@@ -660,7 +703,7 @@ class ScriptedSolver:
         if act is None:
             self.carrier.reset()
             self.carrier.grab = self.carrier.head = -1.0
-            return STAND.copy()
+            return self._stand()
         return act
 
     # ---- helpers for the break sub-goals ---------------------------------------------
@@ -777,7 +820,7 @@ class ScriptedSolver:
             if self._wait == 0:
                 self._wait = max(1, int(round(entry[1] * env.hz)))
             self._wait -= 1
-            return STAND.copy() if self._wait > 0 else None
+            return self._stand() if self._wait > 0 else None
         if cmd == "push":
             ball, target = env.parts[entry[1]], env.parts[entry[2]]
             done = (ball.name in target.inside) if hasattr(target, "inside") else target.satisfied()
@@ -820,11 +863,20 @@ class ScriptedSolver:
         return self._walk_to(part)
 
 
-def run_episode(env, seed: int, solver: ScriptedSolver | None = None) -> dict:
+def run_episode(env, seed: int, solver: ScriptedSolver | None = None,
+                after_reset=None) -> dict:
     """One scripted episode. `snaps` maps each checkpoint flag reached to the
-    snapshot the env saved there (R6, written by `mpg check`)."""
+    snapshot the env saved there (R6, written by `mpg check`).
+
+    `after_reset(env, rng)` runs once between the reset and the first step, for a caller
+    that has to move something the room placed - `check.check_jitter` nudges the objects
+    the solution touches - and gets the episode's own generator so the same seed gives the
+    same nudge.
+    """
     solver = solver or ScriptedSolver(env)
     env.reset(seed=seed)
+    if after_reset is not None:
+        after_reset(env, np.random.default_rng(seed))
     solver.reset()
     info: dict = {}
     steps = 0
@@ -840,4 +892,5 @@ def run_episode(env, seed: int, solver: ScriptedSolver | None = None) -> dict:
     return {"seed": seed, "success": bool(info.get("success")), "fallen": bool(info.get("fallen")),
             "nan": bool(info.get("nan")), "steps": steps, "seconds": steps / env.hz,
             "stage": info.get("stage"), "target": info.get("target"),
-            "demo_step": solver.step_i if solver.demo else None, "snaps": snaps}
+            "demo_step": solver.step_i if solver.demo else None, "snaps": snaps,
+            "demo_unfinished": list(solver.demo_unfinished)}

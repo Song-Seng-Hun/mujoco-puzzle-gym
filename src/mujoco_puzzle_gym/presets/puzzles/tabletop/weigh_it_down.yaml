@@ -1,0 +1,41 @@
+# Tabletop: hold the plate down with something, because this body has nothing to stand on
+# it with (M5 R75).
+#
+# The one puzzle in this package that exists *because* of what a body is rather than what
+# it can reach. A walking body solves a floor plate by standing on it - `trigger: body` -
+# and the plate stays pressed while it waits there. A body bolted to a table has no trunk
+# to put anywhere: its only mass is the gripper, and the gripper has to be somewhere else
+# doing the next thing. So it delegates: pick the block up, set it on the plate, and the
+# plate holds itself down while the body goes to the goal.
+#
+# `enable: plate` on the goal is what makes the room about the block: the goal does not
+# count until the plate reads pressed. Measured both ways - 20/20 at a mean of 16.3 s with
+# the demo, 0/5 with it cut down to a single `goto goal` step.
+#
+# `mpg check --all-bodies` calls this room exclusive to the arm, and the detail matters
+# more than the word: two bodies are refused **by name** for having no `grab`, and the one
+# other body that does have a grab - and could in principle delegate the same way - fails
+# the scripted solution here. That last one is **not a designed exclusion**: on a 1.2 x
+# 1.0 m table its own footprint and the planner's collar leave it little room, so the
+# honest reading is "two bodies cannot, one is not shown to". (Body names stay out of this
+# file: presets live inside the package and the R2 boundary test reads every file here -
+# it caught this comment's first draft. The matrix itself names them: `--all-bodies`.)
+#
+# Numbers from the measured envelope (docs/bodies.md section 9) and the reach stage (R77):
+# base at x = -0.3, block at (-0.05, -0.12) is 0.29 m out, plate at (0.0, 0.14) is 0.33 m,
+# goal at (0.05, -0.25) is 0.43 m, all inside the 0.48 m ring. `min_mass` 0.01 kg against
+# the block's 0.02 kg: half the block's weight, so the plate reads pressed while the block
+# sits on it and reads nothing once it is lifted off. The plate is 0.25 m square, five
+# times the jaw's own footprint, so setting the block down anywhere on it counts.
+name: table_weigh
+size: [1.2, 1.0]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [-0.3, 0.0], yaw: 0.0}
+parts:
+  - {name: block, type: cube, pos: [-0.05, -0.12], size: 0.03, mass: 0.02}
+  - {name: plate, preset: input/pressure_plate, pos: [0.0, 0.14], min_mass: 0.01}
+  - {name: goal, type: goal, pos: [0.05, -0.25], radius: 0.05, enable: plate}
+demo:
+  - grab block
+  - place block plate
+  - goto goal

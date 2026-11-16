@@ -1,30 +1,59 @@
-# Tabletop pick and place (M4 R61): the first room where a body with no legs does
-# something to an object. Pick the block up, put it in the box, and the box opens the way
-# to the target.
+# Tabletop pick and place: pick the block up, put it in the box, then go to the goal -
+# and the goal does not count until the block is in the box (`enable: box.ok`).
 #
-# This room is the one that answers the question the reach room could not: the weld grab
-# (R18) was written for a beak on the front of a walking trunk, and nothing had measured
-# it on a jaw that *is* the body. Measured: 20/20 seeds, mean 2.9 s. Before the shared
-# approach learned that this body is holonomic it was 0/20 - the carrier closes in at
-# `SLOW = -0.5`, which on a symmetric command mapping is half speed backwards, so the arm
-# drove away from the block it was told to pick up.
+# Measured (M5, 2026-11-17): the block is set down in the box in 10 of 10 episodes, 0.013 m
+# from its centre, and the room goes 20/20 at a mean of 27.9 s. The assertion that makes it
+# a task rather than a walk: with the demo cut down to a single `goto goal` step it is
+# **0/5**, where the same room with an ungated goal is 5/5.
 #
-# Numbers follow the measured envelope (docs/bodies.md section 9): base at x = -0.3, so
-# the block at (-0.05, -0.12) is 0.29 m out and the box at (0.0, 0.14) is 0.33 m out, both
-# inside the 0.48 m reach and clear of the fold near the base where tracking degrades. The
-# block is 3 cm and 20 g; the jaw's own footprint is 5 cm.
+# Read that 20/20 for what it is (measured the same day, after it had been reported as if it
+# were twenty trials): measured, five seeds of this room come out identical - same outcome,
+# same 27.9 s - so twenty seeds are the same
+# episode twenty times, and the number says the solution works at this one block position.
+# Moved, it often does not. Sweeping the block over 80x80 mm in 20 mm steps, 3 of 25
+# positions solve; the rest stall in the grab (towards +x) or in the place (towards -x).
+# Declaring `randomize: {pos: [...]}` on the block instead gives 9/10 at +-2 mm, 8/10 at
+# +-5 mm, 6/10 at +-10 mm and 3/10 at +-20 mm. The grid and what it means for the envelope
+# a body declares are in `docs/bodies.md` section 9.
+#
+# It took four fixes to get there, and all four were height or a walking body's action read
+# by a body that is a jaw (the history is in `docs/bodies.md` section 9):
+#
+#   - the task needs `head`, which this body answers by lowering the jaw to the table.
+#     Without it the approach parks the jaw 2 mm from the handle horizontally and 0.102 m
+#     above it, against a 0.04 m grab radius, and nothing is ever picked up.
+#   - `STAND` (-1, 0, 0) means "the slowest this body goes" to a walking body and full speed
+#     *backwards* here, and the shared solver and carrier hand it out at twenty-seven call
+#     sites meaning "wait". `BodyAdapter.stand_action` now lets the body say what standing
+#     still is.
+#   - the aim point wound up while the jaw was blocked, so the arm kept travelling 0.22 m
+#     after its command stopped (`MAX_LEAD`).
+#   - the release dropped the block from 0.115 m - inside the box's footprint, but from a
+#     tenth of a metre up, so it bounced out and landed 0.08 m away. `carry._let_go` lowers
+#     the tip to the height the object was picked up at first.
+#
+# Before all that this room reported 20/20 at 2.9 s while touching nothing: its goal sat at
+# (-0.02, 0), on the path back from the block's approach point, so the gripper brushed it
+# and the episode ended before the grab. The goal is at (0.05, -0.25) now, 0.43 m from the
+# base and inside the measured ring, and the episode is 40 s because the solution takes
+# 27.9 s when it actually does the work.
+#
+# Numbers follow the measured envelope (docs/bodies.md section 9) and the reach stage (R77):
+# the base is at x = -0.3, so the block at (-0.05, -0.12) is 0.29 m out and the box at
+# (0.0, 0.14) is 0.33 m, both inside the 0.48 m ring and clear of the fold near the base.
+# The block is 3 cm and 20 g; the jaw's own footprint is 5 cm.
 #
 # `box.ok` is the channel, not `box`: a receptacle writes `.ok`, `.count`, `.mass` and
 # `.wrong`, and reading the bare name is rejected by the `channels` stage.
 name: table_pick
-size: [1.0, 0.8]
+size: [1.2, 1.0]
 wall: {thickness: 0.02, height: 0.1}
 spawn: {pos: [-0.3, 0.0], yaw: 0.0}
 parts:
   - {name: block, type: cube, pos: [-0.05, -0.12], size: 0.03, mass: 0.02}
   - {name: box, type: receptacle, pos: [0.0, 0.14], size: [0.12, 0.12], accept: [block]}
   - {name: door, type: door, mode: oneshot, pos: [0.42, 0.0], width: 0.2, axis: y, in: [box.ok]}
-  - {name: goal, type: goal, pos: [-0.02, 0.0], radius: 0.05}
+  - {name: goal, type: goal, pos: [0.05, -0.25], radius: 0.05, enable: box.ok}
 demo:
   - grab block
   - place block box

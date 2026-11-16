@@ -65,7 +65,7 @@ class Grabbable(FreeObject):
         self.mass = float(self.cfg["mass"])
         self.grab_radius = float(self.cfg["grab_radius"])
         self.max_hold_force = float(self.cfg["max_hold_force"])
-        self.needs_body("beak_grab")
+        self.needs_body("grab")
 
     @property
     def grabbable_now(self) -> bool:

@@ -6,7 +6,8 @@ from .checkpoint import Checkpoint
 from .laser import Laser
 from .pressure import PressurePlate
 from .receptacle import Receptacle
+from .stack import Stack
 from .target import Target
 from .zone import Zone
 
-__all__ = ["Button", "Checkpoint", "Laser", "PressurePlate", "Receptacle", "Target", "Zone"]
+__all__ = ["Button", "Checkpoint", "Laser", "PressurePlate", "Receptacle", "Stack", "Target", "Zone"]

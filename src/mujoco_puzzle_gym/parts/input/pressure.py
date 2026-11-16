@@ -58,7 +58,7 @@ class PressurePlate(Part):
         self.trigger = self.cfg["trigger"]
         if "body" in TRIGGERS[self.trigger]:
             self.role = "switch"
-        self.needs_body("walk" if self.role == "switch" else "beak_grab")
+        self.needs_body("walk" if self.role == "switch" else "grab")
         self.on = False
         self.mass = 0.0
         self._f = np.zeros(6)

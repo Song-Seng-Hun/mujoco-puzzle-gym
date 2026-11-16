@@ -87,11 +87,11 @@ class Button(Part):
         self.normal = np.array([math.cos(a), math.sin(a)])
         if self.mount == "wall":
             self.marker_faces = ("front",)
-            self.needs_body("walk", "beak_grab")
+            self.needs_body("walk", "grab")
         elif "body" not in TRIGGERS[self.trigger]:
             self.role = "sensor"            # the planner cannot press it by walking
         if self.mount == "floor":
-            self.needs_body("walk" if "body" in TRIGGERS[self.trigger] else "beak_grab")
+            self.needs_body("walk" if "body" in TRIGGERS[self.trigger] else "grab")
         self.stateful = self.kind_ != "momentary"
         self.reach = 0.0                    # wall: extra reach of a stick in the room (planning)
         self.on = False
@@ -100,7 +100,7 @@ class Button(Part):
     def check_static(self, env) -> list[str]:
         """A wall plate out of the body's reach (found after the R46 audit had closed).
 
-        `mount: wall` declares `beak_grab` and nothing more, so the part says "I need a
+        `mount: wall` declares `grab` and nothing more, so the part says "I need a
         beak" rather than "I need a beak that reaches this high". Measured: a plate at
         1.0 m - the schema's ceiling, and nearly five times the declared beak height -
         passed every static stage for a body whose beak reaches 0.21 m. The capability
@@ -113,7 +113,7 @@ class Button(Part):
         if self.mount != "wall":
             return []
         high = float(self.cfg["height"])
-        reach = env.body.capabilities.limit("beak_height") + float(self.reach)
+        reach = env.body.capabilities.limit("reach_height") + float(self.reach)
         if high > reach:
             return [f"part {self.name!r}: its plate is {high:g} m up, past what this body can "
                     f"reach ({reach:g} m); lower it or give the room something to reach with"]

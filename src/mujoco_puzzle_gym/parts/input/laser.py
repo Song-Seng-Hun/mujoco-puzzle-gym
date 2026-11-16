@@ -41,7 +41,7 @@ class Laser(Part):
         self.trigger = self.cfg["trigger"]
         if "body" not in TRIGGERS[self.trigger]:
             self.role = "sensor"
-        self.needs_body("walk" if self.role == "switch" else "beak_grab")
+        self.needs_body("walk" if self.role == "switch" else "grab")
         self.on = False
         self.hit: str | None = None
 

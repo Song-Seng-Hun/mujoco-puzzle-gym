@@ -127,9 +127,20 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
     if args.community and args.task:
         raise CommandError("--community takes no --task: a task's `plugins:` import code; "
                            "shared rooms are checked with the built-in task")
+    if args.all_bodies:
+        from .check import check_all_bodies
+
+        if args.body:
+            raise CommandError("--all-bodies runs every registered body; drop --body")
+        try:
+            return check_all_bodies(args.room, task=args.task, seeds=args.seeds, need=need,
+                                    static_only=args.static)
+        except (RoomError, TaskError, FileNotFoundError) as exc:
+            raise CommandError(str(exc)) from exc
     try:
         return check(args.room, task=args.task, seeds=args.seeds, need=need,
-                     static_only=args.static, community=args.community, body=args.body)
+                     static_only=args.static, community=args.community, body=args.body,
+                     jitter_mm=args.jitter)
     except (RoomError, TaskError, FileNotFoundError) as exc:
         raise CommandError(str(exc)) from exc
 
@@ -140,6 +151,16 @@ def _configure_check(p: argparse.ArgumentParser) -> None:
     p.add_argument("--seeds", type=int, default=20, help="random layouts for the scripted solver")
     p.add_argument("--need", type=int, default=None,
                    help="successes required (default: 90%% of --seeds, 18 of 20)")
+    p.add_argument("--jitter", type=float, nargs="?", const=10.0, default=None,
+                   metavar="MM",
+                   help="also measure how often the solution works with what it picks up "
+                        "nudged up to MM millimetres (default 10): reports, fails nothing. "
+                        "A solver count on a room that draws nothing says whether the "
+                        "solution works where the room put things, not whether it works")
+    p.add_argument("--all-bodies", action="store_true",
+                   help="run every registered body and print what each one came to "
+                        "(capability / unreachable / static / unplannable / solver / pass): "
+                        "a room written for one body is a claim about the others (R76)")
     p.add_argument("--static", action="store_true",
                    help="static stages only (no simulation): values, channels, demo, body, "
                         "parts, overlap, order")

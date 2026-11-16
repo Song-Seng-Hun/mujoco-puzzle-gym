@@ -117,7 +117,7 @@ class Go2Adapter(BodyAdapter):
     #: over", and a second criterion (>= 1.5 m climbed) puts the boundary in the same
     #: place. 8-9 deg is where forward progress collapses.
     #:
-    #: `max_lift_mass` 0.0 is not a placeholder: without `beak_grab` this body has
+    #: `max_lift_mass` 0.0 is not a placeholder: without `grab` this body has
     #: nothing to carry with. An undeclared limit would also read as 0
     #: (`bodies.declared_limit`); these are written out so a reader sees they were
     #: measured rather than skipped.
