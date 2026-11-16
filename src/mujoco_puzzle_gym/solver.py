@@ -863,11 +863,20 @@ class ScriptedSolver:
         return self._walk_to(part)
 
 
-def run_episode(env, seed: int, solver: ScriptedSolver | None = None) -> dict:
+def run_episode(env, seed: int, solver: ScriptedSolver | None = None,
+                after_reset=None) -> dict:
     """One scripted episode. `snaps` maps each checkpoint flag reached to the
-    snapshot the env saved there (R6, written by `mpg check`)."""
+    snapshot the env saved there (R6, written by `mpg check`).
+
+    `after_reset(env, rng)` runs once between the reset and the first step, for a caller
+    that has to move something the room placed - `check.check_jitter` nudges the objects
+    the solution touches - and gets the episode's own generator so the same seed gives the
+    same nudge.
+    """
     solver = solver or ScriptedSolver(env)
     env.reset(seed=seed)
+    if after_reset is not None:
+        after_reset(env, np.random.default_rng(seed))
     solver.reset()
     info: dict = {}
     steps = 0

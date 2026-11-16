@@ -446,6 +446,17 @@ dx +40    집기  집기  집기  집기  (놓기 통과)
 몇 mm 흔들어 성공률을 같이 보고하는 단계를 둔다 — 지금 수동으로 한 측정이 바로 그것이고, 있었다면
 "20/20"을 그렇게 읽는 일 자체가 없었다.
 
+**- R79 (흔들림 측정 — 구현 완료 2026-11-17)**: 위 (a)와 (b)를 모두 넣었다.
+(a) `check_solver`가 자기 에피소드들이 전부 같은 결과·같은 시간으로 나왔을 때 `distinct_outcomes: 1`과
+"한 결과의 반복이고 비율이 아니다"를 함께 보고한다. 방의 `randomize:` 선언으로 추론하지 않고 **실제
+에피소드를 보고** 판단한다 — `examples/rooms/laundry.yaml`은 선언이 없는데도 시드 1만 실패하므로
+추론이 틀린다. (b) `mpg check --jitter [MM]`(기본 10 mm)가 해답이 집는 자유 물체를 매 에피소드 ±MM
+흔들어 성공률을 보고한다. **아무것도 실패시키지 않는다**(어떤 방도 이 기준을 선언하지 않았다).
+검사: `tests/test_check.py::test_seeds_that_all_came_out_the_same_say_so`,
+`::test_seeds_that_differ_say_nothing`, `::test_jitter_measures_a_nudged_object`,
+`::test_jitter_skips_a_room_with_nothing_to_nudge`. 측정: `pick_and_place`는 `--jitter 10`에서
+5/10이다(손으로 한 `randomize.pos` ±10 mm 측정은 6/10 — 흔드는 방식이 달라 값이 조금 다르다).
+
 **곁가지(싣지 않음)**: `Carrier._pick_z`가 `reset()`에서 지워져 하위목표마다 사라지고, 그래서
 `place`는 늘 None을 읽어 `_let_go`의 "내려놓기"가 대본 방에서 한 번도 돌지 않았다(확인: k=52부터
 None). 쥠의 속성으로 유지하게 고치니 출하 방은 20/20·27.9 s 동일했으나 느린 스위트에서

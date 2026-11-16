@@ -433,6 +433,53 @@ def check_solver(env: PuzzleEnv, seeds: int = 20, need: int = 18,
     return res
 
 
+#: Episodes `check_jitter` runs, and how far it nudges, when `--jitter` is given with no
+#: millimetres of its own.
+JITTER_SEEDS = 10
+JITTER_MM = 10.0
+
+
+def check_jitter(env: PuzzleEnv, mm: float = JITTER_MM, seeds: int = JITTER_SEEDS) -> dict[str, Any]:
+    """How often the solution still works when what it picks up starts a few mm off (R79).
+
+    Informational: it fails nothing, because no room declares a bar for it. It exists
+    because the number it reports was missing when it was needed. `puzzles/tabletop/
+    pick_and_place` was reported here as "20/20" while every one of those seeds was the same
+    episode; swept by hand afterwards, the solution worked at 3 of 25 block positions over
+    80x80 mm, and at 9/10, 8/10, 6/10 and 3/10 for a block nudged +-2, +-5, +-10 and +-20 mm
+    (`docs/bodies.md` section 9). A room can now be asked that question instead of trusted.
+
+    Nudges the free objects the demo names (`solution_touches`), each by up to `mm` in x and
+    y from the episode's own generator, and runs the scripted solution. A room whose demo
+    names no movable object is skipped, since there would be nothing to move.
+    """
+    objects = [env.parts[n] for n in solution_touches(env)
+               if getattr(env.parts.get(n), "object_kind", None) is not None]
+    if not objects:
+        return {"ok": True, "skipped": "the demo names no object to nudge"}
+    m = float(mm) / 1000.0
+
+    def nudge(e, rng):
+        for part in objects:
+            bid = e.model.body(part.body_name).id
+            adr = int(e.model.jnt_qposadr[e.model.body_jntadr[bid]])
+            e.data.qpos[adr:adr + 2] += rng.uniform(-m, m, 2)
+        mujoco.mj_forward(e.model, e.data)
+
+    solver = ScriptedSolver(env)
+    episodes = [run_episode(env, s, solver, after_reset=nudge) for s in range(seeds)]
+    wins = sum(e["success"] for e in episodes)
+    unfinished: dict[str, int] = {}
+    for e in episodes:
+        for why in e.get("demo_unfinished", ()):
+            unfinished[why] = unfinished.get(why, 0) + 1
+    out: dict[str, Any] = {"ok": True, "mm": round(float(mm), 1), "seeds": seeds,
+                           "successes": wins, "nudged": [p.name for p in objects]}
+    if unfinished:
+        out["demo_unfinished"] = unfinished
+    return out
+
+
 def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
     """Static: task actions the plan needs (R19). `grab`: a `grab` / `pull` sub-goal, a part
     in `order` that a grabbable object sets off and the body cannot (unless a `drag`
@@ -509,7 +556,7 @@ def _summary(result: dict[str, Any]) -> None:
 def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
           need: int = 18, static_only: bool = False,
           snap_dir: str | Path | None = SNAP_DIR, community: bool = False,
-          body: str | None = None) -> dict[str, Any]:
+          body: str | None = None, jitter_mm: float | None = None) -> dict[str, Any]:
     """All stages; `static_only` stops after the static phase (no simulation);
     `community` adds the shared-room limits (community.py) and stops on a failure.
     `body` picks the body the room is checked with (`--body`, R49): every stage from the
@@ -554,6 +601,8 @@ def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
         failed = [k for k in STATIC if k in result and not result[k]["ok"]]
         if not failed:
             result["solver"] = check_solver(env, seeds, need, snap_dir)
+            if jitter_mm:
+                result["jitter"] = check_jitter(env, jitter_mm)
         else:
             why = {"order": "no solution order (a)", "body": "missing body capabilities",
                    "parts": "part static check", "resample": "a drawn room has no solution", "actions": "task actions miss what the plan needs"}.get(failed[0], f"static stage {failed[0]} failed")

@@ -72,6 +72,34 @@ def test_seeds_that_all_came_out_the_same_say_so(so101_asset_dir, repo_root):
         env.close()
 
 
+def test_jitter_measures_a_nudged_object(so101_asset_dir, repo_root):
+    """R79: the number that was missing when it was needed. A solver count on a room that
+    draws nothing says whether the solution works where the room put things; this says what
+    happens a few millimetres off. It reports and fails nothing, so what is asserted here is
+    that it ran, named what it moved, and did not come out perfect at a nudge the hand
+    measurement had already put at 6 of 10."""
+    from mujoco_puzzle_gym.check import check_jitter
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+    try:
+        res = check_jitter(env, mm=10.0, seeds=4)
+        assert res["ok"] and res["nudged"] == ["block"] and res["mm"] == 10.0
+        assert 0 <= res["successes"] < res["seeds"], res
+        tight = check_jitter(env, mm=0.0, seeds=2)
+        assert tight["successes"] == tight["seeds"], ("a zero nudge is the room itself", tight)
+    finally:
+        env.close()
+
+
+def test_jitter_skips_a_room_with_nothing_to_nudge(example):
+    """The example room's demo names a switch and a door, which are bolted down."""
+    from mujoco_puzzle_gym.check import check_jitter
+
+    res = check_jitter(example, seeds=2)
+    assert res["ok"] and "skipped" in res
+
+
 def test_unlinked_door_fails_order(asset_dir, repo_root):
     code, res = mpg_check(repo_root / UNLINKED, "--seeds", "2")
     assert code != 0 and res["ok"] is False
