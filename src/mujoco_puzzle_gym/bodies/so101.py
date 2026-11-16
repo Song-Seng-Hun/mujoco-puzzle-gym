@@ -64,6 +64,16 @@ SITE = "gripperframe"
 HOME = (0.0, -0.873, 0.563, 1.382, 0.0)
 #: Gripper height held by the z term while a planar command runs [m].
 WORK_Z = 0.12
+#: Jaw height at `set_head(1.0)` [m] - the table, where an object lying on it has its
+#: handle. The shared `head` channel means "lower the thing that grabs" (`BodyAdapter.
+#: set_head`: 0 level, 1 the lowest the body takes), and for this body that is the jaw's
+#: height rather than a head pitch. Without it this arm could not pick anything off a
+#: table at all: measured, the approach brings the jaw to within 2 mm of a block's handle
+#: horizontally and parks 0.102 m above it, against a 0.04 m grab radius, so the weld
+#: never armed and every grasping number for this body was really a number about reaching
+#: a goal. The kinematic sweep covers the band z 0.02-0.15 m out to the full 0.480 m
+#: radius, so the table is inside the envelope; the IK gets there through the same z term.
+GRAB_Z = 0.02
 Z_GAIN = 12.0           # [1/s] P gain pulling the gripper back to `WORK_Z`
 IK_GAIN = 8.0           # [1/s] how hard the solve chases the aim point
 DAMPING = 0.05          # damped-least-squares lambda for the inverse kinematics
@@ -136,6 +146,8 @@ class So101Adapter(BodyAdapter):
         self._base_pose: Pose = (0.0, 0.0, 0.0)
         self._aim = np.zeros(3)            # the aim point `step` drives (world frame)
         self.jaw_target = 0.0
+        #: Height the z term holds the jaw at [m]; `set_head` moves it (WORK_Z .. GRAB_Z).
+        self.work_z = WORK_Z
 
     # ---- scene -------------------------------------------------------------
 
@@ -189,6 +201,7 @@ class So101Adapter(BodyAdapter):
         data.qpos[self._jaw_q] = 0.0
         data.ctrl[self._jaw_ctrl] = 0.0
         self.jaw_target = 0.0
+        self.work_z = WORK_Z               # `set_head` is held until changed; reset levels it
         mujoco.mj_forward(data.model, data)
         self._aim = self._clamp(np.array(data.site_xpos[self._site], dtype=float))
 
@@ -204,7 +217,7 @@ class So101Adapter(BodyAdapter):
         if abs(ang) > PAN_LIMIT:                  # outside the sector: slide along its edge
             edge = math.copysign(PAN_LIMIT, ang) + byaw
             d = np.hypot(*d) * np.array([math.cos(edge), math.sin(edge)])
-        return np.array([bx + d[0], by + d[1], WORK_Z])
+        return np.array([bx + d[0], by + d[1], self.work_z])
 
     def step(self, data: mujoco.MjData, cmd: Sequence[float],
              on_substep: SubstepFn | None = None) -> None:
@@ -282,7 +295,7 @@ class So101Adapter(BodyAdapter):
         if self._data is not data:
             self._bind(data)
         model = data.model
-        target = np.array([pose[0], pose[1], max(z + WORK_Z, WORK_Z)])
+        target = np.array([pose[0], pose[1], max(z + self.work_z, self.work_z)])
         for _ in range(200):
             mujoco.mj_kinematics(model, data)
             jacp = np.zeros((3, model.nv))
@@ -298,6 +311,17 @@ class So101Adapter(BodyAdapter):
         data.ctrl[self._ctrl] = data.qpos[self._qpos]
         mujoco.mj_forward(model, data)
         self._aim = self._clamp(np.array(data.site_xpos[self._site], dtype=float))
+
+    def set_head(self, level: float) -> None:
+        """Lower the jaw: 0 the working height, 1 the table (`GRAB_Z`).
+
+        The same channel a walking body pitches its head with, answered the way this body
+        can answer it. The shared carrier already drives it - `carry._hold_tip_at` asks for
+        the tip to be at the object's height - so a task that lists `head` in its `actions`
+        lets this arm reach down to something lying on the table. A task without it leaves
+        the jaw at the working height, exactly as before.
+        """
+        self.work_z = WORK_Z + float(np.clip(level, 0.0, 1.0)) * (GRAB_Z - WORK_Z)
 
     def grab_site(self) -> str:
         """The jaw's own site: what the weld grab (R18) attaches an object to.

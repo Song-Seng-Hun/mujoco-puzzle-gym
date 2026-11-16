@@ -478,3 +478,27 @@ Order of repair (R78): (1) make the approach go toward the object - until then e
 grasping number for this body is void; (2) the win condition (`box.ok` has to be the win);
 (3) only then new rooms. And making `mpg check` report "a demo step advanced on its stuck
 counter" as a **failure** is the guard against this shape of false success.
+
+**Partly repaired the same day (2026-11-17): it grabs now.** The cause was height, not
+direction. The approach brings the jaw to within **2 mm horizontally** of the handle and
+parks **0.102 m above** it - the whole remaining distance is vertical, against a 0.04 m grab
+radius. A walking body pitches its head to lower the tip (`carry._hold_tip_at`); this body
+had no implementation of that channel.
+
+No boundary change was needed. `head` already means "lower the thing that grabs"
+(`set_head`: 0 level, 1 lowest), and this body's answer is the jaw's height - from `WORK_Z`
+0.12 down to `GRAB_Z` 0.02. A task that lists `actions: [move, head, grab]` lets the shared
+carrier use it.
+
+Measured: in `tabletop/pick_and_place` the block is **grabbed in 10 of 10 episodes** - the
+first time this body has picked anything up. The room is 20/20 and its mean went from 2.9 s
+to **17.8 s**, because it now does the work. The goal moved too: at (-0.02, 0) it sat *on
+the path* from the block's approach point back to the block, so the episode ended before the
+grab; it is now at (0.05, -0.25).
+
+**Still not working**: `box.ok` fires in **0 of 10**. The block is released 0.11 m past the
+box centre every time, at (-0.009, +0.11) from its centre. The suspect is `place_act`'s "the
+cube leads the body" rule: a walking body holds the cube out in front on its beak and stops
+when that lead passes the target, but here the cube is *at* the jaw, so the lead is zero and
+the rule degenerates. That is the next piece of work, and until then this room's success is
+still reaching the goal.

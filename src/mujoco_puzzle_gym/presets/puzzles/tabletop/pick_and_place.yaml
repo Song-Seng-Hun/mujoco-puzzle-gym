@@ -21,7 +21,21 @@
 # from the base) is scenery and the goal in front of it is reachable from the start. With
 # the demo cut down to a single `goto goal` step the room still succeeded 5/5.
 #
-# **This room does not do what its name says (measured 2026-11-17).** Nothing is grabbed in
+# **Half of what its name says works (measured 2026-11-17).** The block is grabbed in 10 of
+# 10 episodes - the first time this body has picked anything up - and then released 0.11 m
+# past the box centre, so `box.ok` fires in 0 of 10. The room is 20/20 at a mean of 17.8 s
+# (it was 2.9 s when it did nothing), and its success is still reaching the goal, not the
+# box. Two things had to change for the grab: the task now lists `head`, which this body
+# answers by lowering the jaw from its working height to the table, and the goal moved from
+# (-0.02, 0) to (0.05, -0.25) because at (-0.02, 0) it sat on the path from the block's
+# approach point back to the block and ended the episode before the grab. What remains is
+# the release: `place_act` stops when the cube's lead over the body passes the target, and
+# for this body the cube is *at* the jaw, so that lead is zero and the rule degenerates.
+#
+# The paragraphs below are what this room was before that, kept because they are the record
+# of how long it looked like it worked.
+#
+# **This room did not do what its name says (measured 2026-11-17).** Nothing was grabbed in
 # it. With this room's own task, success comes at 2.8 s, `box.ok` is never on, and the block
 # has not moved from its start: during the grab step the gripper goes the *wrong way* - the
 # block is at y = -0.12 and the gripper's y runs 0.001 -> 0.154 - then the approach flips to
@@ -46,14 +60,14 @@
 # `box.ok` is the channel, not `box`: a receptacle writes `.ok`, `.count`, `.mass` and
 # `.wrong`, and reading the bare name is rejected by the `channels` stage.
 name: table_pick
-size: [1.0, 0.8]
+size: [1.2, 1.0]
 wall: {thickness: 0.02, height: 0.1}
 spawn: {pos: [-0.3, 0.0], yaw: 0.0}
 parts:
   - {name: block, type: cube, pos: [-0.05, -0.12], size: 0.03, mass: 0.02}
   - {name: box, type: receptacle, pos: [0.0, 0.14], size: [0.12, 0.12], accept: [block]}
   - {name: door, type: door, mode: oneshot, pos: [0.42, 0.0], width: 0.2, axis: y, in: [box.ok]}
-  - {name: goal, type: goal, pos: [-0.02, 0.0], radius: 0.05}
+  - {name: goal, type: goal, pos: [0.05, -0.25], radius: 0.05}
 demo:
   - grab block
   - place block box
