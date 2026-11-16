@@ -206,7 +206,7 @@ def wall_room(tmp_path, height: float) -> str:
 @pytest.mark.parametrize("height,ok", [(0.15, True), (0.2, True), (0.21, True),
                                        (0.5, False), (1.0, False)])
 def test_a_wall_plate_past_the_bodys_reach_is_refused(height, ok, asset_dir, tmp_path):
-    """`mount: wall` declares `beak_grab` and nothing more, so it used to say "I need a
+    """`mount: wall` declares `grab` and nothing more, so it used to say "I need a
     beak" rather than "I need a beak that reaches this high": a plate at the schema's
     ceiling of 1.0 m, nearly five times the declared beak height, passed every static
     stage. The capability gate compares names, so the height is compared in the part."""

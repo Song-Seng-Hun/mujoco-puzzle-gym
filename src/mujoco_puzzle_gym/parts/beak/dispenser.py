@@ -208,7 +208,7 @@ class Dispenser(Part):
                 "pos": self._world(self.plate_at).tolist(), "mount": "wall" if wall else "floor",
                 "kind": "momentary", "trigger": "body", "size": list(size),
                 "height": float(c["button_height"]), "facing": float(c["facing"]), "marker": "none"})
-            self.needs_body("walk", *(["beak_grab"] if wall else []))
+            self.needs_body("walk", *(["grab"] if wall else []))
         self.copies: list[Part] = []
         self._reset_state()
 

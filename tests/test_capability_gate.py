@@ -85,7 +85,7 @@ def test_the_bodies_declare_the_capabilities_parts_ask_for():
     ({"type": "hitch_station"}, "tow"),
     ({"type": "low_bar"}, "roller"),
     ({"type": "wire", "carries": "s", "to": ["g"], "mount": "wall",
-      "breakable": True, "by": ["peck"]}, "beak_grab"),
+      "breakable": True, "by": ["peck"]}, "grab"),
 ], ids=["push_lever", "dial", "hitch_station", "low_bar", "peck_wire"])
 def test_a_part_the_body_cannot_work_is_refused_by_name(cfg, capability):
     part = PARTS[cfg["type"]]("p", {"pos": [0.0, 0.0], **{k: v for k, v in cfg.items()
@@ -113,7 +113,7 @@ GOAL = {"name": "g", "type": "goal", "pos": [1.5, 0.0], "radius": 0.2}
 GATED_ROOMS = {
     "chest_push": [{"name": "lv", "type": "lever", "pos": [0.0, 0.0], "mode": "push",
                     "facing": 180.0}, GOAL],
-    "beak_grab": [{"name": "cb", "type": "cube", "pos": [0.4, 0.0]}, GOAL],
+    "grab": [{"name": "cb", "type": "cube", "pos": [0.4, 0.0]}, GOAL],
     "roller": [{"name": "bar", "type": "low_bar", "pos": [0.4, 0.0]}, GOAL],
     # The station is not itself a hitch: the rope runs between a towable and a post, and
     # the station is where the body would take the near end over.

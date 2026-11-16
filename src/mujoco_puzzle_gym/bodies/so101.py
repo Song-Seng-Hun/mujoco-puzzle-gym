@@ -20,10 +20,10 @@ What differs from a walking body, and is handled here rather than hidden:
 - **It cannot walk.** `walk` is not declared, so the 15 built-in parts that need walking
   refuse themselves by name through the capability gate (R2b) instead of silently
   producing an unsolvable room.
-- **`beak_grab` is declared, and the name is wrong.** The gate's question is "can this
+- **`grab` is declared, and the name is wrong.** The gate's question is "can this
   body pick an object up with its own end effector", which this arm can; the name is
   anatomy borrowed from the first body, which is the same kind of leak R2 exists to stop.
-  Renaming it to `grab` (keeping `beak_grab` as an alias the first body also declares) is
+  Renaming it to `grab` (keeping `grab` as an alias the first body also declares) is
   M4 R60 work. Declaring it here is the honest answer to the question the gate asks.
 
 Measured on the pinned model (2026-11-16, `mj_kinematics` over a 9^4 joint sweep, 6,561
@@ -99,10 +99,18 @@ class So101Adapter(BodyAdapter):
     #: moves the gripper at most 3 mm, which the damped least-squares solve tracks without
     #: the arm snapping; `tests/test_so101.py` measures the tracking error.
     cmd_limits = ((-0.15, 0.15), (-0.15, 0.15), (-1.0, 1.0))
+    #: `grab` and nothing else. The first version also declared `reach` and `gripper`,
+    #: and no part requires either (R67): the gate compares names, so a name nothing asks
+    #: for can neither refuse nor admit a room - it reads as a promise the environment
+    #: does not keep. The two dimensions they were meant to carry are already compared as
+    #: numbers, which is where R2b puts them: height against `reach_height` (0.45 here,
+    #: 0.21 on the first body) and mass against `max_lift_mass`. `two_hands` was left
+    #: unbuilt on the same reasoning in M4, and `tests/test_capability_names.py` now fails
+    #: on either body rather than leaving the rule to be remembered.
     capabilities = Capabilities(
-        names=frozenset({"reach", "gripper", "beak_grab"}),
+        names=frozenset({"grab"}),
         values={"max_lift_mass": 0.1, "reach_max": REACH_MAX, "reach_min": REACH_MIN,
-                "beak_height": REACH_HEIGHT, "walk_speed": 0.0,
+                "reach_height": REACH_HEIGHT, "walk_speed": 0.0,
                 "max_step": 0.0, "max_slope": 0.0},
     )
 

@@ -163,4 +163,4 @@ The Microduck adapter runs the official walking policy `velstand.onnx` at 50 Hz 
 
 Four bodies are included today: two legs, four legs, a humanoid, and a fixed-base arm that does not walk. The last one uses `BodyAdapter` unchanged - the puzzle side reads a body as a point, a heading and a velocity on a plane, so answering those three about the **gripper** rather than a trunk is all it takes.
 
-Bodies differ in what they can do. An adapter declares its capabilities (`walk`, `beak_grab`, …) and numeric limits (step height, walking speed, …), a part states what it needs with `requires_body`, and the `body` stage of `mpg check` compares the two. **Which part works with which body, and the measurements behind each answer**, is in [bodies and parts](bodies.en.md).
+Bodies differ in what they can do. An adapter declares its capabilities (`walk`, `grab`, …) and numeric limits (step height, walking speed, …), a part states what it needs with `requires_body`, and the `body` stage of `mpg check` compares the two. **Which part works with which body, and the measurements behind each answer**, is in [bodies and parts](bodies.en.md).

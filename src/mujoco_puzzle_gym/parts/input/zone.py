@@ -70,7 +70,7 @@ class Zone(Part):
         self.min_speed = float(c["min_speed"] or 0.0)
         if self.names or "body" not in TRIGGERS[self.trigger]:
             self.role = "sensor"
-        self.needs_body("walk" if self.role == "switch" else "beak_grab")
+        self.needs_body("walk" if self.role == "switch" else "grab")
         self.stateful = self.rearm == "leave" or self.direction is not None or self.min_speed > 0
         self._clear()
 

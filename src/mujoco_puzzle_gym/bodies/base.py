@@ -36,6 +36,20 @@ class BodyState:
 #: What a numeric limit means when the body never declared it: nothing, not everything.
 UNDECLARED_LIMIT = 0.0
 
+#: Capability names and limit keys renamed in R67, old name -> current one. The first
+#: body had a beak, so the vocabulary it created said `beak`: a jaw, a hand and a
+#: 29-joint humanoid all had to declare `beak_grab` to be allowed to pick anything up,
+#: which is the first body's anatomy leaking into shared vocabulary - the same leak R2
+#: exists to stop. Renaming would break every room, preset and plugin part written
+#: against the old names, so the old names keep working: a requested name and a declared
+#: limit key are both read through `canonical` before anything is compared.
+ALIASES = {"beak_grab": "grab", "beak_height": "reach_height"}
+
+
+def canonical(name: str) -> str:
+    """The current name for a capability or limit, whichever name the caller used."""
+    return ALIASES.get(name, name)
+
 
 def declared_limit(values: Mapping[str, float] | None, name: str) -> float:
     """A body's numeric capability limit, or `UNDECLARED_LIMIT` when it declares none.
@@ -48,24 +62,40 @@ def declared_limit(values: Mapping[str, float] | None, name: str) -> float:
     reason they can read. Flat ground is unaffected: the terrain checks block a step or
     ramp only when it is *greater* than the limit.
     """
-    try:
-        return float(values[name])                      # type: ignore[index]
-    except (KeyError, TypeError):
+    if values is None:
         return UNDECLARED_LIMIT
+    key = canonical(name)
+    for k in (key, *(old for old, new in ALIASES.items() if new == key)):
+        try:
+            return float(values[k])                     # type: ignore[index]
+        except (KeyError, TypeError):
+            continue
+    return UNDECLARED_LIMIT
 
 
 @dataclass(frozen=True)
 class Capabilities:
-    """What a body can do (R2b): capability names (e.g. `walk`, `beak_grab`) and
+    """What a body can do (R2b): capability names (e.g. `walk`, `grab`) and
     numeric limits (e.g. `max_lift_mass` [kg]). The body adapter sets both; parts
     state what they need with `requires_body: [...]` and `mpg check` compares."""
 
     names: frozenset[str] = frozenset()
     values: Mapping[str, float] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Store declared names under their current spelling, so a body written against
+        the old vocabulary (a plugin's, say) is compared on equal terms with this one."""
+        object.__setattr__(self, "names", frozenset(canonical(n) for n in self.names))
+
     def missing(self, required: Iterable[str]) -> list[str]:
-        """Required names this body lacks, in the order given."""
-        return [r for r in required if r not in self.names]
+        """Required names this body lacks, in the order given.
+
+        A request is read through `canonical`, so a room or plugin part asking for an
+        old name (`beak_grab`) is answered by a body declaring the current one (`grab`).
+        The name reported back is the one the caller used, since that is the string they
+        can find in their own file.
+        """
+        return [r for r in required if canonical(r) not in self.names]
 
     def limit(self, name: str) -> float:
         """This body's `name` limit, 0 when undeclared (see `declared_limit`)."""

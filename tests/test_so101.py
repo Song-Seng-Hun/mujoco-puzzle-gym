@@ -78,11 +78,14 @@ def test_reset_cannot_move_a_bolted_base(scene):
 def test_it_declares_what_it_can_do_and_not_walking(arm):
     caps = arm.capabilities
     assert "walk" not in caps.names
-    assert {"reach", "gripper"} <= caps.names
-    # The gate's question is "can it pick an object up with its own end effector", which
-    # this arm can; the name is anatomy from the first body (M4 R60 renames it).
-    assert "beak_grab" in caps.names
+    # `grab` and nothing else (R67). The first version also declared `reach` and
+    # `gripper`, which no part requires, so neither could ever refuse or admit a room;
+    # the dimensions they stood for are compared as numbers instead, which is where R2b
+    # puts them. The gate's question here is "can it pick an object up with its own end
+    # effector", and this arm can.
+    assert caps.names == frozenset({"grab"})
     assert caps.limit("reach_max") == pytest.approx(REACH_MAX)
+    assert caps.limit("reach_height") == pytest.approx(0.45)
 
 
 def test_a_forward_command_moves_the_gripper_outward(scene):

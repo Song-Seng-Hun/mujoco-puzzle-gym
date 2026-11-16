@@ -15,11 +15,11 @@ a lie (§4).
 
 | | `microduck` | `go2` |
 |---|---|---|
-| Capability names | `walk`, `beak_grab`, `roller`, `tow`, `chest_push` | `walk` |
+| Capability names | `walk`, `grab`, `roller`, `tow`, `chest_push` | `walk` |
 | `max_lift_mass` [kg] | 0.05 | 0.0 (nothing to lift with) |
 | `max_step` [m] | 0.01 | 0.03 |
 | `max_slope` [deg] | 5.0 | 6.0 |
-| `beak_height` [m] | 0.21 | not declared |
+| `reach_height` [m] | 0.21 | not declared |
 | `walk_speed` [m/s] | 0.16 | 1.0 |
 | Total mass [kg] | 0.737 | 15.206 |
 | `footprint_radius` [m] | 0.11 | 0.41 |
@@ -34,6 +34,24 @@ about the width needed to pass sideways (§6).
 **A numeric limit that is not declared reads as 0** (`bodies.declared_limit`, R45). Reading an
 unknown limit as infinite is the dangerous direction: then `mpg check` says a body can solve a room
 it cannot get through.
+
+### A name does not carry anatomy (R67, 2026-11-17)
+
+`beak_grab` and `beak_height` are now **`grab` and `reach_height`**. Because the first body
+had a beak, a jaw, a hand and a 29-joint humanoid all had to declare "picks things up with
+its beak" - the first body's anatomy leaking into shared vocabulary, which is the leak R2
+exists to stop. **The old names keep working** (`ALIASES` in `bodies/base.py`): a required
+name and a declared limit key are both normalised before anything is compared, so a room,
+preset or plugin part written against the old vocabulary still runs. A refusal reports the
+name the caller used, since that is the string they can find in their own file.
+
+And **a capability name no part requires now fails a test**
+(`tests/test_capability_names.py`). The gate compares names, so a name nothing asks for can
+neither refuse nor admit a room; it reads as a promise the environment does not keep. The
+arm declared `reach` and `gripper` with no part requiring either, and they are gone. The
+dimensions they stood for are already compared as numbers: height against `reach_height`,
+mass against `max_lift_mass`. M4 left `two_hands` unbuilt on exactly this reasoning and did
+not apply it to the arm in the same PR, which is why this is a test and not a rule.
 
 ## 2. Parts × bodies
 
@@ -55,23 +73,23 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `coin_lock` | - | o | o | Signals only |
 | `conveyor` | - | o | o | Moves the root position directly (mass-independent, §5) |
 | `counter` | - | o | o | Signals only |
-| `cube` | `beak_grab` | o | x | An object picked up with the beak |
+| `cube` | `grab` | o | x | An object picked up with the beak |
 | `destroyer` | - | o | o | Strikes down on a signal |
 | `dial` | `walk`, `chest_push` | o | x | Push a spoke with the chest for one notch (§4) |
 | `dispenser` | `walk` | o | o | The body walks up and receives |
 | `door` | - | o | o | A door that opens on a signal; the room sets the width (§6) |
-| `drawer` | `beak_grab` | o | x | Bite the handle and pull |
-| `egg` | `beak_grab` | o | x | An object picked up with the beak |
+| `drawer` | `grab` | o | x | Bite the handle and pull |
+| `egg` | `grab` | o | x | An object picked up with the beak |
 | `floor_tile` | - | o | o | A floor tile; the room sets the height |
 | `gate` | - | o | o | Signals only |
 | `goal` | - | o | o | A position test, with no mechanism to operate |
 | `goal_net` | `walk` | o | o | A goal the body enters; the room sets the dimensions (§6) |
-| `handle_ball` | `beak_grab` | o | x | An object picked up with the beak |
+| `handle_ball` | `grab` | o | x | An object picked up with the beak |
 | `hitch_station` | `walk`, `tow` | o | x | A pad that ties off the body's rope end (§4) |
-| `key` | `beak_grab` | o | x | An object picked up with the beak |
+| `key` | `grab` | o | x | An object picked up with the beak |
 | `laser` | `walk` | o | o | The body breaks the beam |
-| `laundry` | `beak_grab` | o | x | An object picked up with the beak |
-| `lever` | `beak_grab` | o | x | Default `mode: grab`. For `push` see §3 |
+| `laundry` | `grab` | o | x | An object picked up with the beak |
+| `lever` | `grab` | o | x | Default `mode: grab`. For `push` see §3 |
 | `low_bar` | `roller` | o | x | A low bar you crouch under (§4) |
 | `npc` | - | o | o | Moves on its own. The speed warning is relative to the body (§5) |
 | `pendulum` | - | o | o | An obstacle swung by a position servo |
@@ -79,11 +97,11 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `pin` | `walk` | o | o | A bowling pin, knocked over by the body or a ball |
 | `pit` | - | o | o | A pit. The room sets the size (§6) |
 | `platform` | - | o | o | A moving floor; the room sets the height |
-| `pressure` | `beak_grab` | o | x | Default `trigger: object`. For `any` see §3 |
-| `pull_cord` | `beak_grab` | o | x | Bite the handle and pull |
+| `pressure` | `grab` | o | x | Default `trigger: object`. For `any` see §3 |
+| `pull_cord` | `grab` | o | x | Bite the handle and pull |
 | `pusher` | - | o | o | An obstacle pushed out by a position servo |
 | `receiver` | - | o | o | Signals only |
-| `receptacle` | `beak_grab` | o | x | A bin you put objects into |
+| `receptacle` | `grab` | o | x | A bin you put objects into |
 | `relay` | - | o | o | Signals only (for `movable` see §3) |
 | `rope` | - | o | o | `a: body` is refused at load time (§4) |
 | `rope_door` | - | o | o | Opens on a signal |
@@ -91,7 +109,7 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `source` | - | o | o | Signals only |
 | `spinner` | - | o | o | An obstacle turned by a velocity servo |
 | `spring` | - | o | o | Writes velocity directly (mass-independent, §5) |
-| `stick` | `beak_grab` | o | x | A tool picked up with the beak |
+| `stick` | `grab` | o | x | A tool picked up with the beak |
 | `swing_door` | - | o | o | Opens on a signal |
 | `switch` | `walk` | o | o | Stepping on it |
 | `target` | - | o | o | Only cannonballs hit it |
@@ -107,12 +125,12 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 
 | Part setting | `requires_body` | go2 | Why |
 |---|---|---|---|
-| `button` `mount: wall` | `walk`, `beak_grab` | x | A wall button is pressed with the beak tip |
-| `button` `trigger: object` | `beak_grab` | x | An object has to be placed on it |
+| `button` `mount: wall` | `walk`, `grab` | x | A wall button is pressed with the beak tip |
+| `button` `trigger: object` | `grab` | x | An object has to be placed on it |
 | `lever` `mode: push` | `walk`, `chest_push` | x | Push the paddle up with the chest (§4) |
 | `pressure` `trigger: any`/`body` | `walk` | o | It also turns on when the body stands on it — the meaning changes (§5) |
-| `zone` `trigger: object` | `beak_grab` | x | An object has to be carried in |
-| `wire` (or another `breakable`) `by: [peck]` | `beak_grab` | x | Pecking is beak tip + grab action (§4) |
+| `zone` `trigger: object` | `grab` | x | An object has to be carried in |
+| `wire` (or another `breakable`) `by: [peck]` | `grab` | x | Pecking is beak tip + grab action (§4) |
 | `relay` `movable: true` | - | o | A box pushed around. At 0.5 kg a heavy body kicks it far away |
 
 ## 4. The four places where the declaration was a lie (audit of 2026-11-16)
@@ -125,7 +143,7 @@ room was unsolvable.
 | `lever` `mode: push` | `[]` | `walk`, `chest_push` | On Go2, all 5 seeds left `.angle` at its initial value of -1.000, with 0 paddle/rod contacts. The underside of the torso, at 0.237–0.243 m, passes above the paddle's top face at 0.120 m, and the feet pass outside the paddle's half-width of 0.060 m (\|y\| 0.07–0.14 m). **It is not hard, it does not touch.** The Microduck pushed the same room to 1.000 in 5/5 |
 | `dial` | `[]` | `walk`, `chest_push` | On the pass line written in the docs (0.10 m from the axis), Go2 over 5 seeds: +1.16, −0.32, 0.00, −0.04, 0.00 notches — 1/5 got past one notch and **2/5 tripped on a spoke and fell** (torso z 0.057). At 0.12 m: 0, +2.07, +2.00, +1.00, 0 notches. A pass in the opposite direction, which should do nothing, turned it +2.0–+5.1 notches. Shin, thigh, hip and torso all hit the spokes at once. The Microduck gives exactly +1.000 (90.0°) in 5/5 |
 | `hitch_station` | `[]` | `walk`, `tow` | A room with a rope and an attach station passes every stage on Go2, yet the rope's hitch list is `['sled','post']` — **`body` is not in it**. Step on the pad and nothing is ever tied. The station exists precisely for the body's rope end, and it did not declare that |
-| `breakable` `by: [peck]` | `[]` | `beak_grab` | A room with a wall wire set to `by: [peck]` passes on Go2 while `World.beak_site` is −1. It can never be broken |
+| `breakable` `by: [peck]` | `[]` | `grab` | A room with a wall wire set to `by: [peck]` passes on Go2 while `World.beak_site` is −1. It can never be broken |
 
 One more: `low_bar` went from `[]` to `roller`. It is a different kind of problem from a lie:
 `bottom` is pinned to 0.21–0.246 m in the schema, so **no room setting whatsoever** lets a larger
@@ -154,7 +172,7 @@ formula. The measurements confirm it — a 1.5 m/s kick lifted Go2 from 0.358 to
 falling in 5/5, and it was still walking 3 s later (2.25 m); the conveyor carried it a full
 0.85–0.90 m in 3 s (after subtracting the 0.26–0.35 m of forward drift in place with the command at 0).
 The rope knot's `max_hold_force` of 3 N is a value tied to the beak, so on a body without
-`beak_grab` it is refused in the first place.
+`grab` it is refused in the first place.
 
 ## 6. To be solved with dimensions (handed to R47)
 
@@ -239,7 +257,7 @@ Not one line of `BodyAdapter` changed.
 | | Value | How it was found |
 |---|---|---|
 | Reach radius | 0.001–0.480 m | Swept a 9⁴ joint grid of 6,561 points with `mj_kinematics`. There is no published official figure |
-| Reach height | z −0.223 … 0.520 m | The same sweep. The capability value `beak_height` is declared conservatively as 0.45 |
+| Reach height | z −0.223 … 0.520 m | The same sweep. The capability value `reach_height` is declared conservatively as 0.45 |
 | Working band | out to a radius of 0.480 m at z 0.02–0.15 m | The same sweep |
 | Envelope shape | a 220° **sector** (shoulder rotation ±1.920 rad) | A sector, not a ring. The room has to fit inside it |
 | Degrees of freedom | 5 arm axes + 1 jaw axis, no free joint | `nq = nv = 6` |
@@ -266,9 +284,9 @@ The four ways this body behaves differently are exposed, not hidden.
   tangential arc around the base rather than a straight line (over 2 s at 0.1 m/s the radius holds
   and the arc is 0.2 m).
 
-**It declares `beak_grab`, and the name is wrong.** What the gate asks is "can you pick something up
+**It declares `grab`, and the name is wrong.** What the gate asks is "can you pick something up
 with your own end effector", and this arm can. The name merely came from the first body's anatomy,
-and that is the same kind of leak R2 exists to stop. Renaming it to `grab` and leaving `beak_grab`
+and that is the same kind of leak R2 exists to stop. Renaming it to `grab` and leaving `grab`
 as an alias is M4 R60 work.
 
 Assets: Menagerie `robotstudio_so101/` (Apache-2.0), inside the commit `370c4396` this repository

@@ -124,7 +124,7 @@ class Breakable(Part):
                 # no beak reads `World.beak_site` as -1 and can never land one (R2b). Found
                 # by the R46 audit (docs/bodies.md): a wall wire with `by: [peck]` passed
                 # every `mpg check` stage for a beakless body while being unbreakable.
-                self.needs_body("beak_grab")
+                self.needs_body("grab")
         self.broken = False
         self.hp_left = self.hp
         self._break_reset_transients()

@@ -21,7 +21,7 @@ actions:   the task actions cover what the plan needs (R19): `grab` when an
            held by its knob (a `pull` sub-goal, a pull cord or grab lever in the
            order, R28), `head` when a wall button
            the plan presses sits wholly below the level beak tip (the body's
-           `beak_height`; a dispenser's wall plate counts when the plan takes
+           `reach_height`; a dispenser's wall plate counts when the plan takes
            from it: a `take` sub-goal, or its item for a receptacle in the
            order, R28); `crouch` for a `glide` sub-goal (R30); without them a policy
            can never do it. Checked after
@@ -366,7 +366,7 @@ def check_actions(env: PuzzleEnv, order: list[str]) -> dict[str, Any]:
         if bars:
             why.append(f"`glide` under {bars} needs the crouch but the task actions {env.actions} "
                        "have no `crouch`")
-    level = env.body.capabilities.values.get("beak_height")
+    level = env.body.capabilities.values.get("reach_height")
     if "head" not in env.actions and level is not None:
         pressed = set(order) | {e[1] for e in demo if e[0] in ("press", "take")}
         pressed |= {d.name for d in env.parts.values() if hasattr(d, "copies") and isinstance(d.copies[0], Grabbable)

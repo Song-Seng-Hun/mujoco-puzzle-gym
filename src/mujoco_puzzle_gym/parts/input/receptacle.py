@@ -144,7 +144,7 @@ class Receptacle(Part):
         self.hook_objs: list[Part] = []      # hook: grabbable objects it can hang (add_room_parts)
         self.marker_match = {e for e in self.accept if type(e) is int}
         self.stateful = True
-        self.needs_body("beak_grab")          # objects get in by being carried (R18)
+        self.needs_body("grab")          # objects get in by being carried (R18)
         self._clear()
 
     def _clear(self):
