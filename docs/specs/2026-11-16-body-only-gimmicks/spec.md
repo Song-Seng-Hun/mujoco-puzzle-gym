@@ -106,6 +106,18 @@ View (read-only copy): https://claude.ai/artifact/EfLUiLpSqstpNwiBokqpeK (Spec �
   Check: `tests/test_guide.py` 통과, 세 파일의 표 행 수와 숫자 토큰 일치. `mpg parts --markdown`에
   새 부품 셋이 보인다. `docs/training-log.md`에 방마다 두 숫자.
 
+  **구현 완료 2026-11-17.** 부품 × 몸 표는 세 언어 모두 `stack`과 개명된 이름(`grab`,
+  `reach_height`)을 담고 있었다(각 4건, 동기화 확인). `mpg parts --markdown`의 생성 표에 `stack`이
+  있고 `tests/test_guide.py` 16개 통과. 안내서 세 언어에 「그 몸이어야 풀리는 방」 절을 새로 썼고,
+  주장 대신 그 자리에서 `--all-bodies`로 측정했다: `weigh_it_down`과 `pick_and_place`는 **둘 다
+  배타적**(작은 몸 해답 0/5, 네발·휴머노이드는 이름으로 거부 `['grab']`, 팔 통과), `reach_target`은
+  배타적이 아니다(작은 몸 1.5초). `pick_and_place`가 배타가 된 것은 승리가 블록을 요구하게 된
+  뒤의 변화다 — M4 때는 작은 몸도 풀었고 그 사실이 기록돼 있다.
+
+  두 숫자는 `docs/training-log.md` 「방마다 두 숫자」 절에 7개 방으로 적었다. **그중 하나가
+  기준을 바꾼다**: `reach_target`의 무작위 기준선이 **0.20**(다른 여섯 방은 0.00)이어서 그 방은
+  벤치마크로 쓰지 않고 연결 점검으로만 쓴다. 나머지 여섯 방은 M4 R66의 0.6 기준을 그대로 쓴다.
+
 아래 둘은 §Design의 「왜 전용 퍼즐이 팔에만 생기는가」에서 나왔다. 전부 **새 부품 0개**이고 전부
 팔의 것이다(선반과 넘어서 닿기는 수직 축이 없어 제거했다 — 아래 「수직 축이 없어서 죽은 요구 둘」) — 걷는 몸의 전용 퍼즐은 문턱이 될 수밖에 없어 만들지 않았다(같은 절). 기존 부품의
 조합이 전용 방의 기본 수단이고, 새 부품은 그것으로 안 될 때만 만든다(M4 R63 승계).
