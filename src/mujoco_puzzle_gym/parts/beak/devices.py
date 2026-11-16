@@ -209,6 +209,12 @@ class Lever(HandleDevice):
         self.detents = int(c["detents"])
         if self.detents == 1:
             raise SchemaError(f"part {name!r}: detents must be 0 (continuous) or 2..9, got 1")
+        if not self.grab_handle:
+            # A push lever is worked by the body's chest, not by a beak, so it was the one
+            # device that declared nothing (R46 audit, docs/bodies.md). A body too tall for
+            # the paddle does not find it hard: it straddles it and never touches it, and
+            # `.angle` sits at its start value for the whole episode.
+            self.needs_body("walk", "chest_push")
         deg = c["max_angle"] if c["max_angle"] is not None else (GRAB_MAX if self.grab_handle else PUSH_MAX)
         self.max = math.radians(float(deg))
         self.start = float(c["start"]) if c["start"] is not None else (0.0 if self.grab_handle else -1.0)
@@ -355,6 +361,12 @@ class Dial(HandleDevice):
             raise SchemaError(f"part {name!r}: target [from, to] needs from <= to, got {[self.lo, self.hi]}")
         self.walk = np.array([-self.f[1], self.f[0]])          # pass direction: the axis on the body's left
         self.cell = self.start
+        # The spokes sit DIAL_LO..DIAL_HI up so the feet pass under and the chest pushes one
+        # round: the same body shape the push lever needs (R46 audit, docs/bodies.md). A body
+        # whose legs reach into that band catches the spokes with legs, hips and trunk at
+        # once, so the count is neither one cell nor counter-clockwise only, and the body
+        # trips on them.
+        self.needs_body("walk", "chest_push")
 
     @classmethod
     def add_room_parts(cls, parts):

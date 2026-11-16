@@ -231,12 +231,38 @@ def test_go2_declares_only_walking_and_no_optional_hardware(body, model):
         body.add_rangefinders(flat_floor_spec(), [0.0], "r")
 
 
-def test_capability_values_are_declared_not_left_to_infinity(body):
-    """`room.grid` and `check.map_steps` fall back to infinity for a missing limit, so a
-    body that declares nothing would make `mpg check` call a room solvable (plan 1)."""
+def test_capability_values_are_the_measured_ones(body):
+    """Measured 2026-11-16 (see the comment on `Go2Adapter.capabilities` for the ratios).
+
+    Pinned here so a change to any of them has to be a deliberate edit to this test as
+    well; `mpg check` plans and refuses rooms from these numbers.
+    """
+    values = body.capabilities.values
+    assert values["max_step"] == pytest.approx(0.03)
+    assert values["max_slope"] == pytest.approx(6.0)
+    assert values["max_lift_mass"] == 0.0          # no beak, nothing to carry with
     for key in ("max_step", "max_slope", "max_lift_mass"):
-        assert key in body.capabilities.values, key
-        assert np.isfinite(body.capabilities.values[key]), key
+        assert np.isfinite(values[key]), key
+
+
+def test_footprint_radius_covers_the_whole_body(body, model):
+    """Too small a radius plans a route through a gap the body does not fit (R47)."""
+    data = mujoco.MjData(model)
+    body.reset(data)
+    mujoco.mj_forward(model, data)
+    root = body.root_body_id(model)
+    cx, cy = float(data.qpos[body._root_qpos]), float(data.qpos[body._root_qpos + 1])
+    reach = 0.0
+    for g in range(model.ngeom):
+        if model.body_rootid[model.geom_bodyid[g]] != model.body_rootid[root]:
+            continue
+        p = data.geom_xpos[g]
+        # `geom_rbound` is the radius of a sphere around the geom, so this is an upper
+        # bound on its horizontal reach: good enough to catch a radius that is too small.
+        reach = max(reach, float(np.hypot(p[0] - cx, p[1] - cy)) + float(model.geom_rbound[g]))
+    assert body.footprint_radius == pytest.approx(0.41)
+    assert body.footprint_radius <= reach, "declared radius must not exceed the bound"
+    assert reach - body.footprint_radius < 0.25, f"declared radius far below {reach:.3f}"
 
 
 def test_history_state_round_trips(body, model):

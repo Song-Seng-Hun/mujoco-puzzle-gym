@@ -83,19 +83,46 @@ class Go2Adapter(BodyAdapter):
     control_dt = 0.02
     timestep = TIMESTEP
     fall_height = FALL_HEIGHT
-    #: Covers the trunk box (0.376 x 0.094 m) plus the geoms reaching to x = 0.293 and
-    #: the standing leg spread. Measured against the compiled model in `footprint()`.
-    footprint_radius = 0.38
+    #: Measured on the compiled model at the reset pose: the furthest any geom reaches
+    #: horizontally from the trunk centre is 0.406 m (a visual calf mesh) and 0.397 m
+    #: counting collision geoms only (the rear thigh's collision box). Rounded up to
+    #: cover both, since callers use it to inflate walls for path planning and a value
+    #: that is too small plans a route through a gap the body does not fit.
+    footprint_radius = 0.41
     #: Go2 walks and nothing else: no beak (`grab_site`), no addons, no tow hitch, no eye
     #: camera (`go2.xml` has no camera, only an imu site) and no rangefinder mount. All of
     #: those stay at the `BodyAdapter` defaults, which is what `mpg check` gates on (R45).
-    #: `values` must not be left empty: `room.grid` and `check.map_steps` fall back to
-    #: infinity for a missing limit, which would make `mpg check` call a room solvable
-    #: that is not. Until the climbing limits are measured (R46/R47, PR C) they are 0,
-    #: which fails closed; `max_lift_mass` is 0 because this body cannot carry anything.
+    #: `max_step` [m] and `max_slope` [deg] are measurements (2026-11-16, this policy at
+    #: vx 0.5 on MuJoCo's default floor friction, 10 seeds per point, the seed jittering
+    #: the start pose by +/-0.02 m and +/-0.03 rad).
+    #:
+    #: `max_step` 0.03: up 10/10 at 0.01, 0.02 and 0.03 m, 3/10 at 0.04, 0/10 at 0.05
+    #: and 0.08-0.10 (1/10 at 0.06 is sample noise). Nothing ever fell at any height -
+    #: past the limit the body simply stops at the riser - so this is a limit on
+    #: climbing, not on staying upright. Stepping *down*, it takes 0.09 m with no fall
+    #: (10/10 through 0.09, then 6/10 at both 0.10 and 0.12, 0/10 from 0.15); those are
+    #: real falls. Only the up limit is declared, as nothing consumes a down limit.
+    #:
+    #: `max_slope` 6.0: up 10/10 at 4, 5 and 6 deg, 9/10 at 7, 0/10 at 8 and above. Here
+    #: too the body never fell, on any ramp up to 20 deg; it stalls. Distance climbed
+    #: along the ramp in 10 s falls off gradually (2.78 m at 4 deg, 2.02 at 6, 1.44 at 8,
+    #: 0.38 at 10), so this number says "still makes useful progress", not "does not tip
+    #: over", and a second criterion (>= 1.5 m climbed) puts the boundary in the same
+    #: place. 8-9 deg is where forward progress collapses.
+    #:
+    #: `max_lift_mass` 0.0 is not a placeholder: without `beak_grab` this body has
+    #: nothing to carry with. An undeclared limit would also read as 0
+    #: (`bodies.declared_limit`); these are written out so a reader sees they were
+    #: measured rather than skipped.
+    #:
+    #: `walk_speed` 1.0 [m/s]: a steady run at the top command this body is given
+    #: (vx 1.0) covers 1.019 m/s on flat ground, measured over the last 3 s of a 6 s
+    #: run (2026-11-16). Parts compare an NPC's speed against it (R29); 4.6x the
+    #: microduck's declared 0.16.
     capabilities = Capabilities(
         names=frozenset({"walk"}),
-        values={"max_lift_mass": 0.0, "max_step": 0.0, "max_slope": 0.0},
+        values={"max_lift_mass": 0.0, "max_step": 0.03, "max_slope": 6.0,
+                "walk_speed": 1.0},
     )
 
     def __init__(self, asset_dir: Path | None = None, full_command_range: bool = False):

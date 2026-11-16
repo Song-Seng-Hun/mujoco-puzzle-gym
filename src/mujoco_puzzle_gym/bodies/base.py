@@ -32,6 +32,27 @@ class BodyState:
     fallen: bool
 
 
+#: What a numeric limit means when the body never declared it: nothing, not everything.
+UNDECLARED_LIMIT = 0.0
+
+
+def declared_limit(values: Mapping[str, float] | None, name: str) -> float:
+    """A body's numeric capability limit, or `UNDECLARED_LIMIT` when it declares none.
+
+    Callers ask for limits a body may not have: `room.grid` and `check.map_steps` want
+    `max_step` and `max_slope`, the beak's grab wants `max_lift_mass`. Reading a missing
+    limit as unlimited is the dangerous direction - it let `mpg check` call a room
+    solvable that the body cannot walk - and it was only ever safe because the one body
+    that existed declared all of them. 0 refuses instead, which reaches the user as a
+    reason they can read. Flat ground is unaffected: the terrain checks block a step or
+    ramp only when it is *greater* than the limit.
+    """
+    try:
+        return float(values[name])                      # type: ignore[index]
+    except (KeyError, TypeError):
+        return UNDECLARED_LIMIT
+
+
 @dataclass(frozen=True)
 class Capabilities:
     """What a body can do (R2b): capability names (e.g. `walk`, `beak_grab`) and
@@ -44,6 +65,10 @@ class Capabilities:
     def missing(self, required: Iterable[str]) -> list[str]:
         """Required names this body lacks, in the order given."""
         return [r for r in required if r not in self.names]
+
+    def limit(self, name: str) -> float:
+        """This body's `name` limit, 0 when undeclared (see `declared_limit`)."""
+        return declared_limit(self.values, name)
 
 
 class BodyAdapter(ABC):
@@ -118,6 +143,17 @@ class BodyAdapter(ABC):
     def root_body_id(self, model: mujoco.MjModel) -> int:
         """Id of the body's root (free-floating) MuJoCo body; sensors use it to tell
         the walking body from objects (`body_rootid`)."""
+
+    def total_mass(self, model: mujoco.MjModel) -> float:
+        """Mass [kg] of the whole body: every MuJoCo body under its root.
+
+        Parts whose numbers are forces or masses read it to say whether their setting
+        means anything for the body in the scene (`check_warnings`): a push sized for a
+        sub-kilogram body does nothing to one twenty times heavier, and a pressure plate
+        whose threshold is below the body's own mass is tripped by standing on it."""
+        root = self.root_body_id(model)
+        return float(sum(model.body_mass[i] for i in range(model.nbody)
+                         if model.body_rootid[i] == root))
 
     @abstractmethod
     def history_state(self) -> dict[str, Any]:

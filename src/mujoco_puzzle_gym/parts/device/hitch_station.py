@@ -77,6 +77,12 @@ class HitchStation(Part):
                                                      else "`to` is for `mode: handoff` only"))
         self.rope = None
         self._geoms: list[int] = []
+        # The station's whole job is the body's own rope end, so it needs a body with a
+        # tow hitch (`BodyAdapter.tow_site`, R2b). A rope written with `a: body` fails at
+        # load on a body without one, but a station ties the rope there later, so nothing
+        # caught it: a rope-and-station room passed every `mpg check` stage for a body with
+        # no hitch, where the rope could never reach it (R46 audit, docs/bodies.md).
+        self.needs_body("walk", "tow")
         self.reset(None, None)
 
     @classmethod

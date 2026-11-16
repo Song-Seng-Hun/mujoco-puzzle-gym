@@ -64,6 +64,31 @@ class PressurePlate(Part):
         self._f = np.zeros(6)
         self._on_out = self.outputs[:-1]          # the 0/1 channels (the last is `.mass`)
 
+    def check_warnings(self, env) -> list[str]:
+        """A plate the body itself may press has to be read against that body (R46 audit,
+        docs/bodies.md has the measurements). Two ways it goes wrong, both measured:
+
+        - Narrower than the body's footprint, only part of the body rests on it, so
+          `.mass` swings with the gait: a body standing with one or two feet on the plate
+          read a mean well under its own mass, peaks near half of it, and zero on some
+          steps, which turned every threshold into a per-step coin flip. Widened past the
+          footprint the same body read its real mass.
+        - A threshold below the body's own mass is met by standing on it, so a plate meant
+          to ask for something carried is solved by arriving."""
+        if "body" not in TRIGGERS[self.trigger]:
+            return []
+        why = []
+        mass = env.body.total_mass(env.model)
+        reach = float(env.body.footprint_radius)
+        if reach and float(min(self.cfg["size"])) < 2 * reach:
+            why.append(f"part {self.name!r}: the plate ({min(self.cfg['size']):g} m) is narrower "
+                       f"than this body's footprint ({2 * reach:g} m), so only part of the body "
+                       f"rests on it and `{self.name}.mass` swings with the gait")
+        if mass and float(self.live["min_mass"]) <= mass:
+            why.append(f"part {self.name!r}: min_mass {self.live['min_mass']:g} kg is not above "
+                       f"this body's own mass ({mass:.2f} kg); standing on the plate is enough")
+        return why
+
     def build(self, spec):
         body = super().build(spec)
         body.add_geom(name=self.body_name + "/plate", type=mujoco.mjtGeom.mjGEOM_BOX,

@@ -20,6 +20,15 @@ from .base import Trap, heading
 
 RGBA = (0.6, 0.85, 1.0, 0.12)
 
+#: A wind below this share of the body's weight is reported as not worth setting (R46
+#: audit, docs/bodies.md). The boundary comes from the measured `puzzles/roller/crosswind`
+#: table (docs/parts-guide.md, 20 seeds, on a body weighing 7.2 N): 0.5 N, 7 % of that
+#: weight, crossed 20/20; 1.0 N, 14 %, fell 8/20; 2 N, 28 %, 10/10. Nothing weaker than
+#: 7 % was ever measured to do anything, so 5 % sits under every setting known to matter
+#: and the presets stay silent, while the same newtons against a body twenty times
+#: heavier fall below it and get named.
+MIN_WEIGHT_SHARE = 0.05
+
 
 class Wind(Trap):
     state_keys = ("applied",)
@@ -52,6 +61,22 @@ class Wind(Trap):
 
     def force(self) -> np.ndarray:
         return np.array([*heading(float(self.live["yaw"])) * float(self.live["power"]), 0.0])
+
+    def check_warnings(self, env) -> list[str]:
+        """`power` is a force, so what it does depends on the body's mass: the preset
+        1.0 N is 14 % of the lighter body's weight and 0.7 % of a body twenty times
+        heavier (R46 audit, docs/bodies.md). The schema's ceiling bites too - for such a
+        body 20 N is 13 % of its weight, so no legal setting reaches the share measured to
+        defeat a body (28 %). Reported, not failed: the wind still moves the objects in
+        its zone."""
+        if "body" not in TRIGGERS[self.trigger]:
+            return []
+        weight = env.body.total_mass(env.model) * abs(float(env.model.opt.gravity[2]))
+        power = float(self.live["power"])
+        if power and weight and power < MIN_WEIGHT_SHARE * weight:
+            return [f"part {self.name!r}: power {power:g} N is {power / weight:.0%} of this "
+                    f"body's weight ({weight:.0f} N); it will barely move the body"]
+        return []
 
     def update(self, model, data, body):
         if self.world is None:
