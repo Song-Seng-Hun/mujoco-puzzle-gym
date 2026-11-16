@@ -647,3 +647,23 @@ symptom.
 So `stack` still has no room filling it, and the next measurement is "why can this pose not
 move inward". `reach_min` 0.0 is **correct** - the jaw does reach 0.01 m at that height -
 and this is recorded as a control problem rather than a declaration one.
+
+### The dead wedge can be bridged - but not by a turntable (R70, measured 2026-11-17)
+
+The envelope is a **220-degree sector** (shoulder pan +/-1.920 rad), so the **140 degrees
+behind the base** cannot be reached in any pose. The spec's R70 designed a room where a
+**turntable** rotates an object out of that wedge, and the geometry says a turntable
+**cannot**: a disk turns an object about the disk's own centre, which leaves its azimuth
+*from the base* unchanged. The wedge is a region of angle and a disk is a device of radius;
+bridging the wedge means **moving** the object.
+
+A `conveyor` does that - it shifts whatever stands on it by `speed * dt` along its axis.
+Measured: with the block 0.45 m from the base at **azimuth 180 degrees** (squarely in the
+wedge) and a belt running from behind the base to in front of it, the block comes out at the
+belt's end (radius 0.25 m, azimuth 0) and **the arm picks it up**. The wedge is bridgeable.
+
+**The room is not finished**: after the grab, the place step lets the block go near the
+belt's end rather than in the receptacle (block ends at (0.252, -0.023), box at
+(0.22, 0.12)). And **R78's guard catches exactly that, by name** - `` `place block box`
+ended with it not in 'box' ``, in 3 of 3 seeds. That is the guard's first catch outside the
+case it was written for. Fixing that place is next, and until then this room is not shipped.
