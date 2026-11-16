@@ -672,3 +672,24 @@ hold is lost during the place** - at k=56, with the block still on the belt at
 cause: `conveyor` goes through `candidates()`, which skips objects the body holds, the same
 convention the sensing parts follow. So the next measurement is "why does the weld let go
 while approaching".
+
+#### Why it lets go: the block is being dragged along the floor (measured 2026-11-17)
+
+Reading the weld force per step: 0.133 -> 1.208 -> 1.604 -> 2.180 -> 2.127 N, released at
+k=56. The limit is the cube's 3.0 N `max_hold_force`, and the force crosses it inside that
+last step. Throughout, `block_z = 0.012` and `head = +1.00` - the jaw stays **at grab
+height** while travelling, so the arm **drags the block along the floor**. Floor friction is
+what builds the force. Not the direction, not the belt, not the envelope.
+
+So the fix has to **lift the block after the grab**. The two obvious forms of it both
+measured worse and were **not shipped**:
+
+- Commanding `head = -1` as soon as the grab completes makes `set_head` **jump** the jaw
+  target from 0.02 to 0.12 m in one control period, and the inverse kinematics yanks the
+  block. The release moved **earlier**, from k=56 to k=52.
+- **Rate-limiting** that jump to 0.5 m/s stops the grab from happening at all in the wedge
+  room (never held once in 120 steps, demo_step 0).
+
+So the right fix has to lift without a step change in the IK target and without breaking the
+approach phase. It has not been found yet, and an unexplained change to shared code is not
+shipped.
