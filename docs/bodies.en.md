@@ -530,3 +530,19 @@ counter** (`_stuck` turns the phase to "back" and walks off while still holding)
 is the next measurement. Returning the stand action on the step that decides "over" changed
 the numbers not at all (0.069, -0.042 either way), so that change was reverted rather than
 shipped unmeasured.
+
+**And the win condition (R78 part two) closed with it.** The moment placing worked, the
+approach that had failed before worked unchanged: `enable: box.ok` on the goal means the
+goal does not count until the block is in the box. The earlier 0/5 was never the wiring -
+it was that nothing ever went in the box.
+
+| | full demo | demo cut to one `goto goal` |
+|---|---|---|
+| goal with `enable: box.ok` | 5/5 | **0/5** |
+| ungated (as shipped before) | 5/5 | 5/5 |
+
+The shipped `tabletop/pick_and_place` now carries the gate: **20/20 at a mean of 27.9 s**,
+and unwinnable with its demo cut to a single step. No new part was needed - `enable` is a
+field every part has and success is "a `role: goal` part is satisfied", so joining the two
+was the whole change. The "goal whose satisfaction is a channel" part is **not built**: a
+part with no place to be used is decoration (R67).

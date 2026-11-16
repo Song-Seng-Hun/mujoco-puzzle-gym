@@ -1,61 +1,37 @@
-# Tabletop pick and place (M4 R61): the first room where a body with no legs does
-# something to an object. Pick the block up, put it in the box, and the box opens the way
-# to the target.
+# Tabletop pick and place: pick the block up, put it in the box, then go to the goal -
+# and the goal does not count until the block is in the box (`enable: box.ok`).
 #
-# This room is the one that answers the question the reach room could not: the weld grab
-# (R18) was written for a beak on the front of a walking trunk, and nothing had measured
-# it on a jaw that *is* the body. Measured: 20/20 seeds, mean 2.9 s. Before the shared
-# approach learned that this body is holonomic it was 0/20 - the carrier closes in at
-# `SLOW = -0.5`, which on a symmetric command mapping is half speed backwards, so the arm
-# drove away from the block it was told to pick up.
+# Measured (M5, 2026-11-17): the block is set down in the box in 10 of 10 episodes, 0.013 m
+# from its centre, and the room goes 20/20 at a mean of 27.9 s. The assertion that makes it
+# a task rather than a walk: with the demo cut down to a single `goto goal` step it is
+# **0/5**, where the same room with an ungated goal is 5/5.
 #
-# Numbers follow the measured envelope (docs/bodies.md section 9): base at x = -0.3, so
-# the block at (-0.05, -0.12) is 0.29 m out and the box at (0.0, 0.14) is 0.33 m out, both
-# inside the 0.48 m reach and clear of the fold near the base where tracking degrades. The
-# block is 3 cm and 20 g; the jaw's own footprint is 5 cm.
+# It took four fixes to get there, and all four were height or a walking body's action read
+# by a body that is a jaw (the history is in `docs/bodies.md` section 9):
 #
-# **Known defect, measured 2026-11-17 (M5): winning this room does not require the block.**
-# Success in this environment is "a part with `role: goal` is satisfied", and every shipped
-# room makes its puzzle by putting a door in the way. That does not transfer to this body:
-# anything behind a door here is outside its 0.48 m ring, so the door at 0.42 m (0.72 m
-# from the base) is scenery and the goal in front of it is reachable from the start. With
-# the demo cut down to a single `goto goal` step the room still succeeded 5/5.
+#   - the task needs `head`, which this body answers by lowering the jaw to the table.
+#     Without it the approach parks the jaw 2 mm from the handle horizontally and 0.102 m
+#     above it, against a 0.04 m grab radius, and nothing is ever picked up.
+#   - `STAND` (-1, 0, 0) means "the slowest this body goes" to a walking body and full speed
+#     *backwards* here, and the shared solver and carrier hand it out at twenty-seven call
+#     sites meaning "wait". `BodyAdapter.stand_action` now lets the body say what standing
+#     still is.
+#   - the aim point wound up while the jaw was blocked, so the arm kept travelling 0.22 m
+#     after its command stopped (`MAX_LEAD`).
+#   - the release dropped the block from 0.115 m - inside the box's footprint, but from a
+#     tenth of a metre up, so it bounced out and landed 0.08 m away. `carry._let_go` lowers
+#     the tip to the height the object was picked up at first.
 #
-# **Half of what its name says works (measured 2026-11-17).** The block is grabbed in 10 of
-# 10 episodes - the first time this body has picked anything up - and then released 0.11 m
-# past the box centre, so `box.ok` fires in 0 of 10. The room is 20/20 at a mean of 17.8 s
-# (it was 2.9 s when it did nothing), and its success is still reaching the goal, not the
-# box. Two things had to change for the grab: the task now lists `head`, which this body
-# answers by lowering the jaw from its working height to the table, and the goal moved from
-# (-0.02, 0) to (0.05, -0.25) because at (-0.02, 0) it sat on the path from the block's
-# approach point back to the block and ended the episode before the grab. What remains is
-# the release: `place_act` stops when the cube's lead over the body passes the target, and
-# for this body the cube is *at* the jaw, so that lead is zero and the rule degenerates.
+# Before all that this room reported 20/20 at 2.9 s while touching nothing: its goal sat at
+# (-0.02, 0), on the path back from the block's approach point, so the gripper brushed it
+# and the episode ended before the grab. The goal is at (0.05, -0.25) now, 0.43 m from the
+# base and inside the measured ring, and the episode is 40 s because the solution takes
+# 27.9 s when it actually does the work.
 #
-# The paragraphs below are what this room was before that, kept because they are the record
-# of how long it looked like it worked.
-#
-# **This room did not do what its name says (measured 2026-11-17).** Nothing was grabbed in
-# it. With this room's own task, success comes at 2.8 s, `box.ok` is never on, and the block
-# has not moved from its start: during the grab step the gripper goes the *wrong way* - the
-# block is at y = -0.12 and the gripper's y runs 0.001 -> 0.154 - then the approach flips to
-# "arrived" and oscillates. The demo steps advance on the solver's stuck counter and the
-# goal 0.1 m away is reached by accident. So M4's "20/20 at 2.9 s" measured reaching the
-# goal, and this body's grasping numbers are void until the approach is fixed (R78).
-#
-# **And the block never reaches the box**: measured, `box.ok` is 0 at the end of every
-# episode and the block sits (-0.05, -0.26) m from the box centre - where it started. The
-# demo's `place` step finishes on its own criterion (the gripper is over the box and the jaw
-# opens), and that criterion is not "it went in". So this room measures grabbing and
-# carrying, and nothing about putting down.
-#
-# What the 20/20 below did measure is the scripted solver, which works through the demo in
-# order and cannot skip a step: before the holonomic fix in `carry.steer` it could not
-# complete `grab block` and scored 0/20. So the grab and the carry are measured; the win
-# condition is not. Gating the goal with `enable: box.ok` was tried and is not a fix - the
-# solver then fails at the grab step (demo_step 0, the block never moves), and no shipped
-# room gates a goal, so the machinery is untested. A part whose `role` is goal and whose
-# satisfaction *is* a channel is the fix, and it is a requirement of its own.
+# Numbers follow the measured envelope (docs/bodies.md section 9) and the reach stage (R77):
+# the base is at x = -0.3, so the block at (-0.05, -0.12) is 0.29 m out and the box at
+# (0.0, 0.14) is 0.33 m, both inside the 0.48 m ring and clear of the fold near the base.
+# The block is 3 cm and 20 g; the jaw's own footprint is 5 cm.
 #
 # `box.ok` is the channel, not `box`: a receptacle writes `.ok`, `.count`, `.mass` and
 # `.wrong`, and reading the bare name is rejected by the `channels` stage.
@@ -67,7 +43,7 @@ parts:
   - {name: block, type: cube, pos: [-0.05, -0.12], size: 0.03, mass: 0.02}
   - {name: box, type: receptacle, pos: [0.0, 0.14], size: [0.12, 0.12], accept: [block]}
   - {name: door, type: door, mode: oneshot, pos: [0.42, 0.0], width: 0.2, axis: y, in: [box.ok]}
-  - {name: goal, type: goal, pos: [0.05, -0.25], radius: 0.05}
+  - {name: goal, type: goal, pos: [0.05, -0.25], radius: 0.05, enable: box.ok}
 demo:
   - grab block
   - place block box

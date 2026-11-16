@@ -211,12 +211,16 @@ def test_the_arm_solves_its_room(so101_asset_dir, tmp_path):
 
 @pytest.mark.slow
 def test_the_arm_picks_an_object_up_and_puts_it_somewhere(so101_asset_dir, repo_root, tmp_path):
-    """The weld grab (R18) was written for a beak on the front of a walking trunk, and
-    nothing had measured it on a jaw that *is* the body. Measured: 20/20 seeds, mean 2.9 s.
+    """Measured: 20/20 seeds at a mean of 27.9 s, with the block set down in the box in 10
+    of 10 episodes, 0.013 m from its centre.
 
-    It was 0/20 until the shared approach learned this body is holonomic: the carrier
-    closes in at `SLOW = -0.5`, which on a symmetric command mapping is half speed
-    backwards, so the arm drove away from the block it was told to pick up.
+    This test claimed the same thing for a day while the room measured nothing of the kind:
+    it reported 20/20 at 2.9 s with the block never moving, because the goal sat on the path
+    and the episode ended before the grab. Four things were wrong, all of them height or a
+    walking body's action read by a body that is a jaw - no `head` channel (the jaw parked
+    0.102 m above the handle), `STAND` meaning full speed backwards, the aim point winding
+    up, and a release that dropped the block from 0.115 m instead of setting it down. The
+    test below the numbers is the one that cannot be satisfied by accident.
     """
     from mujoco_puzzle_gym import catalog
     from mujoco_puzzle_gym.check import check
@@ -320,3 +324,34 @@ def test_the_declared_reach_height_is_one_the_control_can_hold(scene):
         assert max(zs) <= WORK_Z + 0.01, (cmd, max(zs))
         assert min(zs) >= WORK_Z - 0.02, (cmd, min(zs))
     assert body.capabilities.limit("reach_height") == pytest.approx(WORK_Z)
+
+
+@pytest.mark.slow
+def test_winning_this_room_requires_the_block(so101_asset_dir, repo_root):
+    """The assertion that makes it a task: cut the demo down to `goto goal` and the room is
+    unwinnable, because the goal does not count until the box does (`enable: box.ok`).
+
+    Without that gate the same room went 5/5 on a single `goto goal` step - a trained policy
+    could win it by driving 0.28 m and ignoring the block - and the 20/20 above would be a
+    number about walking to a disk. Measured both ways: 5/5 with the demo, 0/5 without it.
+    """
+    import warnings
+
+    from mujoco_puzzle_gym import catalog
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.task import load_task
+    from mujoco_puzzle_gym.solver import run_episode
+
+    task = load_task(repo_root / "examples/task_pick_and_place.yaml")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        env = PuzzleEnv(task=task)
+    try:
+        assert env.parts["goal"].enable == "box.ok"
+        full = sum(bool(run_episode(env, s).get("success")) for s in range(3))
+        env.room.demo[:] = [("goto", "goal")]
+        cut = sum(bool(run_episode(env, s).get("success")) for s in range(3))
+    finally:
+        env.close()
+    assert full == 3, full
+    assert cut == 0, f"the goal was reached without the block: {cut}/3"
