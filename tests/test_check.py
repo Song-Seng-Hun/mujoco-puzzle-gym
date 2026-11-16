@@ -178,3 +178,60 @@ def test_an_unfinished_subgoal_is_named(tmp_path, so101_asset_dir):
         assert solver.demo_unfinished == []
     finally:
         env.close()
+
+
+def test_a_place_onto_a_part_that_is_not_a_container_is_checked(tmp_path, so101_asset_dir):
+    """R78's postcondition read `part.inside`, and a part that receives without being a
+    container keeps none: `stack` reads a patch of floor and counts what stands on it.
+
+    Measured on the arm's stacking room while the check only read `inside`: the solution
+    advanced through both `place` steps and spent the rest of the episode at the goal with the
+    patch's count at 0 and both blocks still where they started - the silent pass this check
+    exists to stop, in the one room written to exercise the new part. The object's own position
+    against the patch's footprint answers it, and that is what is asserted here, both ways.
+    """
+    import warnings
+
+    import mujoco
+    import yaml
+
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+
+    room = tmp_path / "patch.yaml"
+    room.write_text(yaml.safe_dump({
+        "name": "patch", "size": [1.2, 1.0], "wall": {"thickness": 0.02, "height": 0.1},
+        "spawn": {"pos": [-0.3, 0.0], "yaw": 0.0},
+        "parts": [
+            {"name": "b1", "type": "cube", "pos": [-0.05, -0.12], "size": 0.03, "mass": 0.02},
+            {"name": "tower", "type": "stack", "pos": [0.0, 0.14], "size": [0.1, 0.1],
+             "need": 2, "height": 0.04, "accept": ["b1"]},
+            {"name": "goal", "type": "goal", "pos": [0.05, -0.25], "radius": 0.05},
+        ],
+        "demo": ["grab b1", "place b1 tower", "goto goal"],
+    }))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        env = PuzzleEnv(task={"room": str(room), "body": "so101",
+                              "actions": ["move", "head", "grab"],
+                              "env": {"hz": 10, "episode_seconds": 20}})
+    try:
+        env.reset(seed=0)
+        solver = ScriptedSolver(env)
+        solver.reset()
+        step = ("place", "b1", "tower")
+
+        def put(x, y):
+            bid = env.model.body(env.parts["b1"].body_name).id
+            adr = int(env.model.jnt_qposadr[env.model.body_jntadr[bid]])
+            env.data.qpos[adr:adr + 2] = (x, y)
+            mujoco.mj_forward(env.model, env.data)
+
+        put(-0.05, -0.12)                    # where it started: not on the patch
+        why = solver._unfinished(step)
+        assert why is not None and "not on 'tower'" in why, why
+
+        put(0.0, 0.14)                       # on the patch: the sub-goal did its job
+        assert solver._unfinished(step) is None
+    finally:
+        env.close()

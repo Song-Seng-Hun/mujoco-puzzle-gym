@@ -208,6 +208,21 @@ class ScriptedSolver:
             # every shipped room before trusting them.
             if inside is not None and entry[1] not in inside:
                 return f"`{cmd} {entry[1]} {entry[2]}` ended with it not in {entry[2]!r}"
+            if inside is None and part is not None:
+                # A part that receives without being a container - `stack` reads a patch of
+                # floor, and counts what is standing on it - keeps no `inside`, so the check
+                # above passed it whatever happened. Measured on the arm's stacking room: it
+                # advanced through both `place` steps and ran the rest of the episode with
+                # the patch's count at 0 and both blocks still where they started, which is
+                # the exact shape of silent pass this check exists to stop. The object's own
+                # position against the part's footprint answers it for any such part.
+                half = np.asarray(getattr(part, "half", []), dtype=float)
+                obj = self.env.parts.get(entry[1])
+                if obj is not None and half.shape == (2,):
+                    at = np.abs(obj.pos(self.env.data)[:2] - np.asarray(part.xy, dtype=float))
+                    if not bool((at <= half).all()):
+                        return (f"`{cmd} {entry[1]} {entry[2]}` ended with it not on "
+                                f"{entry[2]!r}")
         return None
 
     def _move(self) -> np.ndarray:
