@@ -378,3 +378,29 @@ hitch`로 크게 터집니다. 조용히 넘어가지 않습니다.
 아무것도 싣지 않았습니다. 어댑터도, 몸 등록도 없고, 손 모델은 다시 핀을 뺐습니다 — 패키지가 읽지
 않는 파일을 lock이 들고 있지 않게. 위 숫자가 기록이므로 다음 시도는 내려받기부터가 아니라 이
 표에서 시작합니다.
+
+### 방이 어느 몸의 것인지는 이제 표로 확인합니다 (R76, 2026-11-17)
+
+`mpg check <방> --all-bodies`가 등록된 몸 전부로 한 방을 돌리고, 각 칸이 **어느 단계에서
+갈렸는지** 말합니다: `capability`(관문이 이름을 말하며 거부) · `unreachable`(고정 반경 밖, R77)
+· `static`(부품 자체의 거부) · `unplannable`(격자에 길이 없음) · `actions`(task의 `actions:`가
+계획에 필요한 것을 안 가짐) · `solver`(계획은 되는데 못 풂) · `pass`.
+
+그전에는 이름 없는 배제가 전부 "해답이 못 풀었다"로 나와서, **어려운 방과 불가능한 방이 구분되지
+않았습니다.** 그래서 프리셋 주석의 "이 몸만 푼다"는 제 말일 뿐이었고, 돌려 보니 틀린 것이
+있었습니다(3시드):
+
+| 방 | 마이크로덕 | Go2 | 팔 | G1 |
+|---|---|---|---|---|
+| `wide/switch_door` | pass 22.9초 | pass 25.4초 | `capability` ['walk'] | pass 20.2초 |
+| `wide/pit_detour` | pass | pass | `capability` ['walk'] | pass |
+| `tabletop/reach_target` | **pass 1.5초** | solver | pass 0.6초 | **pass 11.8초** |
+| `tabletop/pick_and_place`(task 포함) | **pass** | `capability` ['grab'] | pass | `capability` ['grab'] |
+
+**팔의 방 둘 다 팔 전용이 아닙니다.** `reach_target`은 능력을 요구하는 부품이 없어 세 몸이 풀고,
+`pick_and_place`는 마이크로덕도 풉니다(부리가 `grab`이니까). 큰 몸 방은 마이크로덕도 푸는데
+22.9초가 걸립니다 — 문서가 "느릴 뿐"이라 적어 둔 것이 이렇게 숫자가 됩니다.
+
+**`--task`를 같이 주세요.** 행렬을 task 없이 돌리면 내장 task의 `actions:`에 `grab`이 없어
+집기 방의 모든 칸이 실패로 보입니다. 그 경우는 이제 `solver`가 아니라 `actions`로 나옵니다 —
+몸이 못 하는 것과 task가 안 준 것은 다른 사실입니다.

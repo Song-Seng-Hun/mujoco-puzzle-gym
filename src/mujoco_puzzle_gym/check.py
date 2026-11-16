@@ -533,3 +533,71 @@ def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
     result["wall_seconds"] = round(time.perf_counter() - t0, 1)
     env.close()
     return result
+
+#: What a body's attempt at a room came to, worst-to-best, and the stage that decided it.
+#: A room claimed to be for one body has to fail the others *for a reason*, and these are
+#: the reasons `mpg check` can tell apart.
+OUTCOMES = ("capability", "unreachable", "static", "unplannable", "actions", "solver", "pass")
+
+
+def _outcome(result: dict[str, Any]) -> tuple[str, str]:
+    """(outcome, one line of why) for one body's `check` result."""
+    body = result.get("body") or {}
+    if not body.get("ok", True):
+        reach = body.get("reach") or {}
+        if body.get("missing"):
+            names = sorted({c for m in body["missing"].values() for c in m})
+            return "capability", f"needs {names}"
+        if not reach.get("ok", True):
+            return "unreachable", reach.get("reason", "")
+        return "capability", body.get("reason", "")
+    # `actions` before `solver`: a task whose `actions:` lack what the plan needs makes the
+    # solver stage report zero successes, which reads as "this body cannot solve it" when the
+    # truth is that the *task* was wrong. Seen on the first run of this matrix over every
+    # room: `pick_and_place` without its own task file showed every body failing.
+    for stage, name in (("parts", "static"), ("order", "unplannable"), ("actions", "actions")):
+        if not result.get(stage, {}).get("ok", True):
+            return name, result[stage].get("reason", "")
+    solver = result.get("solver") or {}
+    if not solver.get("ok", True):
+        return "solver", (f"{solver.get('successes', 0)}/{solver.get('seeds', 0)} seeds"
+                          + (f", {solver['skipped']}" if solver.get("skipped") else ""))
+    for stage in STAGES:
+        if not result.get(stage, {}).get("ok", True):
+            return "static", f"stage {stage}: {result[stage].get('reason', '')}"
+    return "pass", f"{solver.get('successes', 0)}/{solver.get('seeds', 0)} seeds"
+
+
+def check_all_bodies(room: str | Path, task: str | Path | None = None, seeds: int = 20,
+                     need: int = 18, static_only: bool = False,
+                     snap_dir: str | Path | None = None) -> dict[str, Any]:
+    """Run `check` once per registered body and say what each one came to (R76).
+
+    A room written for one body is a claim about the other bodies too, and until this
+    existed that claim could not be checked: a capability the gate names is refused out
+    loud, but a body excluded by geometry - a gap narrower than its footprint, a target
+    outside its reach, a speed it cannot hold - only produces "the solver did not reach the
+    goal", which looks the same as a room that is simply hard. Every "only this body solves
+    it" in a preset comment was my word for it. Now it is a table, and `OUTCOMES` names the
+    stage that decided each cell, so a room's comment can be compared against what the
+    package actually does.
+
+    A body whose assets are not fetched yet is reported rather than raising: the matrix is
+    a diagnostic, and one missing download should not hide the rest of the row.
+    """
+    from .bodies import BODIES
+
+    rows: dict[str, Any] = {}
+    for name in BODIES:
+        try:
+            result = check(room, task=task, seeds=seeds, need=need, static_only=static_only,
+                           snap_dir=snap_dir, body=name)
+        except FileNotFoundError as exc:                 # assets for that body not fetched
+            rows[name] = {"outcome": "unavailable", "why": str(exc)}
+            continue
+        outcome, why = _outcome(result)
+        rows[name] = {"outcome": outcome, "why": why,
+                      "mean_seconds": (result.get("solver") or {}).get("mean_success_seconds")}
+    solved = [b for b, r in rows.items() if r["outcome"] == "pass"]
+    return {"room": Path(room).stem, "bodies": rows, "solved_by": solved,
+            "exclusive": len(solved) == 1}

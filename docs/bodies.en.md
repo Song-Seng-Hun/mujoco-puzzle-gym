@@ -418,3 +418,33 @@ still has to beat 0.19 m of standing sway with a 0.04 m radius.
 Nothing of the attempt ships: no adapter, no body registration, and the hands model is
 unpinned again, so the lock holds no file the package reads. The numbers above are the
 record, so the next attempt starts from this table rather than from a download.
+
+### Which body a room belongs to is now a table (R76, 2026-11-17)
+
+`mpg check <room> --all-bodies` runs every registered body against one room and says which
+stage decided each cell: `capability` (the gate refused by name), `unreachable` (outside a
+fixed reach ring, R77), `static` (a part's own refusal), `unplannable` (no path on the
+grid), `actions` (the task's `actions:` lack what the plan needs), `solver` (planned, not
+solved), `pass`.
+
+Before this, every nameless exclusion arrived as "the solver did not reach the goal", so a
+hard room and an impossible one looked alike - which is why "only this body solves it" in a
+preset comment was my word for it. Run, it turned out some of those words were wrong (3
+seeds):
+
+| room | microduck | Go2 | arm | G1 |
+|---|---|---|---|---|
+| `wide/switch_door` | pass 22.9 s | pass 25.4 s | `capability` ['walk'] | pass 20.2 s |
+| `wide/pit_detour` | pass | pass | `capability` ['walk'] | pass |
+| `tabletop/reach_target` | **pass 1.5 s** | solver | pass 0.6 s | **pass 11.8 s** |
+| `tabletop/pick_and_place` (with its task) | **pass** | `capability` ['grab'] | pass | `capability` ['grab'] |
+
+**Neither of the arm's rooms is exclusive to it.** `reach_target` holds nothing that needs a
+capability, so three bodies solve it, and `pick_and_place` is solved by the first body too,
+whose beak is a `grab`. The large-body rooms are solved by the small body as well, in 22.9 s
+- which is the sentence "not wrong for a small body, only slow" turned into a number.
+
+**Pass `--task` with it.** Without one the built-in task's `actions:` have no `grab`, so
+every cell of a grabbing room looks like a failure; that case now reads `actions` rather
+than `solver`, because what a body cannot do and what a task did not grant are different
+facts.
