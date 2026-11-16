@@ -8,7 +8,8 @@ from .device import (AddonStation, Anchor, Conveyor, Destroyer, Door, GoalNet, H
 from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
-from .input import Button, Checkpoint, Laser, PressurePlate, Receptacle, Target, Zone
+from .input import (Button, Checkpoint, Laser, PressurePlate, Receptacle, Stack, Target,
+                    Zone)
 from .logic import Counter, Gate, Receiver, Relay, Source, Transmitter, Wire
 from .npc import Npc
 from .object import Ball, Cube, Pin
@@ -31,6 +32,7 @@ register_part("zone", Zone, replace=True)
 register_part("laser", Laser, replace=True)
 register_part("pressure", PressurePlate, replace=True)
 register_part("receptacle", Receptacle, replace=True)
+register_part("stack", Stack, replace=True)
 register_part("checkpoint", Checkpoint, replace=True)
 register_part("swing_door", SwingDoor, replace=True)
 register_part("trapdoor", Trapdoor, replace=True)
@@ -76,7 +78,7 @@ register_part("anchor", Anchor, replace=True)
 register_part("rope_door", RopeDoor, replace=True)
 
 __all__ = ["Part", "Switch", "Door", "Goal", "Gate", "Counter", "Transmitter", "Receiver",
-           "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Checkpoint",
+           "Button", "Zone", "Laser", "PressurePlate", "Receptacle", "Stack", "Checkpoint",
            "SwingDoor", "Trapdoor", "Warp", "FloorTile", "Coin", "CoinGroup", "CoinLock",
            "Ball", "Pin", "Cube", "GoalNet", "Platform", "Pillar", "Turntable", "Conveyor", "Spring",
            "Setter", "Target", "Wind", "Pusher", "Spinner", "Pendulum", "Pit", "Cannon", "Npc",

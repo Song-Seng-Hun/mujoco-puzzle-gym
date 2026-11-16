@@ -102,6 +102,7 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `pusher` | - | o | o | An obstacle pushed out by a position servo |
 | `receiver` | - | o | o | Signals only |
 | `receptacle` | `grab` | o | x | A bin you put objects into |
+| `stack` | - | o | o | Reads a tower (it only looks, so it needs nothing) |
 | `relay` | - | o | o | Signals only (for `movable` see §3) |
 | `rope` | - | o | o | `a: body` is refused at load time (§4) |
 | `rope_door` | - | o | o | Opens on a signal |
@@ -567,3 +568,43 @@ microduck - which has a beak and could in principle delegate the same way - fail
 room's scripted solution. That last one is **not a designed exclusion**: on a 1.2 x 1.0 m
 table its own footprint and the planner's collar leave it little room. The honest reading
 is "two bodies cannot, one is not shown to".
+
+### A new part, `stack` (R71, 2026-11-17)
+
+Designed in M4 with its field table and never built. **Stacking already worked** - a `cube`
+can rest on another and a room can declare it with `rest_on`. What was missing was a part
+that *reads* a stack: every receiving part (bin, socket, basket, scale) reads "went in", and
+none read a height - `mpg parts` had no part taking a `height` at all.
+
+On when three things hold: `need` accepted objects have their centres inside `size`; the
+highest of them is at least `height` up; and all of them have rested for `settle`. The
+second is what separates a tower from a row - three cubes side by side fill the patch
+(count 3) and reach nothing. Channels: its own 0/1 and `<name>.count`.
+
+**No `needs_body`.** This part only looks; getting the objects there is the room's business.
+
+Three things surfaced while writing it:
+
+- **`accepts` is already a method protocol** (`grabbable.takes` calls `part.accepts(obj)`).
+  The first draft named a *field* that, so a list shadowed the method and **no room holding
+  a cube would load at all**. The field is `accept` now, as a receptacle's is, and the
+  protocol is implemented.
+- **`state()` is one scalar** (`obs.part_state` reads a number per part). Returning two blew
+  up the observation. The count goes out on the channel instead.
+- **`rest_on` is one level deep** (it refuses a cube that is "stacked itself"), so **a
+  three-high tower cannot be declared in a room file** - it has to be built during the
+  episode. The tests record that and cover `need=3` by placing the third cube directly.
+
+The default `height` is arithmetic: stacking `need` default cubes (0.04 m) puts the top
+centre at `(need - 0.5) * 0.04`, so 0.10 m for three, and the default is 0.09 with a
+centimetre to spare. **A height the room's objects cannot reach is refused by
+`check_static`** - otherwise `mpg check` only says "unsolvable" after the solver has failed
+twenty times, and the reason is this number.
+
+**Whether the arm can build a tower is not measured yet.** The part's decision is tested
+(stacked reads on, a row does not, one short does not, moving does not, an unaccepted object
+is not counted, an unreachable height is refused), but **there is no room**. A room stacking
+two blocks on one patch was written and run, and the solution stalls at `place b1 tower` -
+all five seeds end on demo step 1. So `stack` can read a tower that nothing has yet built,
+and that room is the next piece of work. A part no room uses edges toward the decoration R67
+forbids, so the fact is recorded here until the room is measured.
