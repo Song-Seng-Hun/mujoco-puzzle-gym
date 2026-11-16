@@ -788,6 +788,14 @@ angles ... which accumulated the actuators' lag"). So what is left is not a patc
 redesign** (a solve that handles limits and singular directions, or an analytic seed), which is
 a body-side spec item.
 
+A second variant was measured too: instead of an increment, solve for the joint **positions**
+that put the jaw at the aim (Gauss-Newton, 8 iterations in a scratch `MjData`) and command
+those. It stalls in the same place in the same way (tip at (-0.050, +0.126, 0.063), 0.223 m
+from the handle) and takes the shipped room to **0/20**. So the stall is **not** the choice
+between a rate command and a position command: the present rate form is holding something up
+in the poses that do work, and both variants break it. The next design has to take the
+25-cell grid as its objective rather than being poked at one variant at a time.
+
 #### Found alongside: clearing `_pick_z` per sub-goal is a bug AND a **guard**
 
 `Carrier._pick_z` - the height an object was picked up at - is cleared in `reset()`, and the
