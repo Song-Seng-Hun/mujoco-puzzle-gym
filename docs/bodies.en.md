@@ -364,3 +364,45 @@ Unitree release of a frozen policy** — it is the checkpoint that repository up
 deployment example. The cache path is `humanoid/`, and the observation order was copied from
 `deploy/deploy_mujoco/deploy_mujoco.py` at the pinned commit. The numbers (gains, default pose,
 scales) are read from `policies/g1.yaml` and not written twice in the code.
+
+### The hands were measured, and not shipped (2026-11-17)
+
+This body's hands had been "the next thing" since M4. The assets are real and the policy
+tolerates the extra joints; what it does not tolerate is being asked to *use* them.
+
+| what | measured |
+|---|---|
+| hands model | `unitree_g1/g1_with_hands.xml` at the pinned commit 370c4396, 34,372 B, sha256 `a6d88c9efde50e9715c71e590ce1a8d3515a0099df7f36e62add8204dae758ad`. All 49 mesh references were **already in the lock** |
+| size | 43 actuators (29 + 7 a hand), nq 50, mass 34.39 kg against 33.34 |
+| walking, arms at the model's own pose | 0.218 m/s at cmd 0.3 (0.227 without hands), 0.445 at the ceiling (0.454), no falls, same pelvis height |
+| grab site, arms down | 0.238 m **to the right** of the pelvis, +0.005 m forward, 0.561 m high; steady while walking (0.535-0.576) |
+| one arm raised, walking | 0.338 m/s at cmd 0.3 with +16.1 deg of yaw drift over 10 s (bare body: 0.227 and -12.9) |
+| both arms raised, walking | **0.832 m/s** at cmd 0.3 - the command no longer sets the speed |
+| both arms raised, standing | walks away **3.655 m in 6 s** at a zero command |
+| one arm raised, standing | drifts 0.378 m in 6 s (arms down: 0.187), no fall; site 0.429 m ahead, 0.750 m high |
+| twelve carry poses swept (shoulder pitch x elbow) | **every one** broke speed tracking: 0.36-0.83 m/s at a 0.3 command, +10 to +52 deg of drift, one fell |
+| hip-height site passing a fixed point, 2 m approach | closest **0.448 m**, eleven times the 0.04 m grab radius |
+
+**The reason is in the policy's observation.** The pinned checkpoint is legs-only: its 47
+observations hold twelve leg joint angles, velocities and previous actions, the base's
+angular velocity, gravity, the command and a gait phase - and **no arms**. So when an arm
+pose moves the centre of mass, the policy cannot see the cause and does not compensate: it
+leans, and the gait leaves the command behind. The only arm pose that leaves the measured
+gait intact is the one it was trained with, and that pose hangs the hand at the hip.
+
+**Which is why it cannot ship as a grabbing body.** The shared carrier aims the body's
+*centre* at an object, because every grabbing body so far has its grab point ahead on its
+centreline (a beak; a jaw that is the whole body). A grab point 0.24 m off to one side is
+never brought within 0.04 m by aiming the centre, and the measurement says so: 0.448 m at
+closest. Declaring a capability the body cannot exercise is the decoration R67 forbids.
+
+**What it would take, in order of honesty.** (1) A policy trained with the arms in its
+observation - none is published for this model. (2) Arm IK plus a whole-body balance
+controller, which is a project rather than a milestone. (3) Teaching the carrier to aim a
+body's grab point instead of its centre - the smallest change, and one that would make the
+first body's approach more accurate too, but on its own it only buys a hip-height grab that
+still has to beat 0.19 m of standing sway with a 0.04 m radius.
+
+Nothing of the attempt ships: no adapter, no body registration, and the hands model is
+unpinned again, so the lock holds no file the package reads. The numbers above are the
+record, so the next attempt starts from this table rather than from a download.
