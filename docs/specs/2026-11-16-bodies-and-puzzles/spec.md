@@ -111,3 +111,95 @@ flowchart TD
 - 가장 큰 위험은 **자산**이다. M3에서 Go2의 보행 정책은 공식 배포가 없어 커뮤니티 체크포인트를 썼다. 팔과 G1에서도 같은 상황이면 또 같은 판단이 필요하다.
 - `BodyState.pos`를 집게로 읽는 설계는 깔끔하지만, 보상 항(`progress`)이 그 거리를 쓰므로 "집게가 목표에 가까워짐"이 곧 진척이 된다. 물체를 들고 가야 하는 과제에서는 그것이 틀린 진척일 수 있다(집게만 목표로 가고 물체는 두고 올 수 있다). 기존 `carry` 쪽 보상이 이미 이 문제를 다루는지 확인해야 한다.
 - 능력 이름이 늘어나면 부품 × 몸 표가 커진다. 지금 59 × 2이고 네 몸이면 59 × 4다. 표를 손으로 쓰지 않고 코드에서 생성하는 현재 방식(M3)을 유지해야 한다.
+
+## Parts per body (R63 상세 설계)
+
+이 절이 "로봇마다 그 로봇에 맞는 부품"의 실제 설계다. 구현자가 이 절만 읽고 만들 수 있게 필드·단위·범위·요구 능력·판정 조건을 적는다. **몸마다 새 부품을 만들지 않는다** — 네 로봇 중 새 부품이 필요한 것은 둘뿐이고, 나머지는 능력 이름과 설정에 따른 선언, 그리고 그 몸에서 잰 프리셋이다.
+
+### 두 발(마이크로덕) — 새 부품 0개, 선언 하나 고침
+
+이 몸을 기준으로 59개가 만들어졌으니 새 부품은 없다. 고칠 선언이 하나 있다.
+
+`button`은 이미 `mount: {floor, wall}`과 `height`(기본 0.2 m, 0.05–2.0)를 갖고 있는데, `mount: wall`이면 **높이와 무관하게** `walk`+`beak_grab`만 요구한다(`parts/input/button.py`). 즉 벽 버튼을 1.3 m에 달아도 부리 높이 0.21 m인 몸이 "할 수 있다"고 선언된다 — R46이 네 건 잡은 것과 같은 종류의 거짓말이고, 아직 남아 있다. 고침:
+
+```
+mount: wall 이고 height > body.capabilities.limit("beak_height") → needs_body("walk", "high_reach")
+mount: wall 이고 height <= beak_height                          → needs_body("walk", "beak_grab")   (지금과 같음)
+```
+
+`beak_height`를 선언하지 않는 몸은 0을 읽으므로(`declared_limit`) 모든 벽 버튼이 `high_reach`를 요구한다 — 묻는 방향이다. Check: `height: 0.21`과 `height: 1.3`인 방 두 개를 두 발 몸으로 점검해 앞은 `ok`, 뒤는 `high_reach`를 **이름으로 말하며** 거부. 기존 프리셋 `wall_button_beak_low`(0.12 m)·`wall_button_beak_mid`(0.21 m)는 둘 다 경계 아래라 **값이 바뀌지 않는다**.
+
+### 네 발(Go2) — 새 부품 0개, 프리셋 3개
+
+걷기만 하는 몸이라 부품이 모자란 것이 아니다. 모자란 것은 **그 몸의 숫자로 잰 방**이고, R62의 세 축이 그것이다. 전부 기존 부품의 설정만 쓴다.
+
+| 프리셋(안) | 쓰는 부품과 값 | 왜 그 몸만 푸는가 |
+|---|---|---|
+| `heavy/mass_gate` | `pressure` `trigger: body`, `min_mass: 5.0` → `door` | 무거운 몸은 서면 눌린다(15.206 kg). 가벼운 몸은 자기 질량 0.737 kg + 최대 적재 0.05 kg로 5 kg에 닿을 수 없다 |
+| `heavy/sprint_gate` | `zone` `trigger: body`, `min_speed: 0.6` → `oneshot_door` | 측정 상한: 걷기 0.220 m/s, 바퀴 프리셋 0.28–0.53 m/s. 빠른 몸은 1.019 m/s |
+| `heavy/turn_cost` | `floor_momentary` → `logic/hold seconds: 7.5` → `sliding_door`, 90° 꺾임 4회 통로 | 꺾임 하나의 제자리 회전 시간 = 회전 속도의 역수: 1.0 rad/s 몸 1.57 s, 0.5 rad/s 몸 3.14 s. **빠른 몸이 불리하다** |
+
+`mass_gate`는 `pressure`의 경고("min_mass가 몸 질량보다 낮다: 서 있기만 하면 된다")를 **일부러 받는다**. 그 경고가 이 방의 답이다 — 경고는 결함 표시가 아니라 정보라는 것을 이 방이 증명한다. Check: 세 방 모두 의도한 몸으로 20개 중 18개 이상, 의도하지 않은 몸으로는 `check_body` 거부 또는 해답 실패이고 **조용한 통과가 없다**. `turn_cost`는 두 몸의 통과 시간이 교차하는 꺾임 수를 측정해 프리셋 주석에 적는다(측정 전이므로 이 방만 숫자가 비어 있다).
+
+### 휴머노이드(G1) — 새 부품 1개, 능력 2개
+
+걷는 몸이라 경계는 그대로다. 없는 것은 **손이 둘이고 키가 크다**는 사실을 말할 어휘다.
+
+- 능력 `two_hands`, `high_reach`, 값 `reach_height` [m].
+- **새 부품 `wide_cube`**(`parts/object/wide_cube.py`, role `prop`, stage `device`):
+
+| 필드 | 형 | 기본 | 범위 | 뜻 |
+|---|---|---|---|---|
+| `size` | vec3 | [0.5, 0.18, 0.18] | 0.05–1.5 m | 상자 크기. 긴 변이 집는 폭이다 |
+| `mass` | float | 1.0 | 0.05–20 kg | |
+| `grip_span` | float | 0.45 | 0.05–1.5 m | 두 손이 벌어져야 하는 거리. `size[0]`에서 유도하되 적으면 그 값 |
+| `handles` | list | ["+y", "-y"] | | 손이 잡는 면 |
+
+`needs_body("two_hands")`. 한 손 몸은 이름으로 거부된다. `check_static`에서 `grip_span`이 몸의 선언값 `hand_span`보다 크면 실패한다 — **능력 관문은 이름만 비교하므로 숫자는 부품이 직접 비교한다**(`low_bar`가 `bottom`을, `pressure`가 `min_mass`를 비교하는 것과 같은 기존 방식). Check: 두 손 몸이 들어 옮기고, 한 손 몸은 `two_hands`를 이름으로 거부당하며, `grip_span`이 손 폭보다 큰 방은 두 손 몸에서도 실패한다.
+- 높은 벽 버튼은 위의 `button` 선언 고침으로 끝난다. 새 부품이 아니다.
+
+### 고정 베이스 팔(SO-101 등) — 새 부품 1개, 그리고 목표의 재정의
+
+- 능력 `reach`, `gripper`, 값 `lift_height`·`reach_min`·`reach_max` [m]. `walk`는 **선언하지 않는다** → 걷기를 요구하는 15개 부품이 이름을 말하며 거부된다.
+- **도달 범위는 격자로 적는다.** `room.grid`는 이미 막힌 칸(`terrain`)을 다루므로, 어댑터가 `reach_min`·`reach_max`를 선언하면 그 고리 밖의 칸을 막힌 칸으로 표시한다. 방 파일은 바뀌지 않는다.
+- **목표가 달라진다.** `goal`은 "몸이 그 영역에 들어감"이고 팔은 자기가 들어갈 수 없다. 팔의 방은 물체 상태를 읽는 부품을 마지막 목표로 쓴다: `receptacle`(넣기), `socket`(끼우기), `basket`(담기), `scale`(무게), 그리고 아래 `stack`. 전부 기존 부품이다.
+- **새 부품 `stack`**(`parts/input/stack.py`, role `sensor`, stage `input`, emits, suffixes `(".count",)`):
+
+| 필드 | 형 | 기본 | 범위 | 뜻 |
+|---|---|---|---|---|
+| `size` | vec | [0.2, 0.2] | 0.05–2.0 m | 쌓임을 세는 바닥 영역 |
+| `need` | int | 3 | 2–10 | 이 개수 이상 쌓이면 켜진다 |
+| `height` | float | 0.12 | 0.02–1.0 m | 가장 위 물체의 아래면이 이 높이를 넘어야 한 층으로 센다 |
+| `accepts` | list | [] | | 셀 물체 이름(빈 값은 전부) |
+| `settle` | float | 0.3 | 0.0–5.0 s | 이만큼 흔들리지 않아야 센다(쌓다가 무너지는 중은 세지 않는다) |
+
+`needs_body()` 없음 — 읽기만 하는 부품이다. 쌓는 행위는 `cube`가 이미 지원한다(중심이 아래 큐브 윗면 위에 있어야 한다). 켜지는 조건: 영역 안에서 `accepts`에 드는 물체들을 z로 정렬해 서로 `height` 이상 떨어진 층이 `need`개 이상이고, 모두 `settle` 동안 정지. 채널: 자기 이름 0/1과 `<name>.count`(층 수). Check: 세 개를 쌓으면 켜지고, 하나를 빼면 꺼지고, 쌓는 도중(움직이는 중)에는 켜지지 않으며, 옆으로 나란히 놓은 세 개는 **켜지지 않는다**(층이 아니다).
+- 팔의 방(안): `tabletop/stack_three`(큐브 3개 → `stack`), `tabletop/sort`(색/크기별 `receptacle` 둘), `tabletop/key_drawer`(`key` → `socket` → `drawer`), `tabletop/lever_order`(`lever` `grab_handle: true` 셋을 순서대로). 전부 기존 부품이고, 숫자는 팔의 도달 범위를 재서 정한다.
+
+### 이 설계가 만드는 새 부품은 둘뿐이다
+
+`wide_cube`(두 손)와 `stack`(쌓임 읽기). 나머지는 능력 이름 5개(`reach`, `gripper`, `two_hands`, `high_reach`, 값들), 선언 고침 1건(`button` 벽 높이), 프리셋 7개다. 59개를 다시 만들지 않는다는 R63의 조항이 이 숫자로 확인된다.
+
+## R64 자산 조사 결과 (2026-11-16)
+
+구현보다 먼저 하기로 한 조사를 했다. **가장 큰 결과: 두 로봇의 MJCF가 모두 이 저장소가 이미 핀한 그 커밋 안에 있다** — Menagerie `370c43965323c0944b433b202aac5058b5f907a9`(지금 `upstream.go2.lock.json`의 github 소스)이다. 새 상류를 추가하지 않고 파일 목록만 늘리면 된다.
+
+내가 직접 그 커밋에서 확인한 것(`?ref=370c4396…`): `robotstudio_so101/`은 `so101.xml`·`scene.xml`·`scene_box.xml`·`assets/`·`LICENSE`를 갖고 있고 그 LICENSE는 **Apache License, Version 2.0**이다. `unitree_g1/`은 `g1.xml`·`g1_with_hands.xml`·`g1_mjx.xml`·`scene.xml`·`scene_with_hands.xml`·`assets/`·`LICENSE`를 갖고 있다. 나머지 항목은 조사 보고에서 온 것이고 아직 내 손으로 확인하지 않았으므로 그렇게 적는다.
+
+| | lerobot SO-101 | Unitree G1 |
+|---|---|---|
+| MJCF | Menagerie `robotstudio_so101/so101.xml` — **직접 확인** | Menagerie `unitree_g1/g1.xml`(+`g1_with_hands.xml`) — **직접 확인** |
+| 라이선스 | **Apache-2.0 — 직접 확인** | BSD-3-Clause(보고: 그 폴더 LICENSE가 3절 BSD, 저작권 Unitree) |
+| 핀할 커밋 | 이미 핀한 `370c4396`로 충분 | 같음 |
+| 자유도 | 힌지 6개·position 액추에이터 6개 = 팔 5축 + 집게 1축(집게 범위 −0.1745…1.7453 rad) | 힌지 29개 + freejoint, position 액추에이터 29개(다리 12·허리 3·팔 14) |
+| 카메라 | 없음(모델에) | **없음** — 사이트 `imu_in_pelvis`·`imu_in_torso`·양발뿐 |
+| 질량·크기 | 공식 수치 **못 찾음**(비공식 페이지의 500 mm·500 g는 쓰지 않는다) | 제조사 ~35 kg, 키 1.32 m(모델 파일에는 없음) |
+| 손 | 집게 1개 | 두 손(기본 모델은 손 없음, `g1_with_hands.xml`은 Dex3 3손가락 7축/손; lerobot HF 변형은 2손가락 집게) |
+| 동결 정책 | **깨끗한 라이선스의 공식 체크포인트 없음.** `lerobot/g05_so101`은 비상업, `MolmoAct2-SO100_101`은 라이선스 표기 없음 | **있다.** `unitreerobotics/unitree_rl_gym`의 `deploy/pre_train/g1/motion.pt`(TorchScript, BSD-3-Clause), 관측 47·행동 12, **3원소 속도 명령 포함**. ONNX 대안 `ttktjmt/mjswan`의 `locomotion.onnx`(Apache-2.0, 차원 미표기) |
+
+이 결과가 스펙을 두 군데 바꾼다.
+
+1. **G1은 경계에 그대로 들어온다.** 속도 명령 `(vx, vy, wz)`를 받는 동결 정책이 이미 있으므로 Go2와 같은 구조다. 다만 관측 47차원에 **걸음 위상(sin/cos)이 들어 있다** — Go2 정책은 `gait_phase` 없이 학습됐으므로 이 몸은 위상 시계를 어댑터가 돌려야 한다. 그리고 `motion.pt`는 ONNX가 아니라 TorchScript라 `onnx_policy.py` 경로를 쓸 수 없다(torch로 직접 로드하거나 Apache-2.0 ONNX 쪽을 쓴다). 열린 질문 3의 답: **G1은 정책을 핀하고, 팔은 역기구학으로 간다** — 팔 쪽에 쓸 수 있는 라이선스의 정책이 없다는 것이 조사의 결론이므로 선택이 아니라 사실이다.
+2. **팔은 자산이 가장 깨끗하다**(Apache-2.0, 이미 핀한 커밋, 정책 불필요). 작업량이 가장 크다는 판단은 유지되지만 **자산 위험은 가장 낮다**. 열린 질문 1(순서)에 이 사실을 넣어 다시 본다: 팔은 "자산 확보 + 역기구학"이고, G1은 "자산 확보 + 47차원 관측과 걸음 위상 맞추기"다.
+
+못 찾은 것은 못 찾았다고 둔다: 두 팔 모델의 공식 도달 거리와 적재 하중 수치가 없다. 비공식 수치를 인용하지 않고 **기구학에서 계산해** 어댑터의 `reach_min`·`reach_max`로 선언한다(구현 시 측정).

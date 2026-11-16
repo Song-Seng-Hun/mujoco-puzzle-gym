@@ -97,6 +97,28 @@ class Button(Part):
         self.on = False
         self.prev = False
 
+    def check_static(self, env) -> list[str]:
+        """A wall plate out of the body's reach (found after the R46 audit had closed).
+
+        `mount: wall` declares `beak_grab` and nothing more, so the part says "I need a
+        beak" rather than "I need a beak that reaches this high". Measured: a plate at
+        1.0 m - the schema's ceiling, and nearly five times the declared beak height -
+        passed every static stage for a body whose beak reaches 0.21 m. The capability
+        gate compares names only, so the number is compared here, the way `low_bar` and
+        `pressure` compare theirs. A body that declares no reach height reads 0 and is
+        refused for any wall plate, which is the direction that asks rather than assumes.
+
+        A stick raises the reach in rooms that have one (`self.reach`), so it counts.
+        """
+        if self.mount != "wall":
+            return []
+        high = float(self.cfg["height"])
+        reach = env.body.capabilities.limit("beak_height") + float(self.reach)
+        if high > reach:
+            return [f"part {self.name!r}: its plate is {high:g} m up, past what this body can "
+                    f"reach ({reach:g} m); lower it or give the room something to reach with"]
+        return []
+
     def build(self, spec):
         body = super().build(spec)
         if self.mount == "wall":                  # local +x = the way the plate faces

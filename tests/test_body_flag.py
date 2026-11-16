@@ -151,3 +151,57 @@ def test_train_records_the_body_it_used(asset_dir, go2_asset_dir, tmp_path):
     assert summary["body"] == OTHER
     resolved = yaml.safe_load((Path(summary["run_dir"]) / "task.resolved.yaml").read_text())
     assert resolved["body"] == OTHER
+
+
+# --- a wall plate out of reach (found after the R46 audit) ----------------------------
+
+WALL_ROOM = {
+    "name": "wallbtn",
+    "size": [2.4, 1.6],
+    "wall": {"thickness": 0.06, "height": 1.6},
+    "walls": [{"from": [0.3, -0.8], "to": [0.3, -0.3]}, {"from": [0.3, 0.3], "to": [0.3, 0.8]}],
+    "spawn": {"pos": [-0.7, 0.0], "yaw": 0.0},
+    "parts": [
+        {"name": "btn", "type": "button", "mount": "wall", "kind": "oneshot", "trigger": "body",
+         "pos": [-1.17, 0.4], "size": [0.2, 0.2], "height": 0.2, "facing": 0.0},
+        {"name": "door", "type": "door", "mode": "oneshot", "pos": [0.3, 0.0], "width": 0.5,
+         "axis": "y", "in": ["btn"]},
+        {"name": "goal", "type": "goal", "pos": [0.9, 0.0], "radius": 0.15},
+    ],
+}
+
+
+def wall_room(tmp_path, height: float) -> str:
+    room = yaml.safe_load(yaml.safe_dump(WALL_ROOM))
+    room["parts"][0]["height"] = height
+    path = tmp_path / f"wall{height}.yaml"
+    path.write_text(yaml.safe_dump(room, sort_keys=False))
+    return str(path)
+
+
+@pytest.mark.parametrize("height,ok", [(0.15, True), (0.2, True), (0.21, True),
+                                       (0.5, False), (1.0, False)])
+def test_a_wall_plate_past_the_bodys_reach_is_refused(height, ok, asset_dir, tmp_path):
+    """`mount: wall` declares `beak_grab` and nothing more, so it used to say "I need a
+    beak" rather than "I need a beak that reaches this high": a plate at the schema's
+    ceiling of 1.0 m, nearly five times the declared beak height, passed every static
+    stage. The capability gate compares names, so the height is compared in the part."""
+    from mujoco_puzzle_gym.check import check
+
+    result = check(wall_room(tmp_path, height), static_only=True)
+    assert result["parts"]["ok"] is ok, result["parts"]
+    if not ok:
+        reason = result["parts"]["reason"]
+        assert f"{height:g} m up" in reason and "0.21 m" in reason, reason
+
+
+def test_the_existing_wall_presets_are_within_reach(asset_dir):
+    """The two shipped wall-button presets sit at 0.15 m and 0.2 m, under the 0.21 m the
+    body declares, so this check cannot have changed any existing room."""
+    from mujoco_puzzle_gym import catalog
+
+    heights = {}
+    for name in ("beak/wall_button_beak_low", "beak/wall_button_beak_mid"):
+        raw = yaml.safe_load((catalog.PRESET_ROOT / "parts" / f"{name}.yaml").read_text())
+        heights[name] = float(raw["height"])
+    assert max(heights.values()) <= 0.21, heights
