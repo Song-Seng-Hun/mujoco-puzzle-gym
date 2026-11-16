@@ -630,3 +630,20 @@ the shared 0.35.
 **The stacking room still does not work**: at the second `grab` the jaw does not close on
 the second block (demo step 2, the block never moves). The first block is placed on the
 patch. That is the next measurement.
+
+**Where the stacking room's second grab stalls (measured 2026-11-17).** The first block is
+placed on the patch. At the second `grab` the jaw stops **0.056 m from the handle** (it
+needs 0.04). The command is **right** - it keeps driving toward the handle, body-frame -x,
+which is inward toward the base - and yet the jaw sits at (-0.075, 0.110, 0.033) for more
+than a hundred steps.
+
+It is **not the envelope**. Sweeping the joints 7^5 at the grab height, the reachable radial
+band at z 0.02 +/- 0.015 is **0.010-0.402 m** (0.012-0.478 at the 0.12 m work height), and
+the target block is **0.190 m** from the base, inside the band. So a pose that reaches it
+exists and the damped-least-squares solve, taking one step at a time, does not get there: a
+local minimum. The jaw sitting 1.3 cm above the height it is being asked for is the same
+symptom.
+
+So `stack` still has no room filling it, and the next measurement is "why can this pose not
+move inward". `reach_min` 0.0 is **correct** - the jaw does reach 0.01 m at that height -
+and this is recorded as a control problem rather than a declaration one.
