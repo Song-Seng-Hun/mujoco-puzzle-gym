@@ -693,3 +693,73 @@ measured worse and were **not shipped**:
 So the right fix has to lift without a step change in the IK target and without breaking the
 approach phase. It has not been found yet, and an unexplained change to shared code is not
 shipped.
+
+#### The deeper fact: at this point the arm **cannot lift** (measured 2026-11-17)
+
+The gentle form was built and measured - stand still, raise the head by at most 0.02 units
+per step, walk only once the block is clear. **It still tears** (0.30 -> 0.54 -> 1.35 ->
+2.51 N, released at k=59). Going one level down says why:
+
+| k | commanded `work_z` | actual `tip_z` | `block_z` |
+|---|---|---|---|
+| 52 | 0.0210 | 0.0212 | 0.0122 |
+| 55 | 0.0240 | 0.0213 | 0.0122 |
+| 58 | 0.0270 | 0.0221 | 0.0124 |
+
+**The command rises 8 mm, the tip follows by 2 mm, and the block does not move at all.** The
+inverse kinematics is saturated, and the gap it leaves loads the weld past 3 N. The radius
+here is **0.065 m** - directly in front of the base, a folded posture. (In the room that
+works, `pick_and_place`, the grab happens at radius 0.277 m.)
+
+That gentle-lift code also **broke a room that already worked**: `pick_and_place` fell from
+20/20 to **0/20** (stalled in the place). So it was **not shipped**.
+
+What is left is geometry, not code: lifting works only in part of the envelope, and the point
+where this room hands the block over is in the part where it does not. So the next move is not
+"fix the lift" but **"make the belt put the block down at a radius the arm can lift from"**, or
+have the body **declare** that minimum radius (the shape of M3's `stand_to_turn_above` and M4's
+`holonomic`) and have the shared grab code pick it up there. The latter is a new declaration
+attribute, so it is a spec item and not something to slip in here.
+
+### Where the grab works is not a region but a **point** (measured 2026-11-17)
+
+That geometric conclusion was carried out - the belt was laid **beside** the base (minimum
+radius 0.32 m) so the hand-over happens at r=0.300. The grab worked and **the place tore in
+exactly the same way** (the block dragged from r=0.300 to 0.193, then released). Next the belt
+was kept entirely inside the dead wedge so the block comes to rest **on the floor** (measured:
+(-0.048, 0.250), azimuth 101 deg, radius 0.255) - and then **the arm never completed the grab**
+at all (400 steps).
+
+So the workspace was swept on a grid. Around the shipped `pick_and_place` block position,
+80x80 mm in 20 mm steps, 25 cells, box/door/goal untouched, one seed (the room declares no
+`randomize:`, so an episode is deterministic):
+
+```
+         dy -40  -20    0  +20  +40   [mm]
+dx -40    place place place place place
+dx -20     OK    OK   place place place
+dx   0    grab  place  OK   grab  grab
+dx +20    grab  grab  grab  grab  grab
+dx +40    grab  grab  grab  grab  (past place)
+```
+
+**3 of 25 cells succeed.** Everything with dx >= +20 mm stalls in the grab; everything with
+dx <= -20 mm stalls in the place. Jitter says the same: `randomize.pos` +-2 mm 9/10, +-5 mm
+8/10, +-10 mm 6/10, +-20 mm 3/10.
+
+Two things follow.
+
+1. **The declared envelope is where the tip can go, not where the scripted grab works.** The
+   220 deg sector and the 0.001-0.480 m reach are facts about the tip. Picking a thing up and
+   putting it down works at **a few points** inside that. That is why a spot the declaration
+   calls reachable - azimuth 101 deg, radius 0.255 - is not one the arm can pick from.
+2. **The shipped room's 20/20 is not 20 trials.** That room declares no `randomize:`, so 20
+   seeds are the same episode, and the number means "it works at that one point". `mpg check`'s
+   `resample` stage already says "skipped: the room declares no `randomize:`", but the `solver`
+   stage's `'seeds': 20` reads as 20 trials. That is a reporting problem, and it is how it came
+   to be reported here.
+
+So the wedge room (R70) and the triage room (R74) are **not a matter of more geometry**: a room
+that hands the object over at a new spot cannot be expected to work while the grab is a point
+rather than a region. Both move from "room unfinished" to **"held until the scripted grab works
+over a region"**.

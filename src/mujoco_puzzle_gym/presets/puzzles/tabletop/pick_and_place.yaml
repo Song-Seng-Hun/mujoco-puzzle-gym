@@ -6,6 +6,15 @@
 # a task rather than a walk: with the demo cut down to a single `goto goal` step it is
 # **0/5**, where the same room with an ungated goal is 5/5.
 #
+# Read that 20/20 for what it is (measured the same day, after it had been reported as if it
+# were twenty trials): this room declares no `randomize:`, so twenty seeds are the same
+# episode twenty times, and the number says the solution works at this one block position.
+# Moved, it often does not. Sweeping the block over 80x80 mm in 20 mm steps, 3 of 25
+# positions solve; the rest stall in the grab (towards +x) or in the place (towards -x).
+# Declaring `randomize: {pos: [...]}` on the block instead gives 9/10 at +-2 mm, 8/10 at
+# +-5 mm, 6/10 at +-10 mm and 3/10 at +-20 mm. The grid and what it means for the envelope
+# a body declares are in `docs/bodies.md` section 9.
+#
 # It took four fixes to get there, and all four were height or a walking body's action read
 # by a body that is a jaw (the history is in `docs/bodies.md` section 9):
 #
