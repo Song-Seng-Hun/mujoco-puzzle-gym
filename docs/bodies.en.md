@@ -796,6 +796,16 @@ between a rate command and a position command: the present rate form is holding 
 in the poses that do work, and both variants break it. The next design has to take the
 25-cell grid as its objective rather than being poked at one variant at a time.
 
+That grid now lives in the repository: `tools/grab_grid.py` sweeps the object a room's solution
+picks up over a grid, prints what each cell does (ok / grab / place) and reports "N of M". It
+reproduces the same 3 of 25 the hand sweep found. It is a measuring tool rather than a check -
+it fails nothing - and it is there to be the objective when changing the body or the scripted
+solution: a change that passes the room's own check while leaving 3 of 25 has changed nothing
+that matters.
+
+    python tools/grab_grid.py --room src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_and_place.yaml \
+        --task examples/task_pick_and_place.yaml --part block
+
 #### Found alongside: clearing `_pick_z` per sub-goal is a bug AND a **guard**
 
 `Carrier._pick_z` - the height an object was picked up at - is cleared in `reset()`, and the

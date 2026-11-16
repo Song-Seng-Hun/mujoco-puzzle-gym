@@ -710,6 +710,14 @@ dx +40    grab  grab  grab  grab  (past place)
 停止の原因は「増分指令か位置指令か」では**ありません** — 現在の増分形は成立する姿勢で何かを支えて
 おり、二つの変形はどちらもそれを壊します。次の設計は25マスの格子を目的関数に据える必要があります。
 
+その格子はリポジトリの中に入りました: `tools/grab_grid.py` が部屋の掴まれる物体を格子状に動かし、
+マスごとの結果（ok / grab / place）を印字して「N / M」を報告します。手で測った 3/25 を再現します。
+点検ではなく**測定道具**であり（何も失敗させません）、体や台本の解法を変えるときの目的関数として
+置いてあります — 部屋の点検を通しながら 3/25 が変わらない変更は、重要な何も変えていません。
+
+    python tools/grab_grid.py --room src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_and_place.yaml \
+        --task examples/task_pick_and_place.yaml --part block
+
 #### 傍で見つかったこと: `_pick_z` を下位目標ごとに消すのはバグであり**ガード**でもありました
 
 `Carrier._pick_z`（物体を掴んだ高さ）は `reset()` で消され、ソルバーは解法の段が進むたびに carrier を

@@ -702,6 +702,15 @@ k=71에 집습니다. 멈춘 자세에서 측정한 것:
 떠받치고 있고, 두 변형 모두 그걸 깨뜨립니다. 다음 설계는 25칸 격자를 목표 함수로 삼아야 하고,
 한 번에 하나씩 찔러 보는 방식으로는 되지 않습니다.
 
+그 격자는 이제 저장소 안에 있습니다: `tools/grab_grid.py`가 방의 집히는 물체를 격자로 옮겨
+칸마다 결과(ok / grab / place)를 찍고 "N / M"을 보고합니다. 손으로 한 측정과 같은 3/25를
+재현합니다. 검사가 아니라 **측정 도구**이고(아무것도 실패시키지 않습니다), 몸이나 대본 해답을
+바꿀 때의 목표 함수로 쓰라고 둔 것입니다 — 방의 자체 점검은 통과하면서 3/25가 그대로인 변경은
+중요한 것을 바꾸지 않은 것입니다.
+
+    python tools/grab_grid.py --room src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_and_place.yaml \
+        --task examples/task_pick_and_place.yaml --part block
+
 #### 곁가지로 찾은 것: `_pick_z`를 하위목표마다 지우는 것은 버그이자 **가드**였습니다
 
 `Carrier._pick_z`(물체를 집은 높이)는 `reset()`에서 지워지고, 솔버는 해답 단계가 넘어갈 때마다
