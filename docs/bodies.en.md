@@ -798,7 +798,27 @@ command holds at 0.50 pointing at the box, the weld force is **0.20 N** (nothing
 the block moves **10 mm in 180 steps**. The arm cannot push the block's friction - the droop
 equilibrium of the section below with a load added. Every carrier-side trick sits downstream of
 that: re-measured with the grid, "stand still and lift gently" came out **0 of 25** at once,
-which is what the tool was built for. The next lead is the model's actuator strength.
+which is what the tool was built for. The next lead was the model's actuator strength, and that was measured too.
+
+**The shoulder pan saturates.** Reading the joint torques at the stall while the block is
+held, joint 0 (the shoulder pan) is at **-2.940 against its 2.94 N*m limit** while the other
+four have room (+0.893, -1.644, -1.535, +0.173), with the tip at radius 0.287 m. Raising the
+command from 0.5 to **1.0 stalls in the same place** (0.114 m from the box), so it is not the
+command's size.
+
+**The destination is a pocket too.** Moving the box along the same azimuth, only the shipped
+radius 0.331 works (3/3, 16.4 s); 0.18, 0.22, 0.26, 0.30 and 0.38 are all 0. So there is no
+simple "loaded working radius" to declare and design rooms inside.
+
+**Retracting, turning and extending - the way a person would - gets closer.** Since the
+saturation is in the pan while extended, a path that pulls in to radius 0.20, swings round to
+the destination's azimuth and extends again was driven directly: it reaches **0.088 m** from
+the box against 0.114 m for the straight line, and stalls in the extending phase. Held, the
+arm cannot extend to r=0.33.
+
+So success for this body is not one limit but a **path-dependent pocket**. What is left is not
+a constant but a **designed loaded carry** (retract, turn, extend, and the height for each
+phase), judged by `tools/grab_grid.py`.
 
 #### The two sections below predate that correction
 
