@@ -113,6 +113,15 @@ class Carrier:
         self._at = None              # where `_let_go` let the object go
 
     # ---- walking ---------------------------------------------------------------------
+    def _stand(self) -> np.ndarray:
+        """The action that means "stay where you are", as this body defines it.
+
+        `STAND` is a walking body's: `action[0] = -1` is its slowest. A body whose action
+        maps symmetrically onto a signed velocity reads the same vector as full speed
+        backwards, so it is asked for `BodyAdapter.stand_action` instead.
+        """
+        return np.array(self.env.body.stand_action, dtype=np.float32)
+
     def _free(self) -> np.ndarray:
         from .env import GATE_PASSABLE
         from .logic import live_free
@@ -275,7 +284,7 @@ class Carrier:
             passed = float((lead[:2] - tip[:2]) @ hook.normal) < 0.0       # past the peg tip
             if np.linalg.norm(lead - tip) <= HANG_TOL * float(hook.cfg["tolerance"]) or passed:
                 self.phase = "still"
-                return STAND.copy()
+                return self._stand()
             reach = float(np.linalg.norm((lead - self._tip())[:2]))
             left = np.array([hook.normal[1], -hook.normal[0]])        # the body's left facing the post
             side = left * float((lead[:2] - env.body_state.pos[:2]) @ left)   # lead off the body's line
@@ -298,11 +307,11 @@ class Carrier:
         if self.phase == "still":
             if rest:
                 self.phase, self._settle = "drop", 0
-            return STAND.copy()
+            return self._stand()
         self.grab = -1.0
         if self.phase == "drop":
             if not rest:
-                return STAND.copy()
+                return self._stand()
             self.phase, self.head = "away", -1.0
         if getattr(part, "shape", None) == "box":
             return self._walk_off(part.xy, float(max(part.half)) + env.body.footprint_radius + CLEARANCE)
@@ -394,7 +403,7 @@ class Carrier:
         env = self.env
         self._settle += 1
         if self._settle < SETTLE / 3 * env.hz:
-            return STAND.copy()
+            return self._stand()
         back = lever.f * self._push_dir
         if np.linalg.norm(env.body_state.pos[:2] - lever.xy) >= PUSH_START:
             return None
@@ -468,7 +477,7 @@ class Carrier:
         if self._stall > PULL_STALL * env.hz:
             self.reset()
             self.grab = -1.0
-            return STAND.copy()
+            return self._stand()
         err = _wrap(math.atan2(cord.f[1], cord.f[0]) - env.body_state.yaw)
         if self.phase != "walk" and abs(err) > FACING:
             self.phase = "turn"
@@ -498,7 +507,7 @@ class Carrier:
         err = _wrap(math.atan2(centre[1] - s.pos[1], centre[0] - s.pos[0]) - s.yaw)
         if abs(err) > LOOK_AIM:
             return np.array([SLOW, 0.0, float(np.sign(err))], dtype=np.float32)
-        return STAND.copy()
+        return self._stand()
 
     def _look_spot(self, part, faces) -> tuple[np.ndarray, np.ndarray]:
         """(standing point, marker centre) of the face whose point is nearest on the free grid."""

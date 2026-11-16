@@ -143,6 +143,18 @@ class BodyAdapter(ABC):
     #: were tried (always stand, a heading-error threshold, target closer than the arc, and
     #: the Dubins reachability condition) and each one broke the other body's rooms.
     stand_to_turn_above: float = math.inf
+    #: The command that means "stay where you are", as an action (R78).
+    #:
+    #: `(-1, 0, 0)` for a walking body, because this repository's convention is that
+    #: `action[0] = -1` is the slowest the body goes. On a body whose action maps
+    #: symmetrically onto a signed velocity - a fixed-base arm, whose holonomic steering
+    #: needs that symmetry to drive backwards along its own facing - the same vector is
+    #: full speed *backwards*, so the shared solver and carrier told it to drive away
+    #: every time they meant for it to wait. Measured on the arm: at the moment it
+    #: released a block into a box, the "stand still" action carried the block 0.066 m
+    #: further and lifted it to 0.077 m, out of the box. Third of this shape, after
+    #: `SLOW` in the carrier and the humanoid's `command_from_action`.
+    stand_action: tuple[float, float, float] = (-1.0, 0.0, 0.0)
     #: True when this body can move in any direction without turning first, so steering it
     #: means picking a direction rather than a heading and a speed (R61).
     #:

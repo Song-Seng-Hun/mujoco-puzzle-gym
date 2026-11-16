@@ -502,3 +502,31 @@ cube leads the body" rule: a walking body holds the cube out in front on its bea
 when that lead passes the target, but here the cube is *at* the jaw, so the lead is zero and
 the rule degenerates. That is the next piece of work, and until then this room's success is
 still reaching the goal.
+
+**Then two more bugs the same day: "stand still", and the aim point.** With the grab
+working, the release showed what was under it.
+
+- **`STAND` is a walking body's action.** It is `(-1, 0, 0)`, because this repository's
+  convention is that `action[0] = -1` is the slowest a body goes. The arm's action maps
+  symmetrically onto a signed velocity - its holonomic steering needs that symmetry - so
+  the same vector is **full speed backwards**. The shared solver and carrier hand it out at
+  **twenty-seven** call sites, every one meaning "wait", so this body drove away each time
+  it was told to hold. Measured at the release: that "stand still" carried the block
+  0.066 m further and lifted it to z 0.077 m, out of the box. The fix follows the pattern
+  the last two bodies set - **the body declares it** (`BodyAdapter.stand_action`, default
+  `(-1,0,0)` so walking bodies are untouched; the arm declares `(0,0,0)`). Third of this
+  shape, after `SLOW` (M4) and the humanoid's `command_from_action` (M4).
+- **The aim point was winding up.** The arm's command advances a moving aim point by
+  `cmd * control_dt` each step, so while the jaw is blocked - pressing a block against the
+  inside of a box - the aim keeps integrating and ends far ahead of the gripper. The
+  command then stops and the arm keeps travelling toward an aim that ran away: measured,
+  0.22 m further and up to z 0.146 m with a zero command throughout. `MAX_LEAD` (0.03 m,
+  ten control steps at the command ceiling) keeps the aim within reach of the jaw.
+
+**Result**: the block is released 0.08 m from the box centre instead of 0.30 m. `box.ok`
+still fires in 0 of 10 (0.069 m in x against the box's 0.05 m inner half), so it lands
+*beside* the box. The remaining path is not the `over` test but the carrier's **stuck
+counter** (`_stuck` turns the phase to "back" and walks off while still holding), and that
+is the next measurement. Returning the stand action on the step that decides "over" changed
+the numbers not at all (0.069, -0.042 either way), so that change was reverted rather than
+shipped unmeasured.

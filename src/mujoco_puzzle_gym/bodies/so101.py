@@ -74,6 +74,16 @@ WORK_Z = 0.12
 #: a goal. The kinematic sweep covers the band z 0.02-0.15 m out to the full 0.480 m
 #: radius, so the table is inside the envelope; the IK gets there through the same z term.
 GRAB_Z = 0.02
+#: How far the aim point may run ahead of where the gripper actually is [m].
+#:
+#: The aim advances by `cmd * control_dt` every step, so while the gripper is blocked -
+#: pressing a block against the inside of a box, say - the aim keeps integrating and ends
+#: up far ahead of the jaw. The command then stops and the arm *keeps going*, because it
+#: is still solving toward an aim that ran away: measured, a block released into a box
+#: travelled another 0.22 m and climbed to z 0.146 m, out of the box, with a zero command
+#: the whole time. Integrator windup, and this is the anti-windup: ten control steps'
+#: worth of travel at the command ceiling (0.15 m/s x 0.02 s x 10).
+MAX_LEAD = 0.03
 Z_GAIN = 12.0           # [1/s] P gain pulling the gripper back to `WORK_Z`
 IK_GAIN = 8.0           # [1/s] how hard the solve chases the aim point
 DAMPING = 0.05          # damped-least-squares lambda for the inverse kinematics
@@ -116,6 +126,9 @@ class So101Adapter(BodyAdapter):
     #: turns the jaw -0.200 rad; every other joint turns it 0.000). The shared steering
     #: drives it by direction instead of by heading (R61).
     holonomic = True
+    #: Standing still is the zero command here: the command maps symmetrically onto the
+    #: gripper's velocity, so a walking body's `(-1, 0, 0)` would be full speed backwards.
+    stand_action = (0.0, 0.0, 0.0)
     #: The gripper's planar speed [m/s] and wrist rate [rad/s]. Chosen so one control step
     #: moves the gripper at most 3 mm, which the damped least-squares solve tracks without
     #: the arm snapping; `tests/test_so101.py` measures the tracking error.
@@ -243,7 +256,16 @@ class So101Adapter(BodyAdapter):
         yaw = self.state(data).yaw
         c, s = math.cos(yaw), math.sin(yaw)
         step_xy = np.array([c * vx - s * vy, s * vx + c * vy, 0.0]) * self.control_dt
-        self._aim = self._clamp(self._aim + step_xy)
+        aim = self._clamp(self._aim + step_xy)
+        # Anti-windup (`MAX_LEAD`): the aim may not run away from the gripper. Without
+        # this the arm carries on travelling after its command stops, by however far the
+        # aim got ahead while the jaw was blocked.
+        now = np.asarray(data.site_xpos[self._site], dtype=float)
+        lead = aim - now
+        n = float(np.linalg.norm(lead[:2]))
+        if n > MAX_LEAD:
+            aim[:2] = now[:2] + lead[:2] * (MAX_LEAD / n)
+        self._aim = aim
         steps = max(1, round(self.control_dt / model.opt.timestep))
         for _ in range(steps):
             jacp = np.zeros((3, model.nv))
