@@ -820,6 +820,21 @@ So success for this body is not one limit but a **path-dependent pocket**. What 
 a constant but a **designed loaded carry** (retract, turn, extend, and the height for each
 phase), judged by `tools/grab_grid.py`.
 
+**What the pocket is: the arm's own links collide with the room's parts.** Counting contacts
+at the stall, there is **2.111 N** between `part/box/wall1` and one of the arm's links, and
+**4.579 N** between another of its links and the `floor`. The jaw is 8.6 mm from its aim and
+the arm's **body** is pressed against the box. The torque saturation was a consequence, not the
+cause: shrinking the aim's lead (`MAX_LEAD`) 0.03 -> 0.015 -> 0.008 takes the peak torque
+2.94 -> 1.90 -> **0.91 N*m**, removing the saturation, and the block **stalls in the same place**
+(0.119 -> 0.115 m from the box). So "which pair works" is "is there a path on which the arm's
+links clear that room's parts".
+
+Changing the receptacle moves which step fails without raising the count: a wall lowered
+0.06 -> 0.02 m gives 0 of 25, and `shape: plate` gives 3 of 25 with most cells stalling in
+`goto goal` (the place lands but the win gate never lights). So the link collision is one cause
+among several, and a room for this body has to be designed around **where the arm itself
+passes**.
+
 **And the wedge room cannot be rescued by room design - that is measured.** In the geometry
 where the belt hands the block over at r=0.300, the spot where the grab works, the receptacle
 was moved over 25 positions (x 0.05-0.35, y -0.30 to +0.02) and **every one is 0**. Against
