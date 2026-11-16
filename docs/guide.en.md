@@ -35,7 +35,12 @@ flowchart LR
 
 ## Commands
 
-Every command accepts `--json` and exits non-zero on failure.
+Every command accepts `--json` and exits non-zero on failure. Every command also accepts `--body`, which picks the body. `mpg check --help` lists the usable body names, and an unknown name stops with that list as the reason.
+
+- On a command that takes a room or a `task.yaml` (`build`, `check`, `train`, `demo <room>`, `eval --onnx`), `--body` **chooses**. Left out, the task's own `body:` stands, and with neither, the default body.
+- On a command that takes a finished run folder (`eval`, `render`, `diagnose`), it **checks**. A policy belongs to the body it was trained with, so replaying it on another body is not a comparison but a silently wrong number. A mismatch stops with the name of the body that run was trained with.
+- The chosen body is named in the `--json` output, and in a trained run's `task.resolved.yaml` and `summary.json`. Only `mpg check` reports it as `body_name`, because there `body` is the name of the capability-gate stage.
+- `mpg fetch-assets --body <name>` fetches that body's pinned assets. Each body has its own lock file.
 
 | Command | What it does |
 |---|---|
@@ -155,3 +160,5 @@ The puzzle code does not know which body is walking. `BodyAdapter` is the bounda
 - `state`: return position, orientation, velocities and whether the body has fallen.
 
 The Microduck adapter runs the official walking policy `velstand.onnx` at 50 Hz with the motor model (BAM) from the official repository. Body names (joints, sites) are handled only inside `bodies/`. To add another body, implement these four methods and its command limits, register the new body name in `bodies.make_body()`, and set that name as `body:` in `task.yaml`.
+
+Bodies differ in what they can do. An adapter declares its capabilities (`walk`, `beak_grab`, …) and numeric limits (step height, walking speed, …), a part states what it needs with `requires_body`, and the `body` stage of `mpg check` compares the two. **Which part works with which body, and the measurements behind each answer**, is in [bodies and parts](bodies.en.md).

@@ -27,7 +27,18 @@ def lock_for(name: str = DEFAULT_BODY):
     raise ValueError(f"unknown body {name!r}; known bodies: {', '.join(BODIES)}")
 
 
+def resolve(name: str | None) -> str:
+    """The body a task or command line means: `default` and nothing are the package default.
+
+    One place decides what "default" is, so `--body` (R49), `task.yaml` `body:` and the
+    env all agree, and a run record can name the body it actually used instead of the
+    word `default`.
+    """
+    return DEFAULT_BODY if not name or name == "default" else str(name)
+
+
 def make_body(name: str = DEFAULT_BODY, **kwargs) -> BodyAdapter:
+    name = resolve(name)
     if name == "microduck":
         from .microduck import MicroduckAdapter
         return MicroduckAdapter(**kwargs)
@@ -37,4 +48,4 @@ def make_body(name: str = DEFAULT_BODY, **kwargs) -> BodyAdapter:
     raise ValueError(f"unknown body {name!r}; known bodies: {', '.join(BODIES)}")
 
 
-__all__ = ["ADDON_MODES", "BODIES", "UNDECLARED_LIMIT", "declared_limit", "lock_for", "BodyAdapter", "BodyState", "Capabilities", "Pose", "SubstepFn", "flat_floor_spec", "make_body", "DEFAULT_BODY"]
+__all__ = ["ADDON_MODES", "BODIES", "UNDECLARED_LIMIT", "declared_limit", "lock_for", "resolve", "BodyAdapter", "BodyState", "Capabilities", "Pose", "SubstepFn", "flat_floor_spec", "make_body", "DEFAULT_BODY"]

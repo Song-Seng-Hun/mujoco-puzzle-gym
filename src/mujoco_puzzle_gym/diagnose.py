@@ -25,7 +25,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .evaluate import DEFAULT_WORKERS, make_policy, record, run_episodes
+from .evaluate import DEFAULT_WORKERS, make_policy, record, require_run_body, run_episodes
 from .train import load_run, split_windows, window_stats
 
 DIAG_SEED_BASE = 2_000_000
@@ -85,8 +85,9 @@ def classify(first: dict[str, Any], last: dict[str, Any], roll: dict[str, Any],
 
 
 def diagnose(run_dir: str | Path, episodes: int = 20, video: bool = True,
-             workers: int = DEFAULT_WORKERS) -> dict[str, Any]:
+             workers: int = DEFAULT_WORKERS, body: str | None = None) -> dict[str, Any]:
     run = load_run(run_dir)
+    body_name = require_run_body(run, body)
     run_dir = Path(run_dir)
     hz = float(run["task"]["env"]["hz"])
     eps = run["episodes"]
@@ -110,6 +111,7 @@ def diagnose(run_dir: str | Path, episodes: int = 20, video: bool = True,
 
     result: dict[str, Any] = {
         "run_id": run["summary"]["run_id"],
+        "body": body_name,
         "verdict": verdict,
         "causes": causes,
         "advice": [ADVICE[c] for c in causes] if causes else

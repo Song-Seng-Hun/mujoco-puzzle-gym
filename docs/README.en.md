@@ -31,7 +31,7 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 - **The agent designs puzzles by assembling parts.** Pick parts, place them and wire them with signal links (`links`), and you have a puzzle. Simple rooms like switch → door → goal and rooms with stacked conditions, such as a door that opens only when several switches are all on (`require: all`), are built the same way. A missing part can be written and plugged in.
 - **Randomization is supported.** Today, part positions and the start position and heading are randomized within set ranges every episode, so a policy solves the puzzle instead of memorising the layout. Placing anywhere inside a region, picking one of several candidates, and changing the room structure itself come in milestone 2.
 - **Baseline environments are included.** The example room, a verified PPO training config, a pretrained policy (`mpg demo`), a random-policy comparison on the same seeds (`mpg eval --policy random`), and a set of deliberately broken configs ([`examples/broken/`](../examples/broken/)) give a starting point to compare new rooms or new algorithms against.
-- **The body can be swapped.** The puzzle code does not know the body; a body adapter takes movement commands and drives the body. Build a new body adapter and another robot trains in the same rooms (how: [guide](guide.en.md#body-adapter)). The only body included today is Microduck.
+- **The body can be swapped.** The puzzle code does not know the body; a body adapter takes movement commands and drives the body. Build a new body adapter and another robot trains in the same rooms (how: [guide](guide.en.md#body-adapter)). Two bodies are included today. Because bodies differ in what they can do, a part declares the capabilities it needs and `mpg check` **refuses a body that lacks them, with the reason** — which part works with which body is tabulated in [bodies and parts](bodies.en.md).
 
 ## Install
 
@@ -96,7 +96,8 @@ All commands, training settings, adding parts and rewards, and swapping the body
   - [x] Buttons, sensors, logic gates, counters, coins, warps, balls and goal nets, several kinds of door, checkpoints and curriculum training, ArUco markers and a gaze sensor, camera and distance-sensor observations. The 35 part presets and the example rooms are in the [parts and presets guide](parts-guide.en.md).
   - [x] Moving devices (platforms, conveyors, springs), traps, robots that move on their own
   - [ ] Cubes and beak grabbing (a simulation simplification that does not carry over to the real duck: a constraint attaches the cube to the beak tip), tow ropes, more episode randomization
-- [ ] **Milestone 3**: puzzle parts for other bodies, such as arms and wheeled robots
+- [ ] **Milestone 3**: a second body (a quadruped) and the body capability gate — a part declares what it needs from the body, and `mpg check` refuses a body that lacks it, with the reason
+- [ ] **Milestone 4**: a fixed-base arm and a humanoid, and puzzles whose answer is the difference between bodies
 
 ## Limits
 
@@ -115,6 +116,8 @@ The planning, design documents, code, tests and training experiments in this rep
 - Code in this repository: [Apache-2.0](../LICENSE).
 - Robot model and meshes: © Pollen Robotics, [microduck_rl](https://github.com/pollen-robotics/microduck_rl) pinned commit `0daab160`. The MJCF is Apache-2.0; the 3D meshes (`*.stl`) are [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) (non-commercial, share-alike). The meshes are not in this repository; `mpg fetch-assets` downloads them unmodified. The MJCF is edited only in memory.
 - Walking policy: `velstand.onnx` from [pollen-robotics/microduck-policies](https://huggingface.co/pollen-robotics/microduck-policies), Apache-2.0.
+- Second body's model: `unitree_go2/` from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) pinned commit `370c4396`, BSD-3-Clause, model and meshes alike.
+- Second body's walking policy: [diasAiMaster/unitree-go2-velocity-flat](https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat) pinned revision `9a723b7a`, BSD-3-Clause. **This policy is not an official Unitree release but a community checkpoint.** It was trained on flat ground (no `gait_phase`, action scale 0.5) with the upstream training code unmodified. The details are in [bodies and parts](bodies.en.md).
 - The demo video and images show the CC BY-NC-SA 4.0 meshes.
 - This is an unofficial project, not affiliated with Pollen Robotics.
 

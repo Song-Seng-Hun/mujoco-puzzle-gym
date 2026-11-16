@@ -172,3 +172,41 @@ hitch`로 크게 터집니다. 조용히 넘어가지 않습니다.
   구체적 이름(`microduck`, `go2`, …)만 보므로 이 산문은 통과합니다. 틀린 설명은 아니지만 한 몸을
   기준으로 읽힙니다.
 - **`pit` 경계**는 0.3–0.6 m 사이로만 압니다. 쓸 일이 생기면 더 좁혀야 합니다.
+- **공 밀기의 조향은 큰 몸에서 재지 않았습니다.** 걷기 조향은 몸이 `stand_to_turn_above`로 선언하면 제자리에서
+  돌지만(R47), 공을 미는 쪽(`push`)은 그 선언을 읽지 않고 상황에 따라 명령 범위의 중간으로 돕니다. 선회
+  반경이 큰 몸에서는 그것이 공을 두고 크게 도는 움직임이 됩니다. `ball`은 걷기만 요구하므로 큰 몸도
+  그 방을 받지만, 큰 몸으로 공 미는 방을 측정한 적은 없습니다.
+
+## 8. 자산의 출처와 라이선스
+
+몸마다 모델과 정책을 고정 리비전으로 핀합니다(`mpg fetch-assets --body <몸>`이 파일별 SHA256을
+확인합니다). 몸마다 lock 파일이 따로입니다.
+
+아래 라이선스는 lock 파일의 `license` 항목을 그대로 옮긴 것입니다. 한 저장소 안에서도 파일 종류마다
+다르므로 묶어서 적지 않습니다.
+
+| | 마이크로덕 | Go2 |
+|---|---|---|
+| 모델 | [pollen-robotics/microduck_rl](https://github.com/pollen-robotics/microduck_rl) `0daab16` | [google-deepmind/mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie) `370c439`의 `unitree_go2/` |
+| 메시 | **CC BY-NC-SA 4.0**(비상업) — `*.stl` | BSD-3-Clause |
+| MJCF | Apache-2.0 | BSD-3-Clause |
+| 걷기 정책 | Hugging Face `pollen-robotics/microduck-policies` `283771b`의 `velstand.onnx` | Hugging Face `diasAiMaster/unitree-go2-velocity-flat` `9a723b7`의 `policy.onnx` + `policy.onnx.data` |
+| 정책 라이선스 | Apache-2.0 | BSD-3-Clause |
+| lock 파일 | `upstream.lock.json` | `upstream.go2.lock.json` |
+
+**Go2의 걷기 정책은 Unitree의 공식 배포가 아닙니다.** 커뮤니티가 올린 체크포인트입니다. Unitree가
+공개한 것은 학습 코드(`unitree_rl_gym`, `unitree_rl_mjlab`)이고, 동결된 보행 ONNX는 2026-11-15
+조사에서 찾지 못했습니다. 그래서 이 체크포인트를 쓰기로 했습니다(사용자 결정, 2026-11-15).
+
+그 정책에 대해 확인한 사실입니다. 모두 모델 카드와 핀한 파일에서 읽은 것입니다.
+
+- **평지에서 학습**했습니다(과제 이름 `Mjlab-Velocity-Flat-Unitree-Go2`). 계단·경사는 학습 분포 밖입니다.
+- `gait_phase` 관측 **없이** 학습했고, action scale은 **0.5**입니다.
+- 학습 코드는 업스트림 `unitree_rl_mjlab`을 **고치지 않았습니다**(저장소에 함께 올라온 diff가 빈 diff).
+- 모델 카드가 "업스트림 기본 `deploy.yaml`과 다를 수 있으니 이 저장소의 `params/deploy.yaml`을
+  쓰라"고 적고 있으므로, 그 파일도 같이 핀하고 어댑터가 거기서 숫자를 읽습니다. 코드에 같은 숫자를
+  두 번 적지 않습니다.
+
+마이크로덕 쪽에서 **비상업**인 것은 메시(`*.stl`)입니다. MJCF와 정책은 Apache-2.0입니다. 메시 없이는
+그 몸을 시뮬레이션할 수 없으므로, 상업적으로 쓰려면 그 몸 자체를 쓸 수 없다고 보아야 합니다. Go2 쪽은
+모델과 정책이 모두 BSD-3-Clause입니다.

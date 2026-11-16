@@ -36,6 +36,7 @@ import numpy as np
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnvWrapper
 
 from . import curriculum as cur_mod
+from .bodies import resolve as body_resolve
 from .obs import obs_kind
 from .registry import get_algo
 from .room import Room
@@ -263,9 +264,10 @@ def _run_id(task_path: str | Path | None, algo: str) -> str:
 def train(task_path: str | Path, minutes: float, algo: str | None = None,
           n_envs: int | None = None, runs_dir: str | Path = "runs", run_id: str | None = None,
           max_steps: int | None = None, curriculum: str | None = None,
-          advance_at: float | None = None, replay: float | None = None) -> dict[str, Any]:
+          advance_at: float | None = None, replay: float | None = None,
+          body: str | None = None) -> dict[str, Any]:
     wall0 = time.monotonic()
-    task = load_task(task_path)
+    task = load_task(task_path, body=body)
     cur_cfg = task["curriculum"]
     for key, val in (("mode", curriculum), ("advance_at", advance_at), ("replay", replay)):
         if val is not None:
@@ -319,6 +321,7 @@ def train(task_path: str | Path, minutes: float, algo: str | None = None,
         "run_id": run_id,
         "run_dir": str(run_dir.resolve()),
         "task": str(Path(task_path).resolve()),
+        "body": body_resolve(task.get("body")),
         "algo": task["algo"],
         "obs_kind": obs_kind(task),
         "critic_obs": task.get("critic_obs") is not None,

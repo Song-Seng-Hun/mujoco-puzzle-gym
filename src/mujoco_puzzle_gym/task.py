@@ -80,8 +80,14 @@ def _merge(base: dict, over: dict) -> dict:
     return out
 
 
-def load_task(task: str | Path | dict | None = None, room: str | Path | None = None) -> dict[str, Any]:
-    """Read task.yaml (or a dict), fill defaults, resolve the room path, validate."""
+def load_task(task: str | Path | dict | None = None, room: str | Path | None = None,
+              body: str | None = None) -> dict[str, Any]:
+    """Read task.yaml (or a dict), fill defaults, resolve the room path, validate.
+
+    `body` overrides the task's `body:` (the CLI's `--body`, R49). It wins over the file
+    so one task can be run with either body without editing it, and the name it resolves
+    to is what `task.resolved.yaml` records.
+    """
     base_dir = Path.cwd()
     if isinstance(task, (str, Path)):
         path = Path(task)
@@ -95,6 +101,8 @@ def load_task(task: str | Path | dict | None = None, room: str | Path | None = N
     if not isinstance(raw, dict):
         raise TaskError("task file must be a mapping")
     out = _merge(DEFAULTS, raw)
+    if body is not None:
+        out["body"] = str(body)
     import_plugins(out["plugins"])
     if room is not None:
         out["room"] = str(Path(room).resolve())
@@ -125,7 +133,15 @@ def import_plugins(modules: list[str]) -> None:
 
 
 def validate(task: dict[str, Any]) -> None:
+    from .bodies import BODIES, resolve
+
     load_builtins()
+    # A wrong body name used to reach `make_body` and fail there, after the room was
+    # loaded and the plugins imported; the task is where the name is written, so it is
+    # also where the usable names belong (R49).
+    name = resolve(task.get("body"))
+    if name not in BODIES:
+        raise TaskError(f"unknown body {name!r}; usable bodies: {', '.join(BODIES)}")
     hz = float(task["env"]["hz"])
     if not HZ_RANGE[0] <= hz <= HZ_RANGE[1]:
         raise TaskError(f"env.hz must be within {HZ_RANGE}, got {hz}")

@@ -37,6 +37,10 @@ TASKS = {r: ROOT / f"examples/task_{r}.yaml"
 #: Room presets whose `demo:` needs task actions beyond `move` (R30).
 PRESET_TASKS = {f"puzzles/roller/{n}": ROOT / f"examples/task_{n}.yaml" for n in ("glide_under", "roll_delivery")}
 PRESET_TASKS["puzzles/tow/overload"] = ROOT / "examples/task_overload.yaml"
+#: R47 wide rooms: their task is what says which body they were sized for, so checking
+#: them without it would check them with the wrong one.
+PRESET_TASKS.update({f"puzzles/wide/{n}": ROOT / f"examples/task_wide_{n}.yaml"
+                     for n in ("switch_door", "pit_detour")})
 #: R34 circuit presets whose `demo:` pecks a cover or carries a fuse (`head`, `grab`).
 PRESET_TASKS.update({f"puzzles/circuit/{n}": ROOT / f"examples/task_{n}.yaml"
                      for n in ("peck_cable", "wrong_wire", "fuse_repair", "jam_the_turret",

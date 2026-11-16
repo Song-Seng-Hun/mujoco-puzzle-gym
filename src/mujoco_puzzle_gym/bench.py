@@ -27,7 +27,7 @@ from typing import Any
 
 import mujoco
 
-from .bodies import flat_floor_spec, make_body
+from .bodies import flat_floor_spec, make_body, resolve
 
 HIGH_LEVEL_HZ = 10.0
 BENCH_CMD = (0.3, 0.0, 0.0)
@@ -37,8 +37,8 @@ CAMERA_MODES = ("rgb", "depth")
 CAMERA_SIZE = [64, 64]
 
 
-def _make():
-    body = make_body()
+def _make(body_name: str | None = None):
+    body = make_body(resolve(body_name))
     model = body.spawn(flat_floor_spec()).compile()
     data = mujoco.MjData(model)
     body.reset(data)
@@ -62,9 +62,9 @@ def _run_body(body, data, seconds: float) -> tuple[int, float, int]:
             return steps, now - t0, falls
 
 
-def _worker(seconds: float, ready, start, out) -> None:
+def _worker(seconds: float, ready, start, out, body_name: str | None = None) -> None:
     os.environ.setdefault("OMP_NUM_THREADS", "1")
-    body, _, data = _make()
+    body, _, data = _make(body_name)
     _run_body(body, data, 0.2)          # warm-up
     body.reset(data)
     ready.put(1)
@@ -72,10 +72,18 @@ def _worker(seconds: float, ready, start, out) -> None:
     out.put(_run_body(body, data, seconds))
 
 
-def run_parallel(n: int, seconds: float) -> dict[str, Any]:
+def run_parallel(n: int, seconds: float, body_name: str | None = None,
+                 physics_per_body_step: int = 4, body_per_high: int = 5) -> dict[str, Any]:
+    """Body steps per second with `n` processes running at once.
+
+    The two ratios are the measured body's, not constants: they used to be written in
+    below as 4 and 5, which are the first body's. A body whose policy runs at a different
+    rate has different ones (one of them is 10), so the parallel rows reported physics
+    steps that never happened while the single-process rows above them were right."""
     ctx = mp.get_context("spawn")
     ready, out, start = ctx.Queue(), ctx.Queue(), ctx.Event()
-    procs = [ctx.Process(target=_worker, args=(seconds, ready, start, out)) for _ in range(n)]
+    procs = [ctx.Process(target=_worker, args=(seconds, ready, start, out, body_name))
+             for _ in range(n)]
     for p in procs:
         p.start()
     for _ in procs:
@@ -90,8 +98,8 @@ def run_parallel(n: int, seconds: float) -> dict[str, Any]:
     return {
         "procs": n,
         "body_steps_per_s": round(body_sps, 1),
-        "physics_steps_per_s": round(body_sps * 4, 1),
-        "high_level_steps_per_s": round(body_sps / 5, 1),
+        "physics_steps_per_s": round(body_sps * physics_per_body_step, 1),
+        "high_level_steps_per_s": round(body_sps / body_per_high, 1),
         "falls": sum(r[2] for r in results),
     }
 
@@ -184,8 +192,13 @@ def run_env(room: str | Path, seconds: float, procs: list[int], camera: bool = T
 
 
 def run(seconds: float = 5.0, procs: list[int] | None = None,
-        room: str | Path | None = DEFAULT_ROOM, camera: bool = True) -> dict[str, Any]:
-    body, model, data = _make()
+        room: str | Path | None = DEFAULT_ROOM, camera: bool = True,
+        body_name: str | None = None) -> dict[str, Any]:
+    # The walker numbers belong to one body: a second body has its own policy, its own
+    # joint count and its own control rate, so "steps per second" without a body name is
+    # not comparable with anything (R49).
+    body_name = resolve(body_name)
+    body, model, data = _make(body_name)
     control_dt = body.control_dt
     physics_per_body_step = round(control_dt / model.opt.timestep)
     body_per_high = round(1.0 / HIGH_LEVEL_HZ / control_dt)
@@ -193,6 +206,7 @@ def run(seconds: float = 5.0, procs: list[int] | None = None,
     single = steps / wall
     result: dict[str, Any] = {
         "machine": machine(),
+        "body": body_name,
         "seconds": seconds,
         "command": list(BENCH_CMD),
         "physics_steps_per_body_step": physics_per_body_step,
@@ -203,7 +217,8 @@ def run(seconds: float = 5.0, procs: list[int] | None = None,
             "high_level_steps_per_s": round(single / body_per_high, 1),
             "falls": falls,
         },
-        "parallel": [run_parallel(n, seconds) for n in (procs or [])],
+        "parallel": [run_parallel(n, seconds, body_name, physics_per_body_step, body_per_high)
+                     for n in (procs or [])],
     }
     best = max([result["single"]["high_level_steps_per_s"]]
                + [p["high_level_steps_per_s"] for p in result["parallel"]])

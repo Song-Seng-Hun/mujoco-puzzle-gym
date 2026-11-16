@@ -31,7 +31,7 @@ AI 코딩 에이전트가 MuJoCo 물리 시뮬레이션 안에 퍼즐 방을 직
 - **에이전트가 부품을 조립해 퍼즐을 설계합니다.** 부품을 골라 놓고 신호선(`links`)으로 이으면 퍼즐이 됩니다. 발판 → 문 → 골 같은 단순한 방부터 발판 여러 개가 모두 켜져야 열리는 문(`require: all`)처럼 조건을 겹친 방까지 같은 방식으로 짓고, 모자란 부품은 직접 만들어 끼웁니다.
 - **랜덤화를 지원합니다.** 지금은 부품 위치와 출발 위치·방향을 정한 범위 안에서 매 에피소드 조금씩 다르게 배치해, 정책이 배치를 외우지 않고 퍼즐을 풀게 합니다. 구역 안 아무 곳에 놓기, 후보 중 하나 고르기, 방 구조 자체를 바꾸는 랜덤화는 마일스톤 2에서 들어옵니다.
 - **기준(베이스라인) 환경이 들어 있습니다.** 예제 방, 검증한 PPO 학습 설정, 미리 학습한 정책(`mpg demo`), 같은 시드에서 무작위 정책과 비교(`mpg eval --policy random`), 일부러 망가뜨린 설정 모음([`examples/broken/`](examples/broken/))이 있어서 새 방이나 새 알고리즘을 견줄 출발점이 됩니다.
-- **로봇을 바꿀 수 있습니다.** 퍼즐 쪽 코드는 어떤 로봇인지 모르고, 몸 어댑터가 이동 명령을 받아 로봇을 움직입니다. 몸 어댑터를 새로 만들어 붙이면 다른 로봇도 같은 방에서 학습합니다(방법은 [사용 안내](docs/guide.md#몸-어댑터)). 지금 들어 있는 로봇은 마이크로덕 하나입니다.
+- **로봇을 바꿀 수 있습니다.** 퍼즐 쪽 코드는 어떤 로봇인지 모르고, 몸 어댑터가 이동 명령을 받아 로봇을 움직입니다. 몸 어댑터를 새로 만들어 붙이면 다른 로봇도 같은 방에서 학습합니다(방법은 [사용 안내](docs/guide.md#몸-어댑터)). 지금 들어 있는 몸은 둘입니다. 몸마다 할 수 있는 일이 다르므로, 부품은 필요한 능력을 선언하고 `mpg check`가 못 하는 몸을 **이유를 말하며 거부**합니다 — 어떤 부품이 어떤 몸에서 되는지는 [몸과 부품](docs/bodies.md)에 표로 있습니다.
 
 ## 설치
 
@@ -96,7 +96,8 @@ uv run mpg check my_room.yaml
   - [x] 버튼, 센서, 논리 게이트, 카운터, 코인, 워프, 공과 골대, 여러 종류의 문, 체크포인트와 단계별 학습, ArUco 마커와 시선 센서, 카메라·거리 센서 관측. 부품 프리셋 35종과 예제 방은 [부품과 프리셋 안내](docs/parts-guide.md)에 있습니다.
   - [x] 움직이는 장치(플랫폼, 컨베이어, 스프링), 함정, 스스로 움직이는 로봇
   - [ ] 큐브와 부리로 집기(실물 오리로 옮길 수 없는 시뮬레이션 단순화: 부리 끝에 구속으로 붙임), 견인 끈, 에피소드 무작위화 확장
-- [ ] **마일스톤 3**: 팔, 바퀴 로봇처럼 다른 몸을 위한 퍼즐 부품
+- [ ] **마일스톤 3**: 두 번째 몸(네 발 로봇)과 몸 능력 관문 — 부품이 몸에 무엇을 요구하는지 선언하고, 못 하는 몸은 `mpg check`가 이유를 말하며 거부합니다
+- [ ] **마일스톤 4**: 고정 베이스 팔과 휴머노이드, 그리고 몸의 차이가 답이 되는 퍼즐
 
 ## 한계
 
@@ -115,6 +116,8 @@ uv run mpg check my_room.yaml
 - 이 저장소의 코드: [Apache-2.0](LICENSE).
 - 로봇 모델과 메시: © Pollen Robotics, [microduck_rl](https://github.com/pollen-robotics/microduck_rl) 고정 커밋 `0daab160`. MJCF는 Apache-2.0, 3D 메시(`*.stl`)는 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)(비상업, 동일 조건)입니다. 메시는 이 저장소에 들어 있지 않고, `mpg fetch-assets`가 원본 그대로 받아 옵니다. MJCF 원본은 고치지 않고, 실행 중 메모리에서만 고칩니다.
 - 걷기 정책: [pollen-robotics/microduck-policies](https://huggingface.co/pollen-robotics/microduck-policies)의 `velstand.onnx`, Apache-2.0.
+- 두 번째 몸의 모델: [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) 고정 커밋 `370c4396`의 `unitree_go2/`, BSD-3-Clause. 모델과 메시 모두 해당합니다.
+- 두 번째 몸의 걷기 정책: [diasAiMaster/unitree-go2-velocity-flat](https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat) 고정 리비전 `9a723b7a`, BSD-3-Clause. **이 정책은 Unitree의 공식 배포가 아니라 커뮤니티가 올린 체크포인트입니다.** 평지에서 학습했고(`gait_phase` 없음, action scale 0.5), 학습 코드는 업스트림을 고치지 않았습니다. 자세한 사실은 [몸과 부품](docs/bodies.md)에 있습니다.
 - 데모 영상과 그림에는 CC BY-NC-SA 4.0 메시가 쓰였습니다.
 - 이 프로젝트는 비공식 프로젝트이며 Pollen Robotics와 관계가 없습니다.
 

@@ -50,7 +50,9 @@ jobs:
       - name: Fetch assets
         run: uv run mpg fetch-assets
       - name: Tests (fast)
-        run: uv run pytest -q --shard ${{ matrix.shard }}/2
+        # R50: the shard's peak resident set goes in the log as a number. See
+        # tools/peak_rss.py for what it does and does not measure.
+        run: uv run python tools/peak_rss.py -- pytest -q --shard ${{ matrix.shard }}/2
       - name: Example room check
         if: matrix.shard == 0
         run: uv run mpg check examples/switch_door.yaml --json

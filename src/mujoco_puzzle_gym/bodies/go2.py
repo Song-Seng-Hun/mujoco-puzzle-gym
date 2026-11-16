@@ -89,6 +89,13 @@ class Go2Adapter(BodyAdapter):
     #: cover both, since callers use it to inflate walls for path planning and a value
     #: that is too small plans a route through a gap the body does not fit.
     footprint_radius = 0.41
+    #: Stand and turn whenever the heading is off by more than the solver's own "facing"
+    #: band (R47). This body turns at 0.5 rad/s and walks at up to 1.0 m/s, so correcting
+    #: on the move sweeps 1.0 m at the middle of its command range and 2.0 m at the top -
+    #: wider than half a 5 x 4 m room. Measured on `puzzles/wide/switch_door`: correcting
+    #: on the move 5/20 seeds (it circled the 0.6 m button, passing within 0.07 m of it
+    #: twice a lap, for the whole 40 s episode), standing to turn 20/20.
+    stand_to_turn_above = 0.0
     #: Go2 walks and nothing else: no beak (`grab_site`), no addons, no tow hitch, no eye
     #: camera (`go2.xml` has no camera, only an imu site) and no rangefinder mount. All of
     #: those stay at the `BodyAdapter` defaults, which is what `mpg check` gates on (R45).

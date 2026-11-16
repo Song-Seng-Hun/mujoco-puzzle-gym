@@ -54,13 +54,25 @@ def _fetch_assets(args: argparse.Namespace) -> dict[str, Any]:
     return {"body": args.body, **result}
 
 
+def _add_body(p: argparse.ArgumentParser, help_text: str, default: str | None = None) -> None:
+    """`--body` (R49). One list of names and one place to change it.
+
+    The default is `None`, not the package default: a command that reads a task must let
+    the task's own `body:` stand when the flag is absent, or passing nothing would
+    silently override the file. `fetch-assets` has no task, so it names a body outright.
+    """
+    from .bodies import BODIES
+
+    p.add_argument("--body", default=default, choices=BODIES, help=help_text)
+
+
 def _configure_fetch(p: argparse.ArgumentParser) -> None:
-    from .bodies import BODIES, DEFAULT_BODY
+    from .bodies import DEFAULT_BODY
 
     p.add_argument("--cache-dir", default=None,
                    help="cache root (default: $MPG_CACHE_DIR or ~/.cache/mujoco-puzzle-gym)")
-    p.add_argument("--body", default=DEFAULT_BODY, choices=BODIES,
-                   help="which body's pinned assets to fetch (each body has its own lock)")
+    _add_body(p, "which body's pinned assets to fetch (each body has its own lock)",
+              default=DEFAULT_BODY)
 
 
 def _bench(args: argparse.Namespace) -> dict[str, Any]:
@@ -73,7 +85,7 @@ def _bench(args: argparse.Namespace) -> dict[str, Any]:
     try:
         return bench.run(seconds=args.seconds, procs=procs,
                          room=None if args.no_env else (args.room or bench.DEFAULT_ROOM),
-                         camera=not args.no_camera)
+                         camera=not args.no_camera, body_name=args.body)
     except (FileNotFoundError, ValueError) as exc:
         raise CommandError(str(exc)) from exc
 
@@ -87,13 +99,15 @@ def _configure_bench(p: argparse.ArgumentParser) -> None:
     p.add_argument("--no-env", action="store_true", help="walker only, skip the PuzzleEnv runs")
     p.add_argument("--no-camera", action="store_true",
                    help="skip the PuzzleEnv runs with a 64x64 head camera (R39)")
+    _add_body(p, "body to measure; it is reported with the numbers, because steps per "
+                 "second is a different measurement for each body")
 
 
 def _build(args: argparse.Namespace) -> dict[str, Any]:
     from .room import RoomError, build
 
     try:
-        return build(args.room, out_dir=args.out)
+        return build(args.room, out_dir=args.out, body=args.body)
     except (RoomError, FileNotFoundError) as exc:
         raise CommandError(str(exc)) from exc
 
@@ -101,6 +115,7 @@ def _build(args: argparse.Namespace) -> dict[str, Any]:
 def _configure_build(p: argparse.ArgumentParser) -> None:
     p.add_argument("room", help="room.yaml")
     p.add_argument("--out", default=None, help="output directory (default: build/<room name>/)")
+    _add_body(p, "body to compile into the scene (default: the package default body)")
 
 
 def _check(args: argparse.Namespace) -> dict[str, Any]:
@@ -114,7 +129,7 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
                            "shared rooms are checked with the built-in task")
     try:
         return check(args.room, task=args.task, seeds=args.seeds, need=need,
-                     static_only=args.static, community=args.community)
+                     static_only=args.static, community=args.community, body=args.body)
     except (RoomError, TaskError, FileNotFoundError) as exc:
         raise CommandError(str(exc)) from exc
 
@@ -131,6 +146,8 @@ def _configure_check(p: argparse.ArgumentParser) -> None:
     p.add_argument("--community", action="store_true",
                    help="also check the limits for shared rooms (community/rooms/): built-in "
                         "parts only, stages inside the room's folder, size caps; no --task")
+    _add_body(p, "body to check the room with: its capabilities, dimensions and the "
+                 "scripted solver (default: the task's `body:`)")
 
 
 def _parts(args: argparse.Namespace) -> dict[str, Any]:
@@ -163,7 +180,8 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
     try:
         return train(args.task, minutes=args.minutes, algo=args.algo, n_envs=args.n_envs,
                      runs_dir=args.runs_dir, run_id=args.id, max_steps=args.max_steps,
-                     curriculum=args.curriculum, advance_at=args.advance_at, replay=args.replay)
+                     curriculum=args.curriculum, advance_at=args.advance_at,
+                     replay=args.replay, body=args.body)
     except (TaskError, RoomError, KeyError, FileNotFoundError) as exc:
         raise CommandError(str(exc.args[0]) if exc.args else str(exc)) from exc
 
@@ -187,6 +205,8 @@ def _configure_train(p: argparse.ArgumentParser) -> None:
                    help="share of episodes started at earlier open segments (default 0.2)")
     p.add_argument("--trust", action="store_true",
                    help="open run folders and snapshots outside ./runs/ (pickle can run code)")
+    _add_body(p, "body to train (default: the task's `body:`); it is recorded in the run's "
+                 "task.resolved.yaml and summary")
 
 
 def _run_errors():
@@ -209,7 +229,8 @@ def _eval(args: argparse.Namespace) -> dict[str, Any]:
                                "run folders")
         try:
             return evaluate_onnx(args.onnx, args.task, episodes=args.episodes,
-                                 workers=args.workers, randomize=args.randomize)
+                                 workers=args.workers, randomize=args.randomize,
+                                 body=args.body)
         except _run_errors() as exc:
             raise CommandError(str(exc)) from exc
     if not args.run:
@@ -218,7 +239,7 @@ def _eval(args: argparse.Namespace) -> dict[str, Any]:
         return evaluate(args.run, episodes=args.episodes, policy=args.policy,
                         deterministic=not args.stochastic, workers=args.workers,
                         full=args.full, segments=args.segments, difficulty=args.difficulty,
-                        randomize=args.randomize)
+                        randomize=args.randomize, body=args.body)
     except _run_errors() as exc:
         raise CommandError(str(exc)) from exc
 
@@ -243,6 +264,8 @@ def _configure_eval(p: argparse.ArgumentParser) -> None:
     p.add_argument("--segments", action="store_true",
                    help="also run every checkpoint segment from its snapshot: segment_success_rates; "
                         "with --full also chain_gap_rate (R22)")
+    _add_body(p, "with --onnx: the body to evaluate on. On a run folder it is checked, not "
+                 "applied: a policy belongs to the body it was trained with")
     p.add_argument("--difficulty", type=int, default=None,
                    help="difficulty step to run at (R21 task `difficulty`; default: the last, hardest)")
     p.add_argument("--trust", action="store_true",
@@ -273,7 +296,7 @@ def _diagnose(args: argparse.Namespace) -> dict[str, Any]:
 
     try:
         return diagnose(args.run, episodes=args.episodes, video=not args.no_video,
-                        workers=args.workers)
+                        workers=args.workers, body=args.body)
     except _run_errors() as exc:
         raise CommandError(str(exc)) from exc
 
@@ -285,13 +308,14 @@ def _configure_diagnose(p: argparse.ArgumentParser) -> None:
     p.add_argument("--workers", type=int, default=12, help="parallel processes")
     p.add_argument("--trust", action="store_true",
                    help="open run folders and snapshots outside ./runs/ (pickle can run code)")
+    _add_body(p, "checked against the body this run was trained with, not applied")
 
 
 def _render(args: argparse.Namespace) -> dict[str, Any]:
     from .evaluate import render
 
     try:
-        return render(args.run, out=args.out, seed=args.seed, tries=args.tries)
+        return render(args.run, out=args.out, seed=args.seed, tries=args.tries, body=args.body)
     except _run_errors() as exc:
         raise CommandError(str(exc)) from exc
 
@@ -304,6 +328,7 @@ def _configure_render(p: argparse.ArgumentParser) -> None:
     p.add_argument("--tries", type=int, default=20, help="eval seeds to try for a success")
     p.add_argument("--trust", action="store_true",
                    help="open run folders and snapshots outside ./runs/ (pickle can run code)")
+    _add_body(p, "checked against the body this run was trained with, not applied")
 
 
 DEMO_RUN = Path(__file__).resolve().parents[2] / "examples" / "pretrained" / "switch_door"
@@ -316,7 +341,8 @@ def _demo(args: argparse.Namespace) -> dict[str, Any]:
         if not Path(args.room).is_file():
             raise CommandError(f"no such room file: {args.room}")
         try:
-            return render_solution(args.room, out=args.out, seed=args.seed or 0, task=args.task)
+            return render_solution(args.room, out=args.out, seed=args.seed or 0,
+                                   task=args.task, body=args.body)
         except _run_errors() as exc:
             raise CommandError(str(exc)) from exc
     if args.task:
@@ -324,7 +350,7 @@ def _demo(args: argparse.Namespace) -> dict[str, Any]:
     if not (DEMO_RUN / "summary.json").exists():
         raise CommandError(f"bundled demo policy missing at {DEMO_RUN} (run from a git checkout)")
     try:
-        return render(DEMO_RUN, out=args.out or "demo.mp4", seed=args.seed)
+        return render(DEMO_RUN, out=args.out or "demo.mp4", seed=args.seed, body=args.body)
     except _run_errors() as exc:
         raise CommandError(str(exc)) from exc
 
@@ -337,6 +363,8 @@ def _configure_demo(p: argparse.ArgumentParser) -> None:
                    help="MP4 path (default: <room>.mp4, or ./demo.mp4 for the bundled policy)")
     p.add_argument("--seed", type=int, default=None,
                    help="layout seed (room: 0; bundled policy: the first success)")
+    _add_body(p, "body that solves the room; with the bundled policy it is checked, not "
+                 "applied (that policy belongs to the body it was trained with)")
 
 
 COMMANDS: dict[str, tuple[str, Handler, Callable[[argparse.ArgumentParser], None]]] = {

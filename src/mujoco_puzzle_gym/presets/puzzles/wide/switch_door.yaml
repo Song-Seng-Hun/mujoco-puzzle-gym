@@ -1,0 +1,45 @@
+# Wide switch and door (R47): the first puzzle, at the dimensions a large walking body
+# needs. Press the floor button, the door opens, walk to the goal.
+#
+# Every number is a measurement, not a guess (docs/bodies.md section 6, and the four
+# measurements below, made while this room was written):
+#
+# - `size` 5.0 x 4.0 m. The example room is 2.4 x 1.8 m, under four body lengths across
+#   for a body 0.70 m long, which leaves no room to turn around.
+# - wall gap and door `width` 1.4 m. The planner inflates every wall by the body's
+#   footprint radius plus a 0.02 m margin, so the free corridor through a gap is the gap
+#   less about 1.0 m for a 0.41 m footprint: measured 0 free cells at a 1.0 m gap, 0.20 m
+#   of corridor at 1.2 m, 0.40 m at 1.4 m. A 1.0 m gap the body physically walks through
+#   is a wall to the planner, and `mpg check` then calls the room unsolvable - correctly,
+#   since nothing could plan it.
+# - door `speed` 1.0 m/s. Without it the panel is pushed open by its servo, and a panel
+#   is as wide as its doorway: this one needed most of a 40 s episode to open, during
+#   which the solver reads the doorway as blocked, stands still, and a body that drifts
+#   when told to stand still (0.027 m/s measured) wanders into the inflated wall collar
+#   and is stuck for good. At 1.0 m/s it opens in 1.4 s.
+# - `wall.height` 0.5 m. A large body stands with its trunk near 0.36 m; the 0.25 m
+#   default is a curb it could straddle rather than a wall it must go around.
+# - button `size` 0.6 x 0.6 m, wider than the body's own footprint, so standing on it
+#   reads as standing on it whatever the gait is doing (docs/bodies.md section 5).
+# - `goal.radius` 0.35 m; the default 0.15 m is smaller than the body's footprint. Its
+#   `random` offsets keep every drawn position inside the free area: the collar along the
+#   walls is 0.46 m deep, so nothing may be drawn past x = 2.04 or |y| = 1.54.
+#
+# For a small body these dimensions are not wrong, only slow: crossing 5 m at 0.22 m/s
+# spends most of a 40 s episode walking. The task file next to it picks the body.
+name: wide_switch_door
+size: [5.0, 4.0]
+wall: {thickness: 0.08, height: 0.5}
+walls:                            # divider at x = 0.6 with a 1.4 m opening at y = 0
+  - {from: [0.6, -2.0], to: [0.6, -0.7]}
+  - {from: [0.6, 0.7], to: [0.6, 2.0]}
+spawn: {pos: [-1.8, 0.0], yaw: 0.0, random: [0.2, 0.5, 3.14]}
+parts:
+  - {name: button, preset: input/floor_oneshot, pos: [-1.2, 1.0], size: [0.6, 0.6],
+     random: [0.3, 0.3]}
+  - {name: door, preset: device/oneshot_door, pos: [0.6, 0.0], width: 1.4, speed: 1.0,
+     in: [button]}
+  - {name: goal, type: goal, pos: [1.7, 0.0], radius: 0.35, random: [0.15, 0.6]}
+demo:
+  - press button
+  - goto goal

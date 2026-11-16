@@ -1,0 +1,17 @@
+# Task for the room preset `puzzles/wide/switch_door` (R47): the wide room, played by
+# the body it was sized for.
+#
+# `body:` is the point of this file. A room carries dimensions, not a body name, so the
+# only place that says which body a preset room was written for is the task next to it
+# (`mpg check puzzles/wide/switch_door --body go2` says it on the command line instead).
+#
+# `episode_seconds` stays at the default 40: this body is measured at 1.019 m/s at its
+# top forward command, and the solved route is about 6 m.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/wide/switch_door.yaml
+body: go2
+env: {hz: 10, episode_seconds: 40}
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
+reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+algo: ppo
+net: [128, 128]
+n_envs: 12
