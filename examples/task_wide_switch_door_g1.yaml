@@ -1,0 +1,22 @@
+# Task for `puzzles/wide/switch_door` played by the humanoid (M4). It exists to record
+# which body the room was measured with, not to change anything: every value here is the
+# default, including `episode_seconds: 40`.
+#
+# The room is unchanged too. It was sized for a body with a 0.41 m footprint and this one
+# is 0.32 m, so every gap and clearance already fits, and the humanoid solves it in 17.4 s
+# on average over 20 seeds - faster than the quadruped's 24.6 s despite walking at 0.455
+# m/s against 1.019, because it strafes and turns instead of swinging wide.
+#
+# An earlier version of this file set 80 s, on the theory that a body at 45% of the
+# quadruped's speed needs proportionally longer. That was wrong: the timeouts it was
+# written for came from a bug in the body adapter, which held every actuator in the scene
+# at its own standing pose and so kept the room's door shut. With that fixed the default
+# episode is not close to tight.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/wide/switch_door.yaml
+body: g1
+env: {hz: 10, episode_seconds: 40}
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
+reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+algo: ppo
+net: [128, 128]
+n_envs: 12

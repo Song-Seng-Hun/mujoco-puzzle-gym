@@ -597,6 +597,7 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | 프리셋 | 하는 일 | 숫자 |
 |---|---|---|
 | `puzzles/tabletop/reach_target` | 1.0 × 0.8 m 탁상. 말단(집게)을 목표 위에 올립니다 | task `examples/task_reach_target.yaml`(10초, `fall` 종료 끔). 20/20(0.6 s) |
+| `puzzles/tabletop/pick_and_place` | 같은 탁상. 블록(3 cm·20 g)을 집어 상자에 넣으면 상자가 목표로 가는 문을 엽니다 | task `examples/task_pick_and_place.yaml`(`grab`, 20초). 20/20(2.9 s). 공용 접근이 이 몸을 홀로노믹으로 알기 전에는 **0/20**이었습니다 |
 
 이 방이 증명하는 것은 퍼즐이 아니라 **경계**입니다. 격자 계획, 조향, 스크립트 해답, 능력 관문이
 다리 없는 몸을 한 줄도 바뀌지 않고 운전합니다. 치수는 측정된 포락선에서 나왔습니다 — 도달 반경
@@ -1690,6 +1691,7 @@ def majority(inputs, state, dt):
 - `puzzles/roller/roll_delivery`
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
+- `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tow/chain_dropoff`
 - `puzzles/tow/cleat_hold`

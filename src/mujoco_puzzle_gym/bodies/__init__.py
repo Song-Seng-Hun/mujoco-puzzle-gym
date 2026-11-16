@@ -9,7 +9,7 @@ DEFAULT_BODY = "microduck"
 
 
 #: Every body `make_body` knows, for error messages and the CLI's `--body` choices.
-BODIES = ("microduck", "go2", "so101")
+BODIES = ("microduck", "go2", "so101", "g1")
 
 
 def lock_for(name: str = DEFAULT_BODY):
@@ -26,6 +26,9 @@ def lock_for(name: str = DEFAULT_BODY):
         return LOCK
     if name == "so101":
         from .so101 import LOCK
+        return LOCK
+    if name == "g1":
+        from .g1 import LOCK
         return LOCK
     raise ValueError(f"unknown body {name!r}; known bodies: {', '.join(BODIES)}")
 
@@ -51,6 +54,9 @@ def make_body(name: str = DEFAULT_BODY, **kwargs) -> BodyAdapter:
     if name == "so101":
         from .so101 import So101Adapter
         return So101Adapter(**kwargs)
+    if name == "g1":
+        from .g1 import G1Adapter
+        return G1Adapter(**kwargs)
     raise ValueError(f"unknown body {name!r}; known bodies: {', '.join(BODIES)}")
 
 

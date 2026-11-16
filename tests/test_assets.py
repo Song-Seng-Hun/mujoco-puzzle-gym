@@ -186,7 +186,7 @@ def test_cli_fetch_assets_body_go2(go2_asset_dir):
 
 def test_cli_fetch_assets_rejects_an_unknown_body():
     out = subprocess.run(
-        [sys.executable, "-m", "mujoco_puzzle_gym.cli", "fetch-assets", "--body", "g1", "--json"],
+        [sys.executable, "-m", "mujoco_puzzle_gym.cli", "fetch-assets", "--body", "spot", "--json"],
         capture_output=True, text=True)
     assert out.returncode != 0
     assert "invalid choice" in out.stderr and "go2" in out.stderr

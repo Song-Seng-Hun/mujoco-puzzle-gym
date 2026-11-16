@@ -1,0 +1,31 @@
+# Tabletop pick and place (M4 R61): the first room where a body with no legs does
+# something to an object. Pick the block up, put it in the box, and the box opens the way
+# to the target.
+#
+# This room is the one that answers the question the reach room could not: the weld grab
+# (R18) was written for a beak on the front of a walking trunk, and nothing had measured
+# it on a jaw that *is* the body. Measured: 20/20 seeds, mean 2.9 s. Before the shared
+# approach learned that this body is holonomic it was 0/20 - the carrier closes in at
+# `SLOW = -0.5`, which on a symmetric command mapping is half speed backwards, so the arm
+# drove away from the block it was told to pick up.
+#
+# Numbers follow the measured envelope (docs/bodies.md section 9): base at x = -0.3, so
+# the block at (-0.05, -0.12) is 0.29 m out and the box at (0.0, 0.14) is 0.33 m out, both
+# inside the 0.48 m reach and clear of the fold near the base where tracking degrades. The
+# block is 3 cm and 20 g; the jaw's own footprint is 5 cm.
+#
+# `box.ok` is the channel, not `box`: a receptacle writes `.ok`, `.count`, `.mass` and
+# `.wrong`, and reading the bare name is rejected by the `channels` stage.
+name: table_pick
+size: [1.0, 0.8]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [-0.3, 0.0], yaw: 0.0}
+parts:
+  - {name: block, type: cube, pos: [-0.05, -0.12], size: 0.03, mass: 0.02}
+  - {name: box, type: receptacle, pos: [0.0, 0.14], size: [0.12, 0.12], accept: [block]}
+  - {name: door, type: door, mode: oneshot, pos: [0.42, 0.0], width: 0.2, axis: y, in: [box.ok]}
+  - {name: goal, type: goal, pos: [-0.02, 0.0], radius: 0.05}
+demo:
+  - grab block
+  - place block box
+  - goto goal

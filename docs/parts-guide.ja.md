@@ -595,6 +595,7 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | プリセット | 何をする部屋か | 数字 |
 |---|---|---|
 | `puzzles/tabletop/reach_target` | 1.0 × 0.8 mの卓上。末端(グリッパー)を目標の上に置きます | task `examples/task_reach_target.yaml`(10秒、`fall`終了は切る)。20/20(0.6 s) |
+| `puzzles/tabletop/pick_and_place` | 同じ卓上。ブロック(3 cm・20 g)を摘んで箱に入れると、箱が目標への扉を開きます | task `examples/task_pick_and_place.yaml`(`grab`、20秒)。20/20(2.9 s)。共有の接近処理がこの体をホロノミックと知る前は**0/20**でした |
 
 この部屋が証明するのはパズルではなく**境界**です。格子の経路計画、操舵、解答スクリプト、能力ゲートが、脚の無い体を一行も変えずに動かします。寸法は測定した包絡線から来ています — 到達半径0.48 m、220度の扇形なので**部屋全体がその扇形の中に**収まらなければならず、ベースの近くで折り畳む領域(追従誤差が1 cmから5 cmに増えます)は目標から外します。無作為化はありません: 体は卓上に固定なので出発位置を引いても何も変わらず、アダプターがそれを警告として述べます。
 
@@ -1681,6 +1682,7 @@ def majority(inputs, state, dt):
 - `puzzles/roller/roll_delivery`
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
+- `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tow/chain_dropoff`
 - `puzzles/tow/cleat_hold`

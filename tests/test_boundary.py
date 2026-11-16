@@ -15,8 +15,10 @@ FORBIDDEN = [
     "neck_pitch", "head_pitch", "head_yaw", "head_roll",
     "right_hip_yaw", "right_hip_roll", "right_hip_pitch", "right_knee", "right_ankle",
 ]
-# Pinned asset manifest: data that says which upstream files to fetch, not code.
-ALLOWLIST = {"upstream.lock.json", "upstream.go2.lock.json"}
+# Pinned asset manifests: data that says which upstream files to fetch, not code. One per
+# body, and a body's own name is unavoidable in it - that is what pinning means.
+ALLOWLIST = {"upstream.lock.json", "upstream.go2.lock.json",
+             "upstream.so101.lock.json", "upstream.g1.lock.json"}
 PATTERN = re.compile("|".join(map(re.escape, FORBIDDEN)), re.IGNORECASE)
 
 

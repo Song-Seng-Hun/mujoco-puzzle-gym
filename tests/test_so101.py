@@ -202,3 +202,32 @@ def test_the_arm_solves_its_room(so101_asset_dir, tmp_path):
     result = check(path, body="so101", seeds=20, need=18, snap_dir=tmp_path)
     assert result["ok"], result
     assert result["solver"]["successes"] >= 18
+
+
+# ---- the question the reach room could not answer -----------------------------------
+
+@pytest.mark.slow
+def test_the_arm_picks_an_object_up_and_puts_it_somewhere(so101_asset_dir, repo_root, tmp_path):
+    """The weld grab (R18) was written for a beak on the front of a walking trunk, and
+    nothing had measured it on a jaw that *is* the body. Measured: 20/20 seeds, mean 2.9 s.
+
+    It was 0/20 until the shared approach learned this body is holonomic: the carrier
+    closes in at `SLOW = -0.5`, which on a symmetric command mapping is half speed
+    backwards, so the arm drove away from the block it was told to pick up.
+    """
+    from mujoco_puzzle_gym import catalog
+    from mujoco_puzzle_gym.check import check
+
+    result = check(catalog.PRESET_ROOT / "puzzles/tabletop/pick_and_place.yaml",
+                   task=repo_root / "examples/task_pick_and_place.yaml",
+                   seeds=20, need=18, snap_dir=tmp_path)
+    assert result["ok"], result
+    assert result["solver"]["successes"] >= 18
+
+
+def test_the_jaw_is_the_grab_site(scene):
+    """And it is the same site `state` reports as the body's position: for this body the
+    end effector is the body."""
+    body, model, data = scene
+    name = body.grab_site()
+    assert name and model.site(name).id == body._site

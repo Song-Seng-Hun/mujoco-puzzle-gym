@@ -31,7 +31,7 @@ AIコーディングエージェントがMuJoCoの物理シミュレーション
 - **エージェントが部品を組み立ててパズルを設計します。** 部品を選んで置き、信号線(`links`)でつなげばパズルになります。スイッチ → ドア → ゴールのような単純な部屋から、複数のスイッチがすべてオンのときだけ開くドア(`require: all`)のように条件を重ねた部屋まで同じやり方で作れ、足りない部品は自分で作ってはめ込めます。
 - **ランダム化に対応しています。** いまは部品の位置と出発位置・向きをエピソードごとに決めた範囲でエピソードごとに少しずつ変えて配置し、ポリシーが配置を覚えるのではなくパズルを解くようにします。エリア内のどこかに置く、候補から一つ選ぶ、部屋の構造そのものを変えるランダム化はマイルストーン2で入ります。
 - **基準(ベースライン)環境が入っています。** サンプルの部屋、検証済みのPPO学習設定、学習済みポリシー(`mpg demo`)、同じシードでのランダムポリシーとの比較(`mpg eval --policy random`)、わざと壊した設定集([`examples/broken/`](../examples/broken/))があり、新しい部屋や新しいアルゴリズムを比べる出発点になります。
-- **体を取り替えられます。** パズル側のコードは体を知らず、体のアダプターが移動の指示を受けて体を動かします。体のアダプターを新しく作ってつなげば、別のロボットも同じ部屋で学習できます(方法は[使い方ガイド](guide.ja.md#体のアダプター))。いま入っている体は二つです。体によってできることが違うので、部品は必要な能力を宣言し、`mpg check`がそれを持たない体を**理由を述べて拒否します** — どの部品がどの体で動くかは[体と部品](bodies.ja.md)に表があります。
+- **体を取り替えられます。** パズル側のコードは体を知らず、体のアダプターが移動の指示を受けて体を動かします。体のアダプターを新しく作ってつなげば、別のロボットも同じ部屋で学習できます(方法は[使い方ガイド](guide.ja.md#体のアダプター))。いま入っている体は四つです — 二足、四足、ヒューマノイド、そして**まったく歩かない固定ベースのアーム**。体によってできることが違うので、部品は必要な能力を宣言し、`mpg check`がそれを持たない体を**理由を述べて拒否します** — どの部品がどの体で動くかは[体と部品](bodies.ja.md)に表があります。
 
 ## インストール
 
@@ -117,6 +117,8 @@ uv run mpg check my_room.yaml
 - ロボットモデルとメッシュ: © Pollen Robotics、[microduck_rl](https://github.com/pollen-robotics/microduck_rl)の固定コミット`0daab160`。MJCFはApache-2.0、3Dメッシュ(`*.stl`)は[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)(非営利、継承)です。メッシュはこのリポジトリに含まれておらず、`mpg fetch-assets`が元のまま取得します。MJCFはメモリ上でのみ書き換えます。
 - 歩行ポリシー: [pollen-robotics/microduck-policies](https://huggingface.co/pollen-robotics/microduck-policies)の`velstand.onnx`、Apache-2.0。
 - 二つめの体のモデル: [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)の固定コミット`370c4396`の`unitree_go2/`、BSD-3-Clause。モデルもメッシュも同じです。
+- 固定ベースのアームのモデル: [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)の固定コミット`370c4396`の`robotstudio_so101/`、Apache-2.0。使えるライセンスの事前学習ポリシーが無いため、制御は逆運動学です。
+- ヒューマノイドのモデル: 同じコミットの`unitree_g1/`、BSD-3-Clause。歩行ポリシーは[unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym)の固定コミットの`deploy/pre_train/g1/motion.pt`、BSD-3-Clause — **このポリシーも公式に凍結された配布ではなく**、そのリポジトリが配布例と一緒に置いているチェックポイントです。
 - 二つめの体の歩行ポリシー: [diasAiMaster/unitree-go2-velocity-flat](https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat)の固定リビジョン`9a723b7a`、BSD-3-Clause。**このポリシーはUnitreeの公式な配布ではなく、コミュニティが上げたチェックポイントです。** 平地で学習しており(`gait_phase`なし、action scale 0.5)、学習コードは上流を変更していません。詳しい事実は[体と部品](bodies.ja.md)にあります。
 - デモ動画と画像にはCC BY-NC-SA 4.0のメッシュが写っています。
 - これは非公式のプロジェクトで、Pollen Roboticsとは関係ありません。

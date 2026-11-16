@@ -43,6 +43,7 @@ PRESET_TASKS.update({f"puzzles/wide/{n}": ROOT / f"examples/task_wide_{n}.yaml"
                      for n in ("switch_door", "pit_detour")})
 #: M4 R61: the tabletop room is for a body with no legs; its task is what says so.
 PRESET_TASKS["puzzles/tabletop/reach_target"] = ROOT / "examples/task_reach_target.yaml"
+PRESET_TASKS["puzzles/tabletop/pick_and_place"] = ROOT / "examples/task_pick_and_place.yaml"
 #: R34 circuit presets whose `demo:` pecks a cover or carries a fuse (`head`, `grab`).
 PRESET_TASKS.update({f"puzzles/circuit/{n}": ROOT / f"examples/task_{n}.yaml"
                      for n in ("peck_cable", "wrong_wire", "fuse_repair", "jam_the_turret",

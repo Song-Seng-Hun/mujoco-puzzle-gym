@@ -280,6 +280,15 @@ class So101Adapter(BodyAdapter):
         mujoco.mj_forward(model, data)
         self._aim = self._clamp(np.array(data.site_xpos[self._site], dtype=float))
 
+    def grab_site(self) -> str:
+        """The jaw's own site: what the weld grab (R18) attaches an object to.
+
+        The same site `state` reports as the body's position, because for this body the
+        end effector *is* the body. A walking body's grab site is its beak tip, out in
+        front of a trunk that the puzzle tracks separately.
+        """
+        return PREFIX + SITE
+
     def root_body_id(self, model: mujoco.MjModel) -> int:
         """The arm's base body.
 

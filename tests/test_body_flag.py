@@ -60,16 +60,16 @@ def test_no_flag_leaves_the_task_alone():
 
 def test_unknown_body_in_a_task_names_the_usable_bodies():
     with pytest.raises(TaskError) as exc:
-        load_task({"room": ROOM, "body": "g1"})
-    assert "g1" in str(exc.value) and all(b in str(exc.value) for b in BODIES)
+        load_task({"room": ROOM, "body": "spot"})
+    assert "spot" in str(exc.value) and all(b in str(exc.value) for b in BODIES)
 
 
 # --- the command line -----------------------------------------------------------------
 
 def test_unknown_body_exits_nonzero_with_the_usable_names():
-    out = run("check", ROOM, "--body", "g1")
+    out = run("check", ROOM, "--body", "spot")
     assert out.returncode != 0
-    assert "g1" in out.stderr and all(b in out.stderr for b in BODIES)
+    assert "spot" in out.stderr and all(b in out.stderr for b in BODIES)
 
 
 @pytest.mark.parametrize("body", list(BODIES))
@@ -107,17 +107,31 @@ def test_check_answers_for_that_body(body, asset_dir, go2_asset_dir, so101_asset
         assert "walk" in result["body"]["reason"]
 
 
-def test_capability_sets_are_each_bodys_own(asset_dir, go2_asset_dir, so101_asset_dir):
-    """The gate is not decoration: no two bodies report the same capabilities, and only
-    the ones with legs declare `walk`."""
-    caps = {}
+def test_the_gate_tells_the_bodies_apart(asset_dir, go2_asset_dir, so101_asset_dir,
+                                          g1_asset_dir):
+    """The gate is not decoration, and the claim is exactly as strong as the facts.
+
+    Two walking bodies may declare the *same* capability names - the quadruped and the
+    humanoid both declare `walk` and nothing else - and differ only in their numbers. So
+    what is asserted is that the names are not all alike, that only bodies with legs
+    declare `walk`, and that bodies sharing a name set still differ in the limits parts
+    compare against. An earlier version of this test asserted every body's names were
+    unique, which was simply untrue once a second walker arrived.
+    """
+    caps, limits = {}, {}
     for body in BODIES:
         out = run("check", "--json", "--body", body, ROOM, "--static")
         caps[body] = frozenset(json.loads(out.stdout)["body"]["capabilities"])
-    assert len(set(caps.values())) == len(BODIES), caps
+        adapter = make_body(body)
+        limits[body] = (adapter.footprint_radius,
+                        adapter.capabilities.limit("walk_speed"))
+    assert len(set(caps.values())) > 1, caps
     walkers = {b for b, c in caps.items() if "walk" in c}
     assert walkers == {b for b in BODIES if "walk" in make_body(b).capabilities.names}
     assert walkers and walkers != set(BODIES)
+    for a, b in ((x, y) for x in BODIES for y in BODIES if x < y):
+        if caps[a] == caps[b]:
+            assert limits[a] != limits[b], (a, b, limits[a])
 
 
 # --- a finished run: checked, not applied ---------------------------------------------

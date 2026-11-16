@@ -63,20 +63,32 @@ def _http_get(url: str) -> bytes:
 
 
 def _download(lock: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, bytes]:
-    """Return {path: bytes} for the given lock entries."""
+    """Return {path: bytes} for the given lock entries.
+
+    A source is read per file when it declares a `url_template`, and out of one repository
+    archive when it declares only an `archive_url`. Which it is comes from the source, not
+    from its name: the routing used to be written per name (`github`, then `huggingface`,
+    anything else an error), so a lock could hold exactly one of each - and a body whose
+    model and policy come from two different GitHub repositories had nowhere to put the
+    second one. The per-file path is also what keeps a small robot out of a large
+    collection: one body takes 19 files out of a model repository of about 657 MB, and the
+    archive path reads the whole thing into memory.
+    """
     out: dict[str, bytes] = {}
-    gh = [e for e in entries if e["source"] == "github"]
-    src = lock["sources"]["github"] if gh else None
-    if gh and "url_template" in src:
-        # Per-file raw fetch. The tarball path below reads the whole repo archive into
-        # memory, which is fine for a small robot repo but not for a large one: one of the
-        # bodies takes 19 files out of a model collection of about 657 MB.
-        for e in gh:
+    archives: dict[str, dict[str, str]] = {}
+    for e in entries:
+        kind = e["source"]
+        src = lock["sources"].get(kind)
+        if src is None:
+            raise AssetError(f"unknown source {kind!r} for {e['path']}")
+        if "url_template" in src:
             out[e["path"]] = _http_get(src["url_template"].format(remote=e["remote"]))
-        gh = []                                   # nothing left for the archive path
-    if gh:
-        archive = _http_get(src["archive_url"])
-        wanted = {e["remote"]: e["path"] for e in gh}
+        elif "archive_url" in src:
+            archives.setdefault(kind, {})[e["remote"]] = e["path"]
+        else:
+            raise AssetError(f"source {kind!r} declares neither url_template nor archive_url")
+    for kind, wanted in archives.items():
+        archive = _http_get(lock["sources"][kind]["archive_url"])
         with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
             for member in tar:
                 if not member.isfile():
@@ -87,13 +99,7 @@ def _download(lock: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, 
                     out[wanted[rel]] = tar.extractfile(member).read()
         missing = sorted(set(wanted.values()) - set(out))
         if missing:
-            raise AssetError(f"not in GitHub archive: {missing}")
-    for e in entries:
-        if e["source"] == "huggingface":
-            tmpl = lock["sources"]["huggingface"]["url_template"]
-            out[e["path"]] = _http_get(tmpl.format(remote=e["remote"]))
-        elif e["source"] != "github":
-            raise AssetError(f"unknown source {e['source']!r} for {e['path']}")
+            raise AssetError(f"not in the {kind} archive: {missing}")
     return out
 
 
@@ -132,20 +138,23 @@ def fetch(lock_path: Path | None = None, root: Path | None = None) -> dict[str, 
         if bad:
             raise AssetError(f"downloaded file SHA256 mismatch, saved as .bad: {bad}")
 
-    # Only the sources this lock declares. It used to read both github and huggingface
-    # unconditionally, which is the shape of a body that pins a model and a policy; a body
-    # whose control needs no policy pins a model alone and used to fail here with a
-    # KeyError after every file had already been verified.
-    tree = {"github": lambda s: f"https://github.com/{s['repo']}/tree/{s['commit']}",
-            "huggingface": lambda s: f"https://huggingface.co/{s['repo']}/tree/{s['revision']}"}
+    # Only the sources this lock declares, and each one's own kind of revision. It used
+    # to read both github and huggingface unconditionally, which is the shape of a body
+    # that pins a model and a policy from one repository each; a body whose control needs
+    # no policy pins a model alone and used to fail here with a KeyError after every file
+    # had already been verified.
+    def tree_url(src: dict[str, Any]) -> str:
+        repo, ref = src.get("repo", "?"), src.get("commit") or src.get("revision") or ""
+        host = "https://huggingface.co" if "revision" in src else "https://github.com"
+        return f"{host}/{repo}/tree/{ref}"
+
     return {
         "verified": True,
         "downloaded": len(missing),
         "files": len(entries),
         "bytes": sum(e["size"] for e in entries),
         "cache_dir": str(base),
-        "source": {kind: tree[kind](src) for kind, src in lock["sources"].items()
-                   if kind in tree},
+        "source": {kind: tree_url(src) for kind, src in lock["sources"].items()},
         "license": lock["license"],
     }
 

@@ -610,6 +610,7 @@ A `dispenser` is a cabinet that hands out one item each time its signal turns on
 | Preset | What it is | Numbers |
 |---|---|---|
 | `puzzles/tabletop/reach_target` | A 1.0 x 0.8 m table. Put the end effector on the target | Task `examples/task_reach_target.yaml` (10 s, `fall` termination off). 20/20 (0.6 s) |
+| `puzzles/tabletop/pick_and_place` | The same table. Pick the block (3 cm, 20 g) up and put it in the box, and the box opens the way to the target | Task `examples/task_pick_and_place.yaml` (`grab`, 20 s). 20/20 (2.9 s). Before the shared approach knew this body is holonomic it was **0/20** |
 
 What this room proves is not a puzzle but the **boundary**: the grid planner, the steering, the scripted solution and the capability gate drive a body with no legs without a line of them changing. The dimensions come from the measured envelope - 0.48 m of reach over a 220-degree sector, so the **whole room has to sit inside that sector**, and the fold near the base, where tracking error grows from 1 cm to 5 cm, is kept clear of the target. There is no randomization: the body is bolted to the table, so a spawn draw would change nothing, and the adapter says so as a warning.
 
@@ -1696,6 +1697,7 @@ Role `switch`, update stage `input`.
 - `puzzles/roller/roll_delivery`
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
+- `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tow/chain_dropoff`
 - `puzzles/tow/cleat_hold`
