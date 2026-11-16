@@ -1,0 +1,36 @@
+# Wide pit detour (R47): a pit sits on the straight line to the button, so the button
+# that opens the goal door has to be reached around it. Two stages, both about where the
+# body puts its feet.
+#
+# The pit's width is the measurement this room exists to use (docs/bodies.md section 6):
+# a 0.3 m pit - the preset default, and a hazard to a small body - does not catch a large
+# one. Over 5 seeds it swallowed the body once; the other four ended as ordinary falls on
+# the rim, a different failure with a different reward. At 0.6 m it caught the body 5/5,
+# so this room uses 0.6 m, the smallest width measured to behave like a pit.
+#
+# The pit spans 1.2 m across the room and not more. The planner inflates the hole by the
+# body's footprint radius plus a 0.02 m margin, and the walls by the same, so the detour
+# either side is what is left between the two collars: with the hole spanning |y| <= 0.6
+# and the wall collar reaching |y| = 1.54, each detour is 0.47 m of free corridor. A pit
+# 2.0 m across would leave 0.07 m, which is a wall to the planner.
+#
+# Door and goal numbers follow the room next to this one: a 1.4 m doorway (a 1.0 m gap
+# leaves no corridor at all after inflation) with an explicit `speed`, because a panel is
+# as wide as its doorway and an unhurried wide door eats the whole episode opening.
+name: wide_pit_detour
+size: [5.6, 4.0]
+wall: {thickness: 0.08, height: 0.5}
+walls:                            # divider at x = 1.4 with a 1.4 m opening at y = 0
+  - {from: [1.4, -2.0], to: [1.4, -0.7]}
+  - {from: [1.4, 0.7], to: [1.4, 2.0]}
+spawn: {pos: [-2.1, 0.0], yaw: 0.0, random: [0.2, 0.5, 3.14]}
+parts:
+  - {name: hole, preset: trap/pit, pos: [-0.6, 0.0], size: [0.6, 1.2]}
+  - {name: button, preset: input/floor_oneshot, pos: [0.4, 0.0], size: [0.6, 0.6],
+     random: [0.2, 0.3]}
+  - {name: door, preset: device/oneshot_door, pos: [1.4, 0.0], width: 1.4, speed: 1.0,
+     in: [button]}
+  - {name: goal, type: goal, pos: [2.2, 0.0], radius: 0.35, random: [0.1, 0.5]}
+demo:
+  - press button
+  - goto goal

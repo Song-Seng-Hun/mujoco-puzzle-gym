@@ -490,7 +490,13 @@ class ScriptedSolver:
         err = math.atan2(d[1], d[0]) - s.yaw
         err = (err + math.pi) % (2 * math.pi) - math.pi
         turn = float(np.clip(TURN_GAIN * err, -1.0, 1.0))
-        forward = 1.0 if abs(err) < FACING else 0.0
+        # Facing the aim point: full speed. Otherwise the body corrects its heading on
+        # the move, through an arc of its forward speed over its turn rate - unless the
+        # body says the error is too large for that, in which case it stands and turns.
+        # Only the body can answer: see `BodyAdapter.stand_to_turn_above` for why no rule
+        # written here separated the two bodies' needs.
+        stand = abs(err) >= env.body.stand_to_turn_above
+        forward = 1.0 if abs(err) < FACING else (-1.0 if stand else 0.0)
         if forward == 0.0:
             ahead = s.pos[:2] + PEEK * np.array([math.cos(s.yaw), math.sin(s.yaw)])
             if not np.isfinite(field[env.grid.cell(ahead)]):

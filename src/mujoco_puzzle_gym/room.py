@@ -977,12 +977,19 @@ def render_top(model: mujoco.MjModel, data: mujoco.MjData, room: Room, path: Pat
     return path
 
 
-def build(room_path: str | Path, out_dir: str | Path | None = None, png: bool = True) -> dict[str, Any]:
-    """`mpg build`: compile body + room, write the combined MJCF and a top-view PNG."""
-    from .bodies import make_body
+def build(room_path: str | Path, out_dir: str | Path | None = None, png: bool = True,
+          body: str | None = None) -> dict[str, Any]:
+    """`mpg build`: compile body + room, write the combined MJCF and a top-view PNG.
+
+    `body` picks which body is compiled into the scene (`--body`, R49). It used to be
+    the package default whatever the room was for, so the MJCF and the PNG of a room
+    written for the other body showed a body that room would never be played with.
+    """
+    from .bodies import make_body, resolve
 
     room = Room.load(room_path)
-    body = make_body()
+    body_name = resolve(body)
+    body = make_body(body_name)
     parts = room.make_parts()
     spec = room.build_spec(body, parts)
     model = spec.compile()
@@ -998,6 +1005,7 @@ def build(room_path: str | Path, out_dir: str | Path | None = None, png: bool = 
     xml_path.write_text(spec.to_xml())
     result: dict[str, Any] = {
         "room": room.name,
+        "body": body_name,
         "mjcf": str(xml_path.resolve()),
         "parts": [{"name": n, "type": p.type_name, "role": p.role} for n, p in parts.items()],
         "links": room.links,

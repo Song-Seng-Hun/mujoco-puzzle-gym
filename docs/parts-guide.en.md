@@ -603,6 +603,22 @@ A `dispenser` is a cabinet that hands out one item each time its signal turns on
   | 2 | 0.70 N | 1.04 N | 0.43–0.51 N | 20/20 | 0/20 |
 - Known limits: the knot ring height 0.16 m is a chosen value; Open question 8 (the R31 height) is still open. Relay (R34) hitches do not exist yet. A snapped rope stays unusable until reset. A spring kicking the body does not untie the rope. `drop_and_go`'s cart (0.12 m) is not wider than the door: the narrowest wall gap the solver walks through is about 0.40 m (0.40 m passes, 0.36 m does not; 3 seeds each), wider than the largest cube with its handles (0.33 m), so the zone and its door make the untie necessary instead. `overload`'s margin is narrow (empty cart M at most 0.19 N, rope 0.3 N, two cubes M at least 0.43 N); unloading only one cube snaps half the time (10/20). After the delivery the rope stays tied on the way to the goal and can snap at the door (not a failure: `on_snap` default `none`). If the beak loses a cube on the way, the `drop` step still ends as if placed (a solver limit). The `drag` step aims along a straight line: keep the way from the towed thing through the target straight.
 
+## Rooms for a large body
+
+`puzzles/wide/` holds rooms whose dimensions were set for a body with a large footprint (each one a whole room with its `demo:`, checked over 20 `mpg check` seeds). The rooms do not name a body: a room carries dimensions, and which body plays it is decided by `body:` in the task file next to it, `examples/task_wide_*.yaml` (or on the command line, `mpg check <preset> --body <name>`). Which part works with which body is in [bodies and parts](bodies.en.md).
+
+| Preset | What it is | Numbers |
+|---|---|---|
+| `puzzles/wide/switch_door` | A 5.0 x 4.0 m room. Press the floor button (0.6 m), the 1.4 m door opens, walk to the goal | Task `examples/task_wide_switch_door.yaml`. 20/20 (24.6 s) |
+| `puzzles/wide/pit_detour` | A 5.6 x 4.0 m room. Go around the pit (0.6 x 1.2 m) on the straight line, press the button, through the door to the goal | Task `examples/task_wide_pit_detour.yaml` (60 s). 19/20 (30.8 s; seed 11 fell on the pit rim at 7 s) |
+
+These are the measurements the dimensions came from, for a body with a 0.41 m footprint radius that walks at 1.0 m/s and turns at 0.5 rad/s.
+
+- **A 1.0 m doorway does not work.** The planner inflates every wall by the footprint radius plus a 0.02 m margin, so the free corridor through a gap is the gap less about 1.0 m: 0 free cells at a 1.0 m gap, 0.20 m of corridor at 1.2 m, 0.40 m at 1.4 m. A 0.5 m gap the body physically walks through is a wall to the planner, which is why `mpg check` calls such a room unsolvable - correctly, because nothing could plan that route.
+- **Give a wide door a `speed`.** A panel is as wide as its doorway, and without `speed` its servo pushes it: a 1.4 m door spent most of a 40 s episode opening. Meanwhile the solver reads the doorway as blocked and stands still, and a body that drifts when told to stand still (0.027 m/s measured) wanders into the inflated wall collar and is stuck for good. With `speed: 1.0` it opens in 1.4 s.
+- **Keep targets out of the wall collar (0.46 m)**, random offsets included. A goal drawn inside the collar is unreachable and the solver scores 0/20.
+- **A target smaller than the turning radius cannot be caught.** The minimum turning radius is forward speed over turn rate, 2.0 m for this body at full speed. That is why it circled a 0.6 m floor button for a whole 40 s episode, passing within 0.07 m of it twice a lap (5/20). The solver corrects its heading on the move, through the middle of the command range, which for this body is a 1.0 m arc. So **the body declares `stand_to_turn_above`**, the heading error above which it should stand and turn instead; this one declares 0 and reaches 20/20. The default is never, so the other body's numbers are unchanged - four attempts to write the rule into the shared steering each broke the other side (a timed roller room loses seconds to standing, and a rope or a lure is lost by it).
+
 ## Python plugins
 
 A new part inherits `Part` and is registered with `register_part`. Write its values in `fields` as `Field`s, and range checks and the `mpg parts` table come with them. A gate function is registered with `register_logic` and called from a room as `logic: <name>`.
@@ -1678,4 +1694,6 @@ Role `switch`, update stage `input`.
 - `puzzles/tow/pit_bridge`
 - `puzzles/tow/sled_delivery`
 - `puzzles/tow/tethered_start`
+- `puzzles/wide/pit_detour`
+- `puzzles/wide/switch_door`
 <!-- mpg parts --markdown: end -->

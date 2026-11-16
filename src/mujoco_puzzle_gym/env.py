@@ -75,7 +75,7 @@ import numpy as np
 
 from . import curriculum, randomize as randomize_mod, snapshot
 from .grab import BEAK_PART
-from .bodies import DEFAULT_BODY, BodyState, make_body
+from .bodies import BodyState, make_body, resolve
 from .layout import Grid
 from .circuit import demo_breaks
 from .logic import free_mask, solution_order
@@ -100,11 +100,11 @@ class PuzzleEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 10}
 
     def __init__(self, task: str | Path | dict | None = None, room: str | Path | None = None,
-                 render_mode: str | None = None):
-        self.task = load_task(task, room=room)
+                 render_mode: str | None = None, body: str | None = None):
+        self.task = load_task(task, room=room, body=body)
         self.room = Room.load(self.task["room"])
-        body_name = self.task.get("body") or "default"
-        self.body = make_body(DEFAULT_BODY if body_name == "default" else body_name)
+        self.body_name = resolve(self.task.get("body"))
+        self.body = make_body(self.body_name)
         self.parts = self.room.make_parts()
         self.signals = self.parts.bus
         # The spec stays local: it holds the robot's raw mesh data (215k vertices, about

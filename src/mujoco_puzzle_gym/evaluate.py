@@ -90,8 +90,37 @@ def run_episode(env, policy, seed: int, deterministic: bool = True, frames: list
 Job = tuple[int, "dict | None"]      # (env seed, reset options)
 
 
+def run_body(run: dict[str, Any]) -> str:
+    """The body a finished run was trained with, as its resolved task records it."""
+    from .bodies import resolve
+
+    return resolve(run["task"].get("body"))
+
+
+def require_run_body(run: dict[str, Any], body: str | None) -> str:
+    """Refuse a `--body` that is not the one this run was trained with (R49).
+
+    On a run folder `--body` checks rather than overrides. A policy is trained against
+    one body's dynamics, command mapping and action space; running it on another body is
+    not a comparison, it is a silently wrong number - and where the action spaces differ
+    it would not even fail loudly. The body a run may be replayed with is already fixed,
+    so the only honest thing `--body` can do here is agree or stop.
+    """
+    got = run_body(run)
+    if body is not None:
+        from .bodies import resolve
+
+        want = resolve(body)
+        if want != got:
+            raise ValueError(f"this run was trained with the {got!r} body, so it cannot be "
+                             f"replayed as {want!r}; drop --body, or train a {want!r} run "
+                             f"(`mpg train <task> --body {want}`)")
+    return got
+
+
 def _worker(run_dir: str | None, jobs: list[Job], policy: str, deterministic: bool,
-            onnx: str | None = None, task: str | None = None) -> list[dict]:
+            onnx: str | None = None, task: str | None = None,
+            body: str | None = None) -> list[dict]:
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     from .env import PuzzleEnv
 
@@ -99,7 +128,7 @@ def _worker(run_dir: str | None, jobs: list[Job], policy: str, deterministic: bo
         from .onnx_policy import OnnxPolicy
 
         pol = OnnxPolicy(onnx)
-        env = PuzzleEnv(task=task)
+        env = PuzzleEnv(task=task, body=body)
     else:
         run = load_run(run_dir)
         pol = make_policy(run, policy)
@@ -112,20 +141,22 @@ def _worker(run_dir: str | None, jobs: list[Job], policy: str, deterministic: bo
 
 def run_jobs(run_dir: str | Path | None, jobs: list[Job], policy: str = "trained",
              deterministic: bool = True, workers: int = DEFAULT_WORKERS,
-             onnx: str | Path | None = None, task: str | Path | None = None) -> list[dict]:
+             onnx: str | Path | None = None, task: str | Path | None = None,
+             body: str | None = None) -> list[dict]:
     """Episodes for (seed, reset options) jobs, in job order, over worker processes.
-    With `onnx` (and `task`), the policy is that ONNX file instead of the run's checkpoint."""
+    With `onnx` (and `task`), the policy is that ONNX file instead of the run's checkpoint;
+    `body` is the `--body` override the workers build their env with (R49)."""
     jobs = list(jobs)
     workers = max(1, min(workers, len(jobs)))
     rd = str(run_dir) if run_dir is not None else None
     onnx, task = (str(onnx) if onnx else None), (str(task) if task else None)
     if workers == 1:
-        return _worker(rd, jobs, policy, deterministic, onnx, task)
+        return _worker(rd, jobs, policy, deterministic, onnx, task, body)
     idx = [list(range(i, len(jobs), workers)) for i in range(workers)]
     with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as pool:
         parts = list(pool.map(_worker, [rd] * workers, [[jobs[j] for j in ix] for ix in idx],
                               [policy] * workers, [deterministic] * workers,
-                              [onnx] * workers, [task] * workers))
+                              [onnx] * workers, [task] * workers, [body] * workers))
     out: list[dict] = [{}] * len(jobs)
     for ix, part in zip(idx, parts):
         for j, ep in zip(ix, part):
@@ -142,8 +173,10 @@ def run_episodes(run_dir: str | Path, seeds: list[int], policy: str = "trained",
 def evaluate(run_dir: str | Path, episodes: int = 100, policy: str = "trained",
              deterministic: bool = True, workers: int = DEFAULT_WORKERS,
              full: bool = False, segments: bool = False,
-             difficulty: int | None = None, randomize: str = "train") -> dict[str, Any]:
+             difficulty: int | None = None, randomize: str = "train",
+             body: str | None = None) -> dict[str, Any]:
     run = load_run(run_dir)
+    body_name = require_run_body(run, body)
     seeds = list(range(EVAL_SEED_BASE, EVAL_SEED_BASE + episodes))
     segs = _segments(run) if segments else []
     _check_mode(run["task"], randomize)
@@ -156,7 +189,7 @@ def evaluate(run_dir: str | Path, episodes: int = 100, policy: str = "trained",
     eps = done[:episodes]
     hz = float(run["task"]["env"]["hz"])
     stats = window_stats(eps, hz)
-    out = {"run_id": run["summary"]["run_id"], "policy": policy,
+    out = {"run_id": run["summary"]["run_id"], "policy": policy, "body": body_name,
            **_report(eps, seeds, hz, deterministic, randomize)}
     if eps and "difficulty" in eps[0]:
         out["difficulty"] = eps[0]["difficulty"]
@@ -201,30 +234,37 @@ def _report(eps: list[dict], seeds: list[int], hz: float, deterministic: bool,
 
 
 def evaluate_onnx(onnx: str | Path, task: str | Path, episodes: int = 100,
-                  workers: int = DEFAULT_WORKERS, randomize: str = "train") -> dict[str, Any]:
-    """`mpg eval --onnx policy.onnx --task task.yaml`: held-out layouts, no pickle (R5)."""
+                  workers: int = DEFAULT_WORKERS, randomize: str = "train",
+                  body: str | None = None) -> dict[str, Any]:
+    """`mpg eval --onnx policy.onnx --task task.yaml`: held-out layouts, no pickle (R5).
+
+    `body` overrides the task's body (R49). An exported policy carries no body name of
+    its own, so nothing here can check the pairing: `fit_report` compares the observation
+    and action shapes, which is what would break loudly.
+    """
     from .env import PuzzleEnv
     from .onnx_policy import OnnxPolicy, fit_report
 
     pol = OnnxPolicy(onnx)
-    env = PuzzleEnv(task=task)
+    env = PuzzleEnv(task=task, body=body)
     try:
         warnings = fit_report(pol.meta, env)
         hz = float(env.hz)
+        body_name = env.body_name
     finally:
         env.close()
-    _check_mode(task, randomize)
+    _check_mode(task, randomize, body)
     seeds = list(range(EVAL_SEED_BASE, EVAL_SEED_BASE + episodes))
     eps = run_jobs(None, [(s, {"randomize": randomize}) for s in seeds], workers=workers,
-                   onnx=onnx, task=task)
+                   onnx=onnx, task=task, body=body)
     out = {"onnx": str(onnx), "policy_room": pol.meta["room"], "algo": pol.meta["algo"],
-           **_report(eps, seeds, hz, True, randomize)}
+           "body": body_name, **_report(eps, seeds, hz, True, randomize)}
     if warnings:
         out["warnings"] = warnings
     return out
 
 
-def _check_mode(task: Any, randomize: str) -> None:
+def _check_mode(task: Any, randomize: str, body: str | None = None) -> None:
     """Refuse a draw mode the room cannot run before the workers start (R35): `wide`
     needs at least one evaluation-only value, and a mode name must be known."""
     from .randomize import MODES
@@ -235,7 +275,7 @@ def _check_mode(task: Any, randomize: str) -> None:
         return
     from .env import PuzzleEnv
 
-    env = PuzzleEnv(task=task)
+    env = PuzzleEnv(task=task, body=body)
     try:
         if not env.randomizer.wide_ok():
             raise ValueError(
@@ -291,19 +331,19 @@ def record(run: dict[str, Any], policy, seed: int, path: Path, deterministic: bo
 
 
 def render_solution(room: str | Path, out: str | Path | None = None, seed: int = 0,
-                    task: str | Path | None = None) -> dict[str, Any]:
+                    task: str | Path | None = None, body: str | None = None) -> dict[str, Any]:
     """R24: MP4 of a room's scripted solution, the one `mpg check` runs.
 
     No policy and no run folder: the solver reads the plan, so this works on a room you
     have just written. `task` picks a task file when the room's `demo:` needs actions
-    beyond `move`, or a longer episode.
+    beyond `move`, or a longer episode; `body` picks which body solves it (R49).
     """
     from .env import PuzzleEnv
     from .solver import ScriptedSolver
 
     room = Path(room)
     path = Path(out) if out else Path(f"{room.stem}.mp4")
-    env = PuzzleEnv(task=task, room=room, render_mode="rgb_array")
+    env = PuzzleEnv(task=task, room=room, render_mode="rgb_array", body=body)
     try:
         solver = ScriptedSolver(env)
         env.reset(seed=seed)
@@ -317,19 +357,22 @@ def render_solution(room: str | Path, out: str | Path | None = None, seed: int =
                 break
         write_video(frames, path, fps=env.hz)
         seconds = round(env.steps / env.hz, 2)
+        body_name = env.body_name
     finally:
         env.close()
-    return {"ok": bool(info["success"]), "room": room.stem, "mp4": str(path.resolve()),
+    return {"ok": bool(info["success"]), "room": room.stem, "body": body_name,
+            "mp4": str(path.resolve()),
             "bytes": path.stat().st_size, "seed": seed, "success": bool(info["success"]),
             "fallen": bool(info["fallen"]), "seconds": seconds, "frames": len(frames)}
 
 
 def render(run_dir: str | Path, out: str | Path | None = None, seed: int | None = None,
-           tries: int = 20) -> dict[str, Any]:
+           tries: int = 20, body: str | None = None) -> dict[str, Any]:
     """MP4 of a success episode (first success among eval seeds), or of `seed`."""
     from .env import PuzzleEnv
 
     run = load_run(run_dir)
+    body_name = require_run_body(run, body)
     policy = make_policy(run)
     path = Path(out) if out else Path(run_dir) / "success.mp4"
     if seed is None:
@@ -346,6 +389,6 @@ def render(run_dir: str | Path, out: str | Path | None = None, seed: int | None 
                                           f"(seeds {EVAL_SEED_BASE}..{EVAL_SEED_BASE + tries - 1}); "
                                           "run `mpg diagnose` or pass --seed to render one anyway"}
     ep, path = record(run, policy, seed, path)
-    return {"run_id": run["summary"]["run_id"], "mp4": str(path.resolve()),
+    return {"run_id": run["summary"]["run_id"], "body": body_name, "mp4": str(path.resolve()),
             "bytes": path.stat().st_size, "seed": seed, "success": ep["success"],
             "seconds": ep["seconds"], "frames": ep["length"] + 1}

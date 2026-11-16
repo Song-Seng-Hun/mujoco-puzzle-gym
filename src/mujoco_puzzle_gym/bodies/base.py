@@ -8,6 +8,7 @@ policy files (enforced by tests/test_boundary.py).
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -96,6 +97,22 @@ class BodyAdapter(ABC):
     #: Trunk height [m] above the floor below which the body counts as fallen (R10 uses
     #: it for holes: over a hole the env passes `floor_z = rim - fall_height`).
     fall_height: float = 0.07
+    #: Heading error [rad] above which this body should stop and turn on the spot instead
+    #: of correcting its heading on the move (read by the scripted solver's steering, R47).
+    #: Infinity, the default, means never: correct while moving, whatever the error.
+    #:
+    #: It belongs to the body because the shared steering cannot know the answer. A body
+    #: turns through an arc whose radius is its forward speed over its turn rate, and the
+    #: two bodies here differ by three times at the middle of their command range and five
+    #: at the top. The one with the tight arc must keep moving: its rooms are timed, a
+    #: stand costs about a second per correction, and on wheels or with a load a stand
+    #: coasts to a halt, slackens a rope or loses a lure. The one with the wide arc cannot
+    #: acquire a small target at all without standing - measured, it circled a 0.6 m floor
+    #: button for a whole 40 s episode, passing within 0.07 m of it twice a lap. Neither
+    #: answer is right for both, and no geometric rule in the solver separated them: four
+    #: were tried (always stand, a heading-error threshold, target closer than the arc, and
+    #: the Dubins reachability condition) and each one broke the other body's rooms.
+    stand_to_turn_above: float = math.inf
 
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:

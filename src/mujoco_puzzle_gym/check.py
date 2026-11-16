@@ -411,34 +411,44 @@ def _summary(result: dict[str, Any]) -> None:
 
 def check(room: str | Path, task: str | Path | None = None, seeds: int = 20,
           need: int = 18, static_only: bool = False,
-          snap_dir: str | Path | None = SNAP_DIR, community: bool = False) -> dict[str, Any]:
+          snap_dir: str | Path | None = SNAP_DIR, community: bool = False,
+          body: str | None = None) -> dict[str, Any]:
     """All stages; `static_only` stops after the static phase (no simulation);
-    `community` adds the shared-room limits (community.py) and stops on a failure."""
+    `community` adds the shared-room limits (community.py) and stops on a failure.
+    `body` picks the body the room is checked with (`--body`, R49): every stage from the
+    capability gate to the scripted solver answers for that body and no other."""
+    from .bodies import resolve
+
     t0 = time.perf_counter()
+    body_name = resolve(body)
     skipped = {"ok": False, "successes": 0, "seeds": seeds, "need": need}
     if community:
         problems = community_mod.check_raw(room)
         if problems:
-            result = {"room": Path(room).stem, "community": community_mod.stage(problems),
-                      "error": problems[0]}
+            result = {"room": Path(room).stem, "body_name": body_name,
+                      "community": community_mod.stage(problems), "error": problems[0]}
             if not static_only:
                 result["solver"] = {**skipped, "skipped": "static stage community failed"}
             _summary(result)
             result["wall_seconds"] = round(time.perf_counter() - t0, 1)
             return result
     try:
-        env = PuzzleEnv(task=task, room=room)
+        env = PuzzleEnv(task=task, room=room, body=body)
     except RoomError as exc:
         if exc.stage not in LOAD_STAGES:
             raise
-        result = {"room": Path(room).stem, exc.stage: {"ok": False, "reason": str(exc)},
-                  "error": str(exc)}
+        result = {"room": Path(room).stem, "body_name": body_name,
+                  exc.stage: {"ok": False, "reason": str(exc)}, "error": str(exc)}
         if not static_only:
             result["solver"] = {**skipped, "skipped": f"static stage {exc.stage} failed"}
         _summary(result)
         result["wall_seconds"] = round(time.perf_counter() - t0, 1)
         return result
-    result: dict[str, Any] = {"room": env.room.name, "episode_seconds": env.max_steps / env.hz}
+    # `body_name`, not `body`: the capability gate already owns the key `body` here, and a
+    # key that is a stage dict in one result and a string in another cannot be read by a
+    # tool. Every other command reports it as `body` (R49).
+    result: dict[str, Any] = {"room": env.room.name, "body_name": env.body_name,
+                              "episode_seconds": env.max_steps / env.hz}
     if community:
         result["community"] = community_mod.stage(community_mod.check_loaded(env.room))
     result.update(check_static(env))
