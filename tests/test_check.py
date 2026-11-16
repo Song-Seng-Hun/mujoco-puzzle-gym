@@ -43,6 +43,35 @@ def test_example_solver_few_seeds(example):
     assert res["ok"], res
 
 
+def test_seeds_that_differ_say_nothing(example):
+    """The quiet side of the guard below: this room's seeds really do differ, so the stage
+    must not claim its count is one outcome repeated."""
+    res = check_solver(example, seeds=3, need=1)
+    assert "distinct_outcomes" not in res and "note" not in res
+
+
+def test_seeds_that_all_came_out_the_same_say_so(so101_asset_dir, repo_root):
+    """`'successes': N, 'seeds': N` reads as N trials, and on this project it was read that
+    way and reported that way for a solution that works at one object position and fails a
+    few millimetres off it. The stage now says when its own episodes did not differ.
+
+    Measured per room rather than inferred from the room's `randomize:`, because a room that
+    declares none can still answer the seed - `examples/rooms/laundry.yaml` has no
+    `randomize:` and seed 1 of 5 fails where the others pass - and the room used here
+    declares none either way.
+    """
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+    try:
+        res = check_solver(env, seeds=2, need=2)
+        assert res["distinct_outcomes"] == 1
+        assert "one outcome repeated" in res["note"]
+        assert check_solver(env, seeds=1, need=1).get("note") is None, "one seed says nothing"
+    finally:
+        env.close()
+
+
 def test_unlinked_door_fails_order(asset_dir, repo_root):
     code, res = mpg_check(repo_root / UNLINKED, "--seeds", "2")
     assert code != 0 and res["ok"] is False

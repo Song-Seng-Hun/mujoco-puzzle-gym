@@ -7,7 +7,8 @@
 # **0/5**, where the same room with an ungated goal is 5/5.
 #
 # Read that 20/20 for what it is (measured the same day, after it had been reported as if it
-# were twenty trials): this room declares no `randomize:`, so twenty seeds are the same
+# were twenty trials): measured, five seeds of this room come out identical - same outcome,
+# same 27.9 s - so twenty seeds are the same
 # episode twenty times, and the number says the solution works at this one block position.
 # Moved, it often does not. Sweeping the block over 80x80 mm in 20 mm steps, 3 of 25
 # positions solve; the rest stall in the grab (towards +x) or in the place (towards -x).

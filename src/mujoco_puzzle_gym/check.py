@@ -402,6 +402,22 @@ def check_solver(env: PuzzleEnv, seeds: int = 20, need: int = 18,
         res["demo_unfinished"] = unfinished
         res["reason"] = "; ".join(f"{why} (in {n} of {seeds} episodes)"
                                   for why, n in sorted(unfinished.items()))
+    # Say when the seeds did not actually differ. Measured on this project: a room that
+    # draws nothing can still answer the seed - `examples/rooms/laundry.yaml` declares no
+    # `randomize:` and seed 1 of 5 fails where the others pass, twice over - while
+    # `puzzles/tabletop/pick_and_place` returns the identical outcome and the identical
+    # 27.9 s for every seed. So this is measured per room rather than inferred from the
+    # declaration: when every episode came out the same, `'successes': 20, 'seeds': 20` is
+    # one outcome repeated twenty times and not twenty trials, and it was read here as a
+    # trial count and reported as one ("20/20" for a solution that works at a single object
+    # position and fails a few millimetres away, `docs/bodies.md` section 9).
+    same = {(e["success"], e["seconds"]) for e in episodes}
+    if seeds > 1 and len(same) == 1:
+        res["distinct_outcomes"] = 1
+        res["note"] = (f"every one of these {seeds} seeds came out the same (success "
+                       f"{episodes[0]['success']}, {episodes[0]['seconds']} s), so the count "
+                       "is one outcome repeated, not a rate: vary the room with "
+                       "`randomize:` to measure how often it solves")
     snaps: dict = {}
     for e in sorted(episodes, key=lambda e: not e["success"]):      # successful first
         for flag, snap in e["snaps"].items():

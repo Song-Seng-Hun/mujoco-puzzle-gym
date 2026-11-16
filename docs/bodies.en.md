@@ -753,7 +753,8 @@ Two things follow.
    220 deg sector and the 0.001-0.480 m reach are facts about the tip. Picking a thing up and
    putting it down works at **a few points** inside that. That is why a spot the declaration
    calls reachable - azimuth 101 deg, radius 0.255 - is not one the arm can pick from.
-2. **The shipped room's 20/20 is not 20 trials.** That room declares no `randomize:`, so 20
+2. **The shipped room's 20/20 is not 20 trials.** Measured, five seeds of that room come out
+   identical - same outcome, same 27.9 s - so 20
    seeds are the same episode, and the number means "it works at that one point". `mpg check`'s
    `resample` stage already says "skipped: the room declares no `randomize:`", but the `solver`
    stage's `'seeds': 20` reads as 20 trials. That is a reporting problem, and it is how it came
