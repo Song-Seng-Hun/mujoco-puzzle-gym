@@ -546,3 +546,24 @@ and unwinnable with its demo cut to a single step. No new part was needed - `ena
 field every part has and success is "a `role: goal` part is satisfied", so joining the two
 was the whole change. The "goal whose satisfaction is a channel" part is **not built**: a
 part with no place to be used is decoration (R67).
+
+### A room that exists because of what this body is (R75, 2026-11-17)
+
+`puzzles/tabletop/weigh_it_down`: hold the plate down **with something**. A walking body
+stands on the plate and waits (`trigger: body`). This one has **no trunk to put anywhere** -
+its only mass is the gripper, and the gripper has to be somewhere else next - so it
+delegates: pick the block up, set it on the plate, and the block holds the plate while the
+body goes to the goal.
+
+Measured: **20/20 at a mean of 16.3 s**, and **0/5** with the demo cut to a single
+`goto goal` step, because `enable: plate` gates the goal on the plate. The numbers come
+from the envelope: block 0.29 m out, plate 0.33 m, goal 0.43 m, all inside the 0.48 m ring,
+and `min_mass` 0.01 kg is half the block's 0.02 kg, so the plate reads pressed while the
+block sits there and reads nothing once it is lifted off.
+
+`mpg check --all-bodies` calls this room exclusive to the arm, and the detail matters more
+than the word: the quadruped and the humanoid are refused **by name** (no `grab`), and the
+microduck - which has a beak and could in principle delegate the same way - fails this
+room's scripted solution. That last one is **not a designed exclusion**: on a 1.2 x 1.0 m
+table its own footprint and the planner's collar leave it little room. The honest reading
+is "two bodies cannot, one is not shown to".

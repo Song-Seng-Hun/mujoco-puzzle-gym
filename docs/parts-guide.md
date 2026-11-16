@@ -1693,6 +1693,7 @@ def majority(inputs, state, dt):
 - `puzzles/roller/timed_corridor`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
+- `puzzles/tabletop/weigh_it_down`
 - `puzzles/tow/chain_dropoff`
 - `puzzles/tow/cleat_hold`
 - `puzzles/tow/drop_and_go`

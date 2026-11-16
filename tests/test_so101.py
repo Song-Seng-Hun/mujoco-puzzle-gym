@@ -355,3 +355,38 @@ def test_winning_this_room_requires_the_block(so101_asset_dir, repo_root):
         env.close()
     assert full == 3, full
     assert cut == 0, f"the goal was reached without the block: {cut}/3"
+
+
+@pytest.mark.slow
+def test_it_delegates_its_weight_to_an_object(so101_asset_dir, repo_root, tmp_path):
+    """R75, the one room that exists because of what this body *is*.
+
+    A walking body presses a floor plate by standing on it and waits there. This one has no
+    trunk to put anywhere - its only mass is the gripper, and the gripper has to be
+    somewhere else next - so it sets a block on the plate and lets the block hold it down.
+    Measured: 20/20 at a mean of 16.3 s, and 0/5 with the demo cut to `goto goal`, which is
+    the assertion that the win needs the block.
+    """
+    import warnings
+
+    from mujoco_puzzle_gym import catalog
+    from mujoco_puzzle_gym.check import check
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.task import load_task
+    from mujoco_puzzle_gym.solver import run_episode
+
+    room = catalog.PRESET_ROOT / "puzzles/tabletop/weigh_it_down.yaml"
+    task = repo_root / "examples/task_weigh_it_down.yaml"
+    result = check(room, task=task, seeds=20, need=18, snap_dir=tmp_path)
+    assert result["ok"], result
+    assert result["solver"]["successes"] >= 18
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        env = PuzzleEnv(task=load_task(task))
+    try:
+        env.room.demo[:] = [("goto", "goal")]
+        cut = sum(bool(run_episode(env, s).get("success")) for s in range(3))
+    finally:
+        env.close()
+    assert cut == 0, f"the goal was reached without pressing the plate: {cut}/3"
