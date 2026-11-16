@@ -143,6 +143,18 @@ class BodyAdapter(ABC):
     #: were tried (always stand, a heading-error threshold, target closer than the arc, and
     #: the Dubins reachability condition) and each one broke the other body's rooms.
     stand_to_turn_above: float = math.inf
+    #: How far this body takes its grab point from something it has just put down [m].
+    #:
+    #: A walking body backs off a third of a metre, which is about its own length: it has
+    #: to get its trunk and its beak clear of what it placed before it turns. A body whose
+    #: grab point is its whole self needs only to clear the object - and cannot do more,
+    #: because its base never moves and 0.35 m from a placed object can be outside its
+    #: envelope entirely. Measured: with the walking number the arm's place step never
+    #: ended, the carrier circling in its "away" phase for the rest of the episode after
+    #: the block was already resting where it was asked for (0.033 m from the patch centre
+    #: against a 0.04 m tolerance). None keeps the shared default (`carry.AWAY`).
+    place_clearance: float | None = None
+
     #: The command that means "stay where you are", as an action (R78).
     #:
     #: `(-1, 0, 0)` for a walking body, because this repository's convention is that

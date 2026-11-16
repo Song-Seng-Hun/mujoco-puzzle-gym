@@ -330,7 +330,7 @@ class Carrier:
             return self._walk_off(part.xy, float(max(part.half)) + env.body.footprint_radius + CLEARANCE)
         if self._at is None:                # gone before it was ever seen here (consumed)
             return None
-        return self._walk_off(self._at, AWAY)
+        return self._walk_off(self._at, self.env.body.place_clearance or AWAY)
 
     def _walk_off(self, xy, dist) -> np.ndarray | None:
         """Turn away from `xy` and walk until `dist` m from it; None once there."""

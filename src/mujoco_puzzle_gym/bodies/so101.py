@@ -129,6 +129,9 @@ class So101Adapter(BodyAdapter):
     #: Standing still is the zero command here: the command maps symmetrically onto the
     #: gripper's velocity, so a walking body's `(-1, 0, 0)` would be full speed backwards.
     stand_action = (0.0, 0.0, 0.0)
+    #: Clearing a placed object means moving the jaw its own footprint plus the object's
+    #: size away, not a walking body's 0.35 m, which can be outside this body's envelope.
+    place_clearance = 0.10
     #: The gripper's planar speed [m/s] and wrist rate [rad/s]. Chosen so one control step
     #: moves the gripper at most 3 mm, which the damped least-squares solve tracks without
     #: the arm snapping; `tests/test_so101.py` measures the tracking error.

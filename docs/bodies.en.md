@@ -608,3 +608,25 @@ two blocks on one patch was written and run, and the solution stalls at `place b
 all five seeds end on demo step 1. So `stack` can read a tower that nothing has yet built,
 and that room is the next piece of work. A part no room uses edges toward the decoration R67
 forbids, so the fact is recorded here until the room is measured.
+
+**A fourth declaration attribute: how far to clear a placed object** (`place_clearance`,
+2026-11-17). The shared carrier backs off **0.35 m** from something it has just put down -
+about a walking body's own length, because it has to get its trunk and beak clear before it
+turns. A body whose grab point is its whole self needs only to clear the object, **and
+cannot do more**: its base never moves, and a point 0.35 m from a placed object can be
+outside its envelope.
+
+Measured: with the walking number the arm's `place` step **never ended**. The block was
+already resting where it had been asked for - 0.033 m from the patch centre against a
+0.04 m tolerance - while the carrier circled its "away" phase for the rest of the episode.
+With `place_clearance = 0.10` (its own footprint plus the object's size) the step ends, and
+the stacking room's solution moved from demo step 1 to **step 2**. The default `None` keeps
+the shared 0.35.
+
+`stand_to_turn_above` (M3), `holonomic` (M4), then `stand_action` and `place_clearance`
+(M5): the fourth and fifth of the same contract - **the body states its own nature** - with
+`free_yaw` never built because no part needed it.
+
+**The stacking room still does not work**: at the second `grab` the jaw does not close on
+the second block (demo step 2, the block never moves). The first block is placed on the
+patch. That is the next measurement.
