@@ -763,3 +763,18 @@ So the wedge room (R70) and the triage room (R74) are **not a matter of more geo
 that hands the object over at a new spot cannot be expected to work while the grab is a point
 rather than a region. Both move from "room unfinished" to **"held until the scripted grab works
 over a region"**.
+
+#### Found alongside: clearing `_pick_z` per sub-goal is a bug AND a **guard**
+
+`Carrier._pick_z` - the height an object was picked up at - is cleared in `reset()`, and the
+solver resets the carrier at every solution step boundary. So the `place` after a `grab`
+**always reads it as None**, and `_let_go`'s "set it down rather than drop it" has never run in
+a scripted room (printed None from k=52 on). It belongs to the hold, so it was made to survive,
+and the shipped pick-up room was unchanged at 20/20 and 27.9 s - but the slow suite then put
+`examples/rooms/laundry.yaml` below its bar (the test passes without that change and fails with
+it). The comment had claimed nothing would change for a walking body, whose beak already
+carries clear. That was wrong.
+
+So the clearing is a bug and at the same time a **guard that protects the walking bodies**.
+Fixing it properly means handling their path too, so only the measurement was kept and the
+change was not shipped.
