@@ -448,3 +448,33 @@ whose beak is a `grab`. The large-body rooms are solved by the small body as wel
 every cell of a grabbing room looks like a failure; that case now reads `actions` rather
 than `solver`, because what a body cannot do and what a task did not grant are different
 facts.
+
+### Correction: this body does not pick anything up yet (measured 2026-11-17)
+
+M4 wrote "the arm picks things up - `tabletop/pick_and_place` 20/20, mean 2.9 s". **That is
+wrong.** In the room as shipped, with that room's own task, at the moment the episode ends:
+
+- success comes at 2.8 s (28 steps), `box.ok` is **never on at any point**, and the block has
+  **not moved at all** from its start at (-0.05, -0.12), which is (-0.05, -0.26) m from the
+  box centre.
+- Traced: during the grab step the gripper moves **away** from the block. The block is at
+  y = -0.12 and the gripper's y goes 0.001 -> 0.154, the wrong sign. After 11 steps the
+  approach phase flips to "arrived", the command reverses, and it oscillates. The grab never
+  happens, the demo steps advance on a stuck counter, and the goal 0.1 m away is reached by
+  accident.
+
+So M4's 20/20 measured **reaching the goal**, not grabbing and not carrying. My own commit
+message earlier today ("grabbing and carrying are measured") is wrong for the same reason:
+it rested on "the scripted solver cannot skip a demo step", and the stuck counter breaks
+that premise.
+
+The suspect is **direction**. This body's command is in the gripper's frame (`vx` along the
+way the jaw faces), so an approach that uses a world-frame direction goes somewhere else on
+a body whose heading is a function of its azimuth - the same class of error M4 recorded
+fixing in `solver._steer` and `carry.steer` may remain on the `_close_in` path. Not written
+down as the cause, because it is not confirmed.
+
+Order of repair (R78): (1) make the approach go toward the object - until then every
+grasping number for this body is void; (2) the win condition (`box.ok` has to be the win);
+(3) only then new rooms. And making `mpg check` report "a demo step advanced on its stuck
+counter" as a **failure** is the guard against this shape of false success.

@@ -21,6 +21,14 @@
 # from the base) is scenery and the goal in front of it is reachable from the start. With
 # the demo cut down to a single `goto goal` step the room still succeeded 5/5.
 #
+# **This room does not do what its name says (measured 2026-11-17).** Nothing is grabbed in
+# it. With this room's own task, success comes at 2.8 s, `box.ok` is never on, and the block
+# has not moved from its start: during the grab step the gripper goes the *wrong way* - the
+# block is at y = -0.12 and the gripper's y runs 0.001 -> 0.154 - then the approach flips to
+# "arrived" and oscillates. The demo steps advance on the solver's stuck counter and the
+# goal 0.1 m away is reached by accident. So M4's "20/20 at 2.9 s" measured reaching the
+# goal, and this body's grasping numbers are void until the approach is fixed (R78).
+#
 # **And the block never reaches the box**: measured, `box.ok` is 0 at the end of every
 # episode and the block sits (-0.05, -0.26) m from the box centre - where it started. The
 # demo's `place` step finishes on its own criterion (the gripper is over the box and the jaw
