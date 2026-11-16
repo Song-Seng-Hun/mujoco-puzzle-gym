@@ -154,6 +154,19 @@ class BodyAdapter(ABC):
     #: the block was already resting where it was asked for (0.033 m from the patch centre
     #: against a 0.04 m tolerance). None keeps the shared default (`carry.AWAY`).
     place_clearance: float | None = None
+    #: How far out from a handle or a wall plate this body stands to approach it [m].
+    #:
+    #: The same mistake as `place_clearance`, at the other end of the move: a walking body
+    #: goes to a point 0.3 m in front of what it is reaching for and then closes in, which
+    #: is about its own length. For a body whose grab point is its whole self, 0.3 m from
+    #: the handle is a third of its entire reach away and lands wherever that happens to be.
+    #: Measured on the arm: the approach point for a block at (-0.03, -0.12) came out at
+    #: (-0.03, +0.202), on the far side of the block and inside the room's receptacle box
+    #: (x +-0.12, y 0.02-0.26), where the jaw was trapped against the box and could neither
+    #: descend to grab height nor travel - a stall that read as an inverse-kinematics
+    #: failure until the tip was driven at the same handle directly and reached it in 30
+    #: control steps. None keeps the shared default (`carry.APPROACH`).
+    approach_clearance: float | None = None
 
     #: The command that means "stay where you are", as an action (R78).
     #:

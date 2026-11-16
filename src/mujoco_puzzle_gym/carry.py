@@ -224,7 +224,16 @@ class Carrier:
         self._pick_z = float(h[2])
         n = h[:2] - cube.pos(env.data)[:2]
         n = n / max(float(np.linalg.norm(n)), 1e-9)
-        return self._close_in(h[:2] + n * APPROACH, h)
+        return self._close_in(h[:2] + n * self._approach(), h)
+
+    def _approach(self) -> float:
+        """How far out from a handle this body stands before closing in [m].
+
+        `BodyAdapter.approach_clearance`, defaulting to the walking body's `APPROACH`: a
+        third of a metre is about a walking body's length and a third of this arm's entire
+        reach, which put its approach point inside another part and trapped the jaw there.
+        """
+        return float(getattr(self.env.body, "approach_clearance", None) or APPROACH)
 
     def _pick_handle(self, cube) -> int:
         env = self.env
@@ -238,7 +247,7 @@ class Carrier:
             n = p[:2] - centre
             if np.linalg.norm(n) < 1e-6:            # top handle: out of the body's reach
                 continue
-            a = p[:2] + n / np.linalg.norm(n) * APPROACH
+            a = p[:2] + n / np.linalg.norm(n) * self._approach()
             d = env.grid.lookup(field, a) if free[env.grid.cell(a)] else np.inf
             if d < best_d:
                 best, best_d = i, d

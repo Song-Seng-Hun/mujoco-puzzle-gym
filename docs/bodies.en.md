@@ -765,6 +765,43 @@ that hands the object over at a new spot cannot be expected to work while the gr
 rather than a region. Both move from "room unfinished" to **"held until the scripted grab works
 over a region"**.
 
+#### Correction - the blocker was not the inverse kinematics (2026-11-17, later the same day)
+
+The two sections below blame the stall on the inverse kinematics, and **that was wrong**. The
+measurement that settled it was simple: driving the tip at the same handle **directly**, with
+no carrier in between, **reaches it in 30 control steps** (0.142 -> 0.036 m). The body can get
+there.
+
+The cause was `carry.APPROACH = 0.3 m` - a **walking body's standoff** ("walk to the point
+0.3 m in front of the plate"), where this arm's whole reach is 0.48 m. The approach point for
+a handle at (-0.03, -0.098) comes out at **(-0.03, +0.202)**: past the block, on its far side,
+and **inside** the room's receptacle box (x +-0.12, y 0.02-0.26). The jaw is trapped there
+against the box and can neither descend to grab height nor travel. Inside the declared
+envelope and with no joint at a limit, which is why it read as an IK failure.
+
+The same family as `place_clearance`, so the same answer: **`BodyAdapter.approach_clearance`**,
+None by default so the walking bodies keep 0.3, declared 0.08 on the arm - just outside a
+cube's 0.04 m grab radius. Measured:
+
+| | before | after |
+|---|---|---|
+| `tools/grab_grid.py` (25 cells) | 3 | **7**, every `grab` failure gone |
+| `pick_and_place` | 20/20, 27.9 s | 20/20, **16.3 s** |
+| the same room, +-10 mm jitter | 5/10 | **8/10** |
+| `weigh_it_down` | 20/20, 16.3 s | 20/20, **11.5 s** |
+
+0.06, 0.08 and 0.12 all give 7 of 25, so the middle was taken. The walking bodies keep the
+default, and the whole slow suite is 176 passed, 0 failed.
+
+**What is left is the place, and its cause is not dragging either**: during the carry the
+command holds at 0.50 pointing at the box, the weld force is **0.20 N** (nothing tears), and
+the block moves **10 mm in 180 steps**. The arm cannot push the block's friction - the droop
+equilibrium of the section below with a load added. Every carrier-side trick sits downstream of
+that: re-measured with the grid, "stand still and lift gently" came out **0 of 25** at once,
+which is what the tool was built for. The next lead is the model's actuator strength.
+
+#### The two sections below predate that correction
+
 #### What that "point" actually is: an equilibrium, not a joint limit (measured 2026-11-17)
 
 One failing cell (the block moved +20 mm) was followed to the end. The tip **sits frozen at

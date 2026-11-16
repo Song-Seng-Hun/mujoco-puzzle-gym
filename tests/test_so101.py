@@ -390,3 +390,32 @@ def test_it_delegates_its_weight_to_an_object(so101_asset_dir, repo_root, tmp_pa
     finally:
         env.close()
     assert cut == 0, f"the goal was reached without pressing the plate: {cut}/3"
+
+
+def test_the_approach_standoff_is_this_body_s_own(so101_asset_dir):
+    """A walking body goes to a point `carry.APPROACH` = 0.3 m out from a handle and closes
+    in; that is about its own length and a third of this body's whole reach.
+
+    Measured before the declaration: the approach point for a block at (-0.03, -0.12) came
+    out at (-0.03, +0.202) - past the block, on its far side, and inside the room's
+    receptacle box - where the jaw was trapped and could neither descend to grab height nor
+    travel. It read as an inverse-kinematics failure for a while: the tip sat still with a
+    standing command error and no joint near a limit. What settled it was driving the tip at
+    the same handle directly, which reached it in 30 control steps. With the standoff
+    declared, `tools/grab_grid.py` on `puzzles/tabletop/pick_and_place` goes from 3 of 25
+    block positions to 7 of 25 with every `grab` failure gone, the room's mean solution time
+    from 27.9 s to 16.3 s, and its +-10 mm jitter rate from 5/10 to 8/10.
+    """
+    from mujoco_puzzle_gym.bodies.base import BodyAdapter
+    from mujoco_puzzle_gym.bodies.so101 import So101Adapter
+    from mujoco_puzzle_gym.carry import APPROACH
+
+    assert BodyAdapter.approach_clearance is None, "the default stays the walking number"
+    assert So101Adapter.approach_clearance is not None
+    assert So101Adapter.approach_clearance < APPROACH
+    #: Outside a cube's own grab radius, so the approach does not start inside the object it
+    #: is reaching for, and well inside the envelope.
+    from mujoco_puzzle_gym.catalog import builtin_parts
+
+    cube = builtin_parts()["cube"]("c", {"pos": [0.0, 0.0]})
+    assert So101Adapter.approach_clearance > cube.grab_radius
