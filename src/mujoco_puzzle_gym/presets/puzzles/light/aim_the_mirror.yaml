@@ -1,0 +1,46 @@
+# Aim the mirror (R99): the lamp sends its beam across the top of the room, where it hits a
+# mirror that is facing the wrong way and goes straight back. The floor plate turns the
+# mirror (`setter` on `tilt.yaw`), the beam comes down onto the photocell, and the cell opens
+# the door. The room is the first one whose answer is a *direction*: nothing is carried,
+# nothing is weighed, and the only thing that changes is where the light goes.
+#
+# Measured (M7 R99, 2026-11-17): 20/20 at a mean of 11.0 s, and **0/5** with the demo cut to
+# a single `goto goal` step. `mpg check --all-bodies` calls it exclusive: the arm is refused
+# by name for `walk`, and the two larger walking bodies fail the solver here (0/5 each).
+#
+# Three things in this layout are measurements rather than taste:
+#
+#   - **The beam never crosses the route.** It runs along y = 0.8 and then down x = 0.2, and
+#     the body walks the y = -0.6 corridor, so the body cannot break its own door open by
+#     standing in the light. Every optical part is on the near side of the dividing wall for
+#     the same reason: the wall stops light as surely as it stops the body (measured in the
+#     probe room before the parts existed).
+#   - **The mirror starts at yaw 0.** A beam arriving head-on goes back the way it came, so
+#     the cell is dark until the plate turns the panel to 45 deg. That, not a closed door, is
+#     what the control measures.
+#   - **`min_power` 0.5 with one 5 % reflection.** 0.95 arrives, so the cell has margin; the
+#     number is there to say the room asks *how much* light, not only whether any.
+#
+# The planner cannot trace a ray. A photocell on its own reads as an input nothing can turn
+# on ("unreachable: ['eye']", which is how this room first failed the `order` stage), so the
+# emitter claims its cells are lit once the aiming setters' own inputs are on - see
+# `Emitter.add_room_parts`. The claim is coarse; the 20/20 above is what measures the beam.
+name: aim_the_mirror
+size: [3.0, 2.0]
+wall: {thickness: 0.06, height: 0.25}
+walls:
+  - {from: [0.6, -1.0], to: [0.6, -0.9]}
+  - {from: [0.6, -0.3], to: [0.6, 1.0]}
+spawn: {pos: [-1.2, -0.6], yaw: 0.0}
+parts:
+  - {name: lamp, type: emitter, pos: [-1.3, 0.8], yaw: 0.0, power: 1.0, bounces: 1,
+     height: 0.06}
+  - {name: tilt, type: mirror, pos: [0.2, 0.8], yaw: 0.0, width: 0.24}
+  - {name: eye, type: photocell, pos: [0.2, 0.2], min_power: 0.5}
+  - {name: plate, preset: input/floor_toggle, pos: [-0.8, -0.6], size: [0.3, 0.3]}
+  - {name: aim, type: setter, pos: [-0.8, -0.95], in: [plate], target: tilt.yaw, value: 45.0}
+  - {name: door, preset: device/sliding_door, pos: [0.6, -0.6], in: [eye], width: 0.6}
+  - {name: goal, type: goal, pos: [1.3, -0.6], radius: 0.15}
+demo:
+  - press plate
+  - goto goal

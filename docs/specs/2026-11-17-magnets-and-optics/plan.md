@@ -17,7 +17,7 @@ Spec: [spec.md](spec.md) · Intent: [intent.md](intent.md) · 가지: `optics/ma
 | 4 | `src/mujoco_puzzle_gym/optics.py` (광선 추적 + 광학 부품 공통) | R99 |
 | 5 | `parts/device/optics.py` (`mirror`, 뒤에 `splitter`·`filter`), `parts/input/photocell.py` | R99~R101 |
 | 6 | `tests/test_optics.py` | R99~R101, R104 |
-| 7 | `presets/puzzles/light/aim_the_mirror.yaml`, `long_way_round.yaml` | R102 |
+| 7 | `presets/puzzles/light/aim_the_mirror.yaml`, `split_the_beam.yaml` | R102 |
 | 8 | `docs/parts-guide{,.en,.ja}.md`, `docs/bodies{,.en,.ja}.md`, `examples/`, `tests/test_examples.py` | R103 |
 
 틀은 베껴 쓴다: 힘을 걸고 되돌리는 방식은 `trap/wind.py`(`xfrc_applied` 더하고 빼기), 광선은
@@ -40,3 +40,9 @@ Spec: [spec.md](spec.md) · Intent: [intent.md](intent.md) · 가지: `optics/ma
   않는지 `mpg check`의 `order` 단계로 확인한다.
 - **팔 방의 이웃 문제**(R92에서 측정): 큐브 둘이 붙어 있으면 그립이 깨진다. `fetch_the_steel`은 미끼를
   **닿는 곳 밖에** 두어 팔이 건드릴 일이 없게 한다.
+
+## 실제로 지은 것 (2026-11-17)
+
+계획과 다른 점 둘. ① `long_way_round` 대신 `split_the_beam`을 지었다(이유는 spec R102). ② 자석 방의
+문턱은 접시 게이트를 뺐다 — 팔이 접시에 추를 올리는 단계가 R92에서 측정된 그 실패(놓기가 0.3 m
+앞에서 포기)로 막혔고, 게이트 자체는 단위 테스트가 덮는다. `dead_wedge`(R70)도 게이트 없이 나갔다.

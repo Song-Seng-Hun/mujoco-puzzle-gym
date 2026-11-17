@@ -3,13 +3,14 @@
 from ..registry import register_part
 from .base import Part
 from .beak import Dial, Dispenser, Drawer, Egg, HandleBall, Key, Laundry, Lever, PullCord, Stick
-from .device import (AddonStation, Anchor, Conveyor, Destroyer, Door, GoalNet, HitchStation, LowBar, Magnet, Pillar, Platform,
-                     Rope, RopeDoor, Setter, Spring, SwingDoor, Trapdoor, Turntable, Warp)
+from .device import (AddonStation, Anchor, Conveyor, Destroyer, Door, Filter, GoalNet, HitchStation, LowBar, Magnet,
+                     Mirror, Pillar, Platform, Rope, RopeDoor, Setter, Splitter, Spring, SwingDoor, Trapdoor,
+                     Turntable, Warp)
 from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
-from .input import (Beam, Button, Checkpoint, Laser, PressurePlate, Receptacle, Stack, Target,
-                    Zone)
+from .input import (Beam, Button, Checkpoint, Emitter, Laser, Photocell, PressurePlate, Receptacle, Stack,
+                    Target, Zone)
 from .logic import Budget, Counter, Gate, Receiver, Relay, Source, Transmitter, Wire
 from .npc import Npc
 from .object import Ball, Cube, Pin
@@ -56,6 +57,11 @@ register_part("setter", Setter, replace=True)
 register_part("target", Target, replace=True)
 register_part("wind", Wind, replace=True)
 register_part("magnet", Magnet, replace=True)
+register_part("emitter", Emitter, replace=True)
+register_part("photocell", Photocell, replace=True)
+register_part("mirror", Mirror, replace=True)
+register_part("filter", Filter, replace=True)
+register_part("splitter", Splitter, replace=True)
 register_part("pusher", Pusher, replace=True)
 register_part("spinner", Spinner, replace=True)
 register_part("pendulum", Pendulum, replace=True)

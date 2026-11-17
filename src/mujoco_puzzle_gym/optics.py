@@ -33,8 +33,13 @@ class Surface(Protocol):
         ...
 
     def interact(self, model, data, gid: int, point: np.ndarray, direction: np.ndarray,
-                 power: float) -> list[tuple[np.ndarray, np.ndarray, float]]:
-        """Outgoing (origin, direction, power) for a ray arriving at `point`."""
+                 power: float) -> list[tuple[np.ndarray, np.ndarray, float, int]]:
+        """Outgoing (origin, direction, power, turns) for a ray arriving at `point`.
+        `turns` is 1 for a path that changed direction and 0 for one that went straight
+        on, because `bounces` counts turns: a filter dims the light without bending it
+        and must not spend the budget (measured: with `bounces: 1` a beam through one
+        filter died at the filter and the cell behind it read 0.000 at every setting,
+        which made a room's control vacuous)."""
 
 
 class Segment:
@@ -101,10 +106,13 @@ def trace(model, data, origin, direction, power: float, bounces: int,
             lit[name] = lit.get(name, 0.0) + p
             continue
         surf = surfaces.get(hit)
-        if surf is None or depth >= bounces:
+        if surf is None:
             continue
-        for out_origin, out_dir, out_power in surf.interact(model, data, hit, point, vec, p):
-            stack.append((out_origin, out_dir, out_power, depth + 1))
+        for out_origin, out_dir, out_power, turns in surf.interact(model, data, hit, point,
+                                                                   vec, p):
+            if depth + turns > bounces:
+                continue
+            stack.append((out_origin, out_dir, out_power, depth + turns))
     return segs, lit
 
 

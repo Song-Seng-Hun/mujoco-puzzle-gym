@@ -171,6 +171,44 @@ The eight `puzzles/circuit/` presets and the example room `examples/rooms/power_
 - Value binding `bind`: a value every part takes. `bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}` maps a channel linearly onto a number value that can change while running, clipped to the value's range every body step. A value changed by both a `bind` and a setter is rejected.
 - Solution orders and the solver keep off platform and turntable cells and off pillars that will rise. Whether the body stays up riding them is outside what the walking policy learned, so it is only recorded. Record of 2026-11-12: no fall in 3 s on a platform at 0.1 and 0.3 m/s and on a belt at 0.1 and 0.2 m/s.
 
+## Light
+
+Light is a **path with a direction**. Where `laser` (R5) asks "did something cut the beam",
+this family asks "did the light arrive, and how much of it".
+
+```yaml
+parts:
+  - {name: lamp, type: emitter, pos: [-1.3, 0.8], yaw: 0.0, power: 1.0, bounces: 1}
+  - {name: tilt, type: mirror, pos: [0.2, 0.8], yaw: 0.0, width: 0.24}
+  - {name: eye, type: photocell, pos: [0.2, 0.2], min_power: 0.5}
+```
+
+- The emitter sends one ray at `height` in the direction `yaw`; a panel in the way bends or
+  dims it and the path carries on. Its channel is 1 while the path reaches a photocell.
+- A photocell writes `<name>` (1 while the power that arrived is at least `min_power`) and
+  `<name>.power` (a float), so a room can ask whether the light got there and how much did.
+- `yaw` on all three panels is the direction the panel **faces** - its normal. A ray going
+  +x leaves a mirror at `yaw: -45` towards +y. `width` is measured across that normal. All
+  three block the body and objects like a wall.
+- `mirror` reflects and keeps `1 - loss`. `filter` does not bend the light and multiplies it
+  by `transmission`. `splitter` sends `split` straight on and reflects
+  `(1 - split) * (1 - loss)`.
+- `bounces` counts **turns**. Going straight through a filter is free (it was not, at first,
+  and that made a room's control vacuous: with `bounces: 1` the cell behind a filter read
+  0.000 at every setting). The whole path is capped at 16 segments, because a splitter
+  branches and depth alone does not bound a branching walk.
+- **A wall or a closed door is already a shutter.** One inner wall across the path stops the
+  light (`tests/test_optics.py::test_a_closed_door_is_already_a_shutter`), so what a filter
+  is for is not switching but **dimming** - which is a puzzle only beside a photocell that
+  asks how much.
+- `yaw`, `split` and `transmission` change while the room runs, so a `setter` or a `bind` can
+  hand the aim to the body. The solution planner cannot follow a ray, so an emitter claims
+  only that "the light arrives once the controls the room declares are on"; which setting is
+  the right one is what the scripted solution measures.
+- Two rooms: `puzzles/light/aim_the_mirror` (20/20, 11.0 s - the first room whose answer is a
+  **direction**) and `puzzles/light/split_the_beam` (20/20, 11.1 s - one beam shared by two
+  doors, and at 0.5 both of them stay shut).
+
 ## Traps
 
 Traps (the `trap` group) push the body, knock it over or let it fall. Each one acts only while its `in` signal is on (always, without `in`), and one value, `power`, sets its strength. `enabled: 0` turns it off (a pit without `in` is always open and cannot be switched; `enable` or `enabled` on it is rejected, so give it an `in` to switch it). `power` and `enabled` can change while running, so setters, `bind` and difficulty steps (below) tune them.
@@ -648,6 +686,8 @@ Measured 2026-11-17, 5 seeds, each with the room's own task file:
 | `puzzles/tabletop/build_a_tower` | solver 0/5 | refused `['grab']` | **pass 5/5, 9.8 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/lever_arm` | solver 0/5 | refused `['grab']` | **pass 5/5, 7.4 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/fetch_the_steel` | solver 0/5 | refused `['grab']` | **pass 5/5, 8.1 s** | refused `['grab']` | yes |
+| `puzzles/light/aim_the_mirror` | **pass 5/5, 11.0 s** | solver 0/5 | refused `['walk']` | solver 0/5 | yes |
+| `puzzles/light/split_the_beam` | **pass 5/5, 11.1 s** | solver 0/5 | refused `['walk']` | solver 0/5 | yes |
 | `puzzles/tabletop/pick_and_place` | solver 0/5 | refused `['grab']` | **pass 5/5, 16.3 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/reach_target` | pass 5/5, 1.5 s | solver 0/5 | pass 5/5, 0.6 s | solver 0/5 | no |
 
@@ -1086,6 +1126,27 @@ Role `prop`, update stage `input`.
 | `break_height` | float | m | `0.05` | [0.005, 2] | yes | a contact starting as fast as a drop from this height breaks it |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: a broken egg fails the episode |
 
+### `emitter`
+
+Role `sensor`, update stage `input`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | yes | direction the ray leaves in (0: +x) |
+| `power` | float |  | `1.0` | [0, 100] | yes | power it sends |
+| `bounces` | int |  | `2` | [0, 8] |  | how often one path may turn; going straight through a filter is free |
+| `height` | float | m | `0.06` | [0.02, 0.5] |  | beam height |
+
+### `filter`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | yes | direction the panel faces (its normal; 0: +x) |
+| `width` | float | m | `0.12` | [0.03, 1] |  | width across the normal |
+| `transmission` | float |  | `0.5` | [0, 1] | yes | share of the power that gets through |
+
 ### `floor_tile`
 
 Role `prop`, update stage `device`.
@@ -1265,6 +1326,16 @@ Role `prop`, update stage `device`.
 | `damp` | float | N s/m | `0.4` | [0, 20] | yes | force against the object's own speed, so it settles instead of overshooting |
 | `accept` | list |  | `[]` |  |  | object parts it pulls (empty: every object) |
 
+### `mirror`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | yes | direction the panel faces (its normal; 0: +x) |
+| `width` | float | m | `0.12` | [0.03, 1] |  | width across the normal |
+| `loss` | float |  | `0.05` | [0, 0.9] | yes | share of the power lost in the reflection |
+
 ### `npc`
 
 Role `prop`, update stage `device`.
@@ -1301,6 +1372,14 @@ Role `prop`, update stage `device`.
 | `yaw` | float | deg | `0.0` | [-180, 180] |  | swing direction |
 | `period` | float | s | `1.6` | [0.3, 10] | yes | one full swing |
 | `power` | float | deg | `40.0` | [0, 80] | yes | swing amplitude while active |
+
+### `photocell`
+
+Role `sensor`, update stage `input`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `min_power` | float |  | `0.3` | [0, 100] | yes | power needed to read 1 |
 
 ### `pillar`
 
@@ -1544,6 +1623,17 @@ Role `prop`, update stage `device`.
 | `height` | float | m | `0.03` | [0.01, 0.3] |  | bar centre above the floor |
 | `thickness` | float | m | `0.03` | [0.01, 0.1] |  |  |
 | `power` | float | deg/s | `90.0` | [-720, 720] | yes | turn rate while active (+: counter-clockwise) |
+
+### `splitter`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | yes | direction the panel faces (its normal; 0: +x) |
+| `width` | float | m | `0.12` | [0.03, 1] |  | width across the normal |
+| `split` | float |  | `0.5` | [0, 1] | yes | share of the power that carries straight on; the rest reflects |
+| `loss` | float |  | `0.1` | [0, 0.9] | yes | share of the reflected power lost |
 
 ### `spring`
 
@@ -1835,6 +1925,8 @@ Role `switch`, update stage `input`.
 - `puzzles/circuit/sabotage_order`
 - `puzzles/circuit/wrong_wire`
 - `puzzles/coins/coin_lock`
+- `puzzles/light/aim_the_mirror`
+- `puzzles/light/split_the_beam`
 - `puzzles/roller/brake_strip`
 - `puzzles/roller/crosswind`
 - `puzzles/roller/glide_under`
