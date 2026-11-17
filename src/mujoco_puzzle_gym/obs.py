@@ -114,6 +114,14 @@ def privileged_terms(items) -> list[str]:
     return [n for n in PRIVILEGED_OBS if n in used]
 
 
+@register_obs("joints", replace=True)
+def joints(env):
+    """The body's own joint sensors (R131): positions in [-1, 1] over each joint's range,
+    then velocities. Zero-length for a body that exposes none (`BodyAdapter.joint_state`)."""
+    out = env.body.joint_state(env.data)
+    return np.zeros(0) if out is None else np.asarray(out, dtype=float)
+
+
 @register_obs("part_pos", replace=True)
 def part_pos(env):
     """Privileged: every part's position relative to the body, heading frame (2 per part;
@@ -314,7 +322,8 @@ from . import gaze  # noqa: E402,F401  registers `markers_seen` (R27)
 
 #: Items a real robot has (proprioception and sensors). A task whose `obs:` uses
 #: only these is "sensors only" (`obs_kind`, R39); plugin terms count as privileged.
-SENSOR_TERMS = frozenset({"gravity", "ang_vel", "lin_vel", "rangefinder", "camera", "markers_seen"})
+SENSOR_TERMS = frozenset({"gravity", "ang_vel", "lin_vel", "joints", "rangefinder",
+                          "camera", "markers_seen"})
 
 
 class ObsItemError(ValueError):

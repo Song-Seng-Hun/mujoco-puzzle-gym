@@ -543,6 +543,25 @@ class So101Adapter(BodyAdapter):
                          ang_vel=np.zeros(3), gravity=np.array([0.0, 0.0, -1.0]),
                          fallen=False)
 
+    def joint_state(self, data: mujoco.MjData) -> np.ndarray:
+        """Twelve numbers an SO-101 reads off itself: six joint angles scaled to [-1, 1]
+        over their own ranges (the five arm joints, then the jaw), then their velocities.
+
+        This is the arm's encoders and nothing else - no part position, no target. It is in
+        `obs.SENSOR_TERMS` for that reason. The jaw is included on purpose: it is the one
+        value that says what phase a grasp is in (R131), and a jaw's own angle is cheaper to
+        read on real hardware than anything else in this observation.
+        """
+        if self._data is not data:
+            self._bind(data)
+        model = data.model
+        jaw_id = int(model.joint(PREFIX + JAW_JOINT).id)
+        rng = np.vstack([self._range, model.jnt_range[jaw_id]])
+        q = np.append(data.qpos[self._qpos], data.qpos[self._jaw_q])
+        mid, half = rng.mean(axis=1), np.maximum((rng[:, 1] - rng[:, 0]) / 2.0, 1e-9)
+        dq = np.append(data.qvel[self._qvel], data.qvel[int(model.jnt_dofadr[jaw_id])])
+        return np.concatenate([np.clip((q - mid) / half, -1.0, 1.0), dq])
+
     def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:
         """Put the gripper at `pose` by solving for it, since the base cannot move.
 

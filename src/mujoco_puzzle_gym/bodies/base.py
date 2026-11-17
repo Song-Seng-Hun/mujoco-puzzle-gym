@@ -208,6 +208,23 @@ class BodyAdapter(ABC):
     #: `bodies/`).
     head_lifts_load: bool = False
 
+    def joint_state(self, data: "mujoco.MjData") -> np.ndarray | None:
+        """This body's own joint sensors, or None if it exposes none (R131).
+
+        Proprioception a real robot reads off its own encoders: joint positions scaled to
+        [-1, 1] over each joint's range, then joint velocities. It is what makes a
+        manipulation observation **Markov** - measured: a policy cloned from the scripted
+        solution matched it to 0.03 per channel on the demonstrated states and still scored
+        0.0, because without the jaw's own angle nothing in the observation said whether the
+        gripper had already opened, and the same jaw position means "about to close" on the
+        way in and "about to lift" on the way out.
+
+        None (the default) keeps every existing body and task unchanged: the `joints`
+        observation term is then zero-length, exactly as `beak` is in a room with nothing
+        to grab.
+        """
+        return None
+
     def set_grasp_pose(self, on: bool) -> None:
         """Hold (or stop holding) whatever wrist pose a contact grasp needs (R125).
 
