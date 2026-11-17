@@ -11,9 +11,15 @@ not be reproduced or compared against. This is that sweep, kept.
 
 It is a measuring tool, not a check: it fails nothing, it is not wired into `mpg check`, and
 a low score is a fact about the body's reach and the scripted solution, not a broken room.
-Use it as the objective when changing either - a change that raises the shipped room from
-3 of 25 is an improvement, and one that keeps 3 while passing the room's own check has
-changed nothing that matters.
+Use it as the objective when changing either - a change that raises the shipped room's score
+is an improvement, and one that leaves it while passing the room's own check has changed
+nothing that matters.
+
+**This grid is one room's objective, not the project's.** Measured: sweeping the arm's home
+pose took it from 7 of 25 to **13 of 25** - nearly double, with the shipped position still
+solving - and the same pose took `puzzles/tabletop/weigh_it_down` from 20/20 to **0/20**. On
+the grid alone that change looks like the best result on this page. So read it beside the
+other rooms the body solves, and ship nothing on this number by itself.
 
     python tools/grab_grid.py --room src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_and_place.yaml \
         --task examples/task_pick_and_place.yaml --part block

@@ -835,6 +835,25 @@ Changing the receptacle moves which step fails without raising the count: a wall
 among several, and a room for this body has to be designed around **where the arm itself
 passes**.
 
+**The home pose moves the pocket a lot - and breaks another room** (measured 2026-11-17).
+The blocker is the arm's links fouling the floor and the box, and the IK solves locally from
+the current pose, so where the arm starts decides which paths work. Sweeping `HOME` against
+the grid (7 of 25 as shipped):
+
+| `HOME` | grid |
+|---|---|
+| (0, -1.20, 0.90, 1.20, 0) | 3 |
+| (0, -0.873, 0.563, 1.382, 0) <- shipped | 7 |
+| (0, -0.60, 0.30, 1.50, 0) | 10 |
+| (0, -0.50, 0.00, 1.35, 0) | 12 |
+| **(0, -0.55, 0.15, 1.35, 0)** | **13** |
+
+A less folded start nearly doubles it, and its neighbours all read 12, so it is not a spike.
+**And that pose takes `weigh_it_down` from 20/20 to 0/20.** So it was not shipped, and after
+the revert both rooms are back at 20/20 (11.5 s and 16.3 s). Shipping on the grid alone would
+have killed a shipped room, and `tools/grab_grid.py` now says so in its own docstring: the
+grid is one room's objective, not the project's.
+
 **A grab now waits for an object a belt is still carrying** (2026-11-17). The approach aims
 at where the handle is *now*, so an object still in transit is taken wherever it happened to
 be when it first came within reach - measured, the arm took it at the belt's **start**
