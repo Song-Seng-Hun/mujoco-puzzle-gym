@@ -208,6 +208,15 @@ class BodyAdapter(ABC):
     #: `bodies/`).
     head_lifts_load: bool = False
 
+    def set_grasp_pose(self, on: bool) -> None:
+        """Hold (or stop holding) whatever wrist pose a contact grasp needs (R125).
+
+        A room that asks for `hold: contact` needs the gripper oriented so its fingers
+        straddle an object rather than press it, and a room has to be solvable **on its
+        own** - `mpg check` sets nothing up. So the hold asks the body, and a body with no
+        such pose ignores it.
+        """
+
     def set_grab(self, level: float) -> None:
         """Close or open a real gripper: `level` -1 open .. 1 closed, in action units (R121).
 

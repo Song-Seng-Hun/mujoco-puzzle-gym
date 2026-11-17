@@ -454,6 +454,12 @@ class So101Adapter(BodyAdapter):
             model.actuator_gainprm[gid, 0] = self._kp[i] * f[i]
             model.actuator_biasprm[gid, 1] = -self._kp[i] * f[i]
 
+    def set_grasp_pose(self, on: bool) -> None:
+        """The wrist pose a contact grasp needs (R125): the opening axis off the vertical,
+        asked for with one row so the solve can still reach the table (see `align_rows`)."""
+        self.align_axis = np.array([0.0, 0.0, 1.0]) if on else None
+        self.align_rows = 1
+
     def set_grab(self, level: float) -> None:
         """Drive the jaw: `level` -1 opens it, +1 closes it (R121).
 

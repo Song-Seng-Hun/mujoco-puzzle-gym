@@ -3,14 +3,17 @@
 # block stays in the jaw because two fingers are pressing it, and it can be dropped by
 # physics.
 #
-# Measured (M7 R124, 2026-11-18): **9 of 10 seeds, mean 9.0 s**, against 20/20 at 7.7 s for
-# the welded version. The one failure is at `goto goal`, not at the grasp. The scene holds
-# no weld at all - `hold: contact` builds neither the equality constraint nor the
-# gripper-to-object contact exclusion the weld needs.
+# Measured (M7 R124-R125, 2026-11-18): **10 of 10 seeds, mean 11.4 s**, against 20/20 at
+# 8.2 s for the welded version. The scene holds no weld at all - `hold: contact` builds
+# neither the equality constraint nor the gripper-to-object contact exclusion the weld
+# needs.
 #
-# It needs the body's orientation task switched on by the caller (`align_axis` with
-# `align_rows = 1`), which is why this is not in `PRESET_TASKS` yet: the room is the proof
-# that a physical pinch carries a room, not a finished preset.
+# The room stands on its own: the hold asks the body for a grasp pose
+# (`BodyAdapter.set_grasp_pose`, which for this arm turns the one-row orientation task on)
+# when it wants to grab, and drops it once it has the object - holding it through the carry
+# keeps a row of a five-joint solve busy, and measured, the place then ended with the block
+# outside the box in 10 of 10 episodes. Turning it back on at **release** is worse still:
+# that moment is the middle of a `place`.
 #
 # Seven measurements had to come first, and every one of them was a mistake of ours rather
 # than a limit of the arm (specs/2026-11-17-arm-steady-state R120-R124):

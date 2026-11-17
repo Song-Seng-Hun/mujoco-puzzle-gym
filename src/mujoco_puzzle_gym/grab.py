@@ -168,6 +168,11 @@ class Beak(Part):
             return
         if not self.armed:
             return
+        # Asking for a grab again with nothing held: back into the grasp pose. **Not** on
+        # release - that moment is the middle of a `place`, and measured, turning the
+        # orientation task back on there ended the place with the block outside the box in
+        # 10 of 10 episodes (R125).
+        world.body.set_grasp_pose(True)
         for i, obj in enumerate(self.objects):
             if getattr(obj, "grabbable_now", True) and self._pinched(model, data, world, obj):
                 limit = world.body.capabilities.limit("max_lift_mass") if world.body else np.inf
@@ -175,6 +180,10 @@ class Beak(Part):
                     self.too_heavy = True
                 else:
                     self.held, self._contact_lost = i, 0
+                    # The grasp pose has done its job; holding it through the carry keeps a
+                    # row of the solve busy and the place suffers for it (R125): measured,
+                    # `place` ended with the block outside the box in 4 of 4 episodes.
+                    world.body.set_grasp_pose(False)
                 return
 
     # ---- scene ------------------------------------------------------------------
@@ -209,6 +218,11 @@ class Beak(Part):
 
     def reset(self, model, data):
         self.held, self.armed, self.too_heavy = None, True, False
+        self._contact_lost = 0
+        if self.world is not None and self.world.body is not None:
+            # A contact hold needs the gripper held in a grasp pose, and a room has to stand
+            # on its own: `mpg check` configures nothing (R125).
+            self.world.body.set_grasp_pose(self.hold == "contact")
         if self.world is not None:
             self.world.tool_tip = None
         self._write([False] * len(self.objects))

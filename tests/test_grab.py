@@ -172,17 +172,13 @@ def test_a_room_is_solved_by_contact_with_no_weld_anywhere(so101_asset_dir, repo
     gripper-to-object contact exclusion - the block stays in the jaw because two fingers
     press it.
 
-    Measured: 9 of 10 seeds, mean 9.0 s (the welded room is 20/20 at 8.2 s). The one failure
-    is **seed 0**, and at `goto goal` rather than at the grasp. So this runs two seeds and
-    asks for one: deterministic, and it does not pretend the rate is 1.0. The rate lives in
-    the room's header.
+    Measured: **10 of 10 seeds, mean 11.4 s** (the welded room is 20/20 at 8.2 s), with
+    nothing set up by the caller - the hold asks the body for a grasp pose itself, which is
+    what a room has to do to be a preset. Two seeds here because the suite pays for each.
 
-    The caller switches the orientation task on; see the room's header for the seven
-    measurements that had to come first, each of them a mistake of ours rather than a limit
-    of the arm.
+    See the room's header for the measurements that had to come first, each of them a
+    mistake of ours rather than a limit of the arm.
     """
-    import numpy as np
-
     from mujoco_puzzle_gym.check import check_solver
     from mujoco_puzzle_gym.env import PuzzleEnv
     from mujoco_puzzle_gym.task import load_task
@@ -192,10 +188,7 @@ def test_a_room_is_solved_by_contact_with_no_weld_anywhere(so101_asset_dir, repo
         beak = env.parts["_beak"]
         assert beak.hold == "contact"
         assert not beak._eq, "a contact hold must build no welds"
-        env.body.align_axis = np.array([0.0, 0.0, 1.0])
-        env.body.align_rows = 1
-        res = check_solver(env, seeds=2, need=1)
-        assert res["successes"] >= 1, res
-        assert [f.get("demo_step") for f in res["failures"]] in ([], [2]), res
+        res = check_solver(env, seeds=2, need=2)
+        assert res["successes"] == 2, res
     finally:
         env.close()

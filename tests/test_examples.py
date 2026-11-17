@@ -46,6 +46,8 @@ PRESET_TASKS["puzzles/tabletop/reach_target"] = ROOT / "examples/task_reach_targ
 PRESET_TASKS["puzzles/tabletop/pick_and_place"] = ROOT / "examples/task_pick_and_place.yaml"
 #: M5 R75: the arm delegates its weight to an object; needs `head` and `grab`.
 PRESET_TASKS["puzzles/tabletop/weigh_it_down"] = ROOT / "examples/task_weigh_it_down.yaml"
+#: M7 R124: the same room as `pick_and_place`, held by a physical pinch instead of a weld.
+PRESET_TASKS["puzzles/tabletop/pick_by_hand"] = ROOT / "examples/task_pick_by_hand.yaml"
 #: M5 R70: the room carries the block out of the sector the arm cannot reach.
 PRESET_TASKS["puzzles/tabletop/dead_wedge"] = ROOT / "examples/task_dead_wedge.yaml"
 #: M5 R74: two belts, two bins, one at a time.
