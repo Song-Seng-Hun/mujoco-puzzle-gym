@@ -1947,6 +1947,7 @@ Role `switch`, update stage `input`.
 - `puzzles/tabletop/fetch_the_steel`
 - `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
+- `puzzles/tabletop/pick_by_hand`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tabletop/weigh_it_down`
 - `puzzles/tow/chain_dropoff`
