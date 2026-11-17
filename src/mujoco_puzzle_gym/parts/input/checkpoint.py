@@ -50,7 +50,12 @@ class Checkpoint(Part):
         self.radius = float(self.cfg["radius"])
         self.skip = self.cfg["skip"]
         self.reached = self.fail = self.was_inside = False
-        self.needs_body("walk")
+        # No capability is required (R129). This asked for `walk`, and the ask was an
+        # over-declaration of the kind this project has corrected before (`bodies/so101.py`
+        # once declared `reach` and `gripper`): a flag is on when **the body** comes within
+        # `radius`, and every body reports a position - a fixed arm's is its gripper. The
+        # `walk` ask closed the staged-training machinery to the arm entirely, which is why
+        # it was found: `mpg check` refused a tabletop room with a flag in it.
 
     def build(self, spec):
         body = super().build(spec)

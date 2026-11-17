@@ -63,7 +63,7 @@
 | `budget` | - | o | o | 신호만 |
 | `button` | `walk` | o | o | 밟기. 몸 중심 좌표로 판정 |
 | `cannon` | - | o | o | 신호로 쏨, 몸과 무관 |
-| `checkpoint` | `walk` | o | o | 밟기 |
+| `checkpoint` | (없음) | o | o | 도달하기 — `walk` 선언은 과잉이었다(R129): 깃발은 몸이 반경 안에 들어오면 켜지고, 고정된 팔의 위치는 그 그리퍼다. 그 선언이 단계 학습 기계를 팔에 닫아 두고 있었다 |
 | `coin` | `walk` | o | o | 지나가며 먹기 |
 | `coin_group` | - | o | o | 신호만 |
 | `coin_lock` | - | o | o | 신호만 |

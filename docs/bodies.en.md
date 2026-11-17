@@ -69,7 +69,7 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `budget` | - | o | o | Signals only |
 | `button` | `walk` | o | o | Stepping on it. Judged by the body's centre coordinates |
 | `cannon` | - | o | o | Fires on a signal, nothing to do with the body |
-| `checkpoint` | `walk` | o | o | Stepping on it |
+| `checkpoint` | (none) | o | o | Reaching it - the `walk` ask was an over-declaration (R129): a flag is on when the body comes within `radius`, and a fixed arm's position is its gripper. That ask had closed the staged-training machinery to the arm |
 | `coin` | `walk` | o | o | Collected by passing through |
 | `coin_group` | - | o | o | Signals only |
 | `coin_lock` | - | o | o | Signals only |
