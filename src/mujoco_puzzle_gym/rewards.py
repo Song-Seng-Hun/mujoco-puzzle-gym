@@ -214,3 +214,27 @@ def carry_progress(env):
             return 0.0 if was is None else float(was - d)
         return 0.0
     return 0.0
+
+
+@register_reward("hold_time", replace=True)
+def hold_time(env):
+    """1 per env step while an object is held and not yet delivered (R127).
+
+    `grasp_hold` pays once, so a policy has no reason to **keep** holding; drop the object
+    and `carry_progress` simply stops paying, with nothing lost. Measured with the other
+    three terms and 4.45 M steps, a policy learned to grab in 0.97 of episodes and
+    collected almost none of the carry term - it took the one-off and let go.
+
+    Per step, so a task weights it small (0.1 at hz 10 is 1.0 per second of carrying).
+
+    **It is farmable and the measurement says so.** At weight 0.2 on `pick_by_hand` with
+    `sensors_only` observation, 4.47 M steps: the policy grabbed in 0.97 of episodes and
+    then **held still for 224 of the 400 steps**, collecting 44.87 of this term - more than
+    every other term together - while `carry_progress` came to -0.02 and the success rate
+    stayed 0.0. Holding is easier than carrying, so an independent per-step bonus for it
+    becomes the whole policy. Weight it below the carry, or use potential-based shaping
+    instead of a sum of bonuses; the ladder those four runs climbed is in
+    `docs/training-log.md`.
+    """
+    held = set(getattr(env.world, "held", ()) or ())
+    return float(bool(held))
