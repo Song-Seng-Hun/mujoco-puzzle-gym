@@ -520,7 +520,12 @@ class So101Adapter(BodyAdapter):
         if self._data is not data:
             self._bind(data)
         model = data.model
-        pos = np.array(data.site_xpos[self._site], dtype=float)
+        # Where this body says it is. The gripper site by default; the grasp point once an
+        # orientation task is on (R122), so that the shared carry - which drives whatever
+        # `state` reports - aims the place a grasp actually closes. Without this the carry
+        # put the wrist on the handle and the fingers somewhere else, which is why a room
+        # with `hold: contact` stalled on its first grab.
+        pos = self.control_point(data)
         rot = data.site_xmat[self._site].reshape(3, 3)
         yaw = math.atan2(rot[1, 0], rot[0, 0])
         jacp = np.zeros((3, model.nv))

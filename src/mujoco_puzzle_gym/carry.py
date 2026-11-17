@@ -72,6 +72,8 @@ HANG_TOL = 0.75      # hook: let go once the leading handle is this part of `tol
 SETTLE = 1.5         # [s] longest stand after letting go
 REST_SPEED = 0.02    # [m/s] cube this slow: placed
 AWAY = 0.35          # [m] walk off this far from a placed cube
+#: [m] How close the grasp point has to be to a handle before fingers close (R122).
+GRASP_CLOSE = 0.03
 STUCK = 1.5          # [s] place: standing this long with the object beside the target: walk off, retry
 #: [m] How far above a box's wall top an object is carried in (`_lower_in_act`).
 #: Both ends are measured on `puzzles/tabletop/pick_and_place`, seed 0: at 0.02 the
@@ -231,9 +233,17 @@ class Carrier:
         if self.held() is cube:
             return None
         # A beak carries its grab closed and the weld decides when it catches; fingers have
-        # to arrive **open** or they shut before the object is between them (R121). So a
-        # body that lifts its load opens while it approaches and closes once it is in.
-        self.grab = -1.0 if (env.body.head_lifts_load and self.phase == "approach") else 1.0
+        # to arrive **open** or they shut before the object is between them (R121, R122).
+        # Open until the grasp point is actually at the handle, then close - keyed on
+        # distance, not on the phase: measured, this carry is in phase `in` while still
+        # 90 mm short, so a phase test shut the jaw before it arrived.
+        if env.body.head_lifts_load:
+            handle = cube.handle_points(env.data)[self._handle if self._point is not None
+                                                  else self._pick_handle(cube)]
+            reach = float(np.linalg.norm(env.body_state.pos - np.asarray(handle, float)))
+            self.grab = 1.0 if reach <= GRASP_CLOSE else -1.0
+        else:
+            self.grab = 1.0
         here = np.asarray(cube.pos(env.data)[:2], dtype=float)
         moved = float(np.linalg.norm(here - self._was_at)) if self._was_at is not None else 0.0
         self._was_at = here
@@ -261,6 +271,11 @@ class Carrier:
         self._pick_z = float(h[2])
         n = h[:2] - cube.pos(env.data)[:2]
         n = n / max(float(np.linalg.norm(n)), 1e-9)
+        if env.body.head_lifts_load:
+            # Put the **grasp point** at the handle's height, not the wrist: measured, the
+            # wrist-height target left the grasp point 19 mm below the handle (R122).
+            return self._close_in(h[:2] + n * self._approach(), h,
+                                  lambda: np.asarray(env.body_state.pos, dtype=float))
         return self._close_in(h[:2] + n * self._approach(), h)
 
     def _approach(self) -> float:
