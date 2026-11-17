@@ -114,6 +114,20 @@ Z_I_MAX = 0.02
 #: same 3-row solve it was measured with. Three control changes measured earlier today each
 #: broke a shipped room; this one is written so that it cannot.
 ALIGN_GAIN = 6.0
+#: Actuator realism the arm did not model at all (R118). Both default to "none", so every
+#: room that ships today runs exactly as it was measured.
+#:
+#: What the arm had: `kp` 998.22, `kv` 2.731 and a +-2.94 N.m ceiling, all from the real
+#: servo, and nothing else - no command latency, no backlash, no servo-to-servo spread. And
+#: no randomization layer could add any: `randomize.py`'s `physics` draws **part** values
+#: and `body` draws **observation noise**, so neither reaches an actuator. The walking body
+#: does have this (its vendor asset carries backlash and friction domain randomization),
+#: which is what makes the arm's absence worth naming rather than assuming.
+#:
+#: `latency_steps` delays the joint targets by whole control steps (0.02 s each), which is
+#: what a serial bus and a servo's own loop cost. `servo_spread` scales each joint's `kp` by
+#: a factor, for the spread between units of the same part.
+LATENCY_MAX = 10
 IK_GAIN = 8.0           # [1/s] how hard the solve chases the aim point
 DAMPING = 0.05          # damped-least-squares lambda for the inverse kinematics
 #: Measured envelope (see the module docstring).
@@ -202,6 +216,9 @@ class So101Adapter(BodyAdapter):
         #: World direction to bring the jaw's opening axis onto, or None for no orientation
         #: task (the default, and what every shipped room uses). Set it to grasp by contact.
         self.align_axis: np.ndarray | None = None
+        #: Control steps of delay on the joint targets (R118); 0 = none, the default.
+        self.latency_steps = 0
+        self._queue: list[np.ndarray] = []
         self.jaw_target = 0.0
         #: Height the z term holds the jaw at [m]; `set_head` moves it (WORK_Z .. GRAB_Z).
         self.work_z = WORK_Z
@@ -260,6 +277,7 @@ class So101Adapter(BodyAdapter):
         if self._data is not data:
             self._bind(data)
         self._z_i = 0.0
+        self._queue = []
         data.qpos[self._qpos] = HOME
         data.qvel[self._qvel] = 0.0
         data.ctrl[self._ctrl] = HOME
@@ -379,11 +397,31 @@ class So101Adapter(BodyAdapter):
                                        err * IK_GAIN)
             dq[4] += wz            # the wrist roll spins the jaw about its own axis
             target = data.qpos[self._qpos] + dq * model.opt.timestep
-            data.ctrl[self._ctrl] = np.clip(target, self._range[:, 0], self._range[:, 1])
+            target = np.clip(target, self._range[:, 0], self._range[:, 1])
+            if self.latency_steps > 0:
+                # A real servo gets its target late (bus plus its own loop). Hold the last
+                # `latency_steps` worth and apply the oldest; before the queue fills, hold
+                # the home pose rather than inventing a target.
+                depth = int(min(self.latency_steps, LATENCY_MAX)) * max(
+                    1, round(self.control_dt / model.opt.timestep))
+                self._queue.append(target.copy())
+                target = self._queue.pop(0) if len(self._queue) > depth else np.asarray(HOME,
+                                                                                       float)
+            data.ctrl[self._ctrl] = target
             data.ctrl[self._jaw_ctrl] = self.jaw_target
             mujoco.mj_step(model, data)
             if on_substep is not None:
                 on_substep(model, data)
+
+    def set_servo_spread(self, model: mujoco.MjModel, factors) -> None:
+        """Scale each arm joint's position gain by `factors` (R118): the spread between
+        servos of the same part. 1.0 everywhere is the shipped model."""
+        f = np.asarray(factors, dtype=float)
+        if f.shape != (len(ARM_JOINTS),) or not np.all(f > 0):
+            raise ValueError(f"servo spread needs {len(ARM_JOINTS)} positive factors, got {factors!r}")
+        for i, gid in enumerate(self._ctrl):
+            model.actuator_gainprm[gid, 0] = self._kp[i] * f[i]
+            model.actuator_biasprm[gid, 1] = -self._kp[i] * f[i]
 
     def control_point(self, data: mujoco.MjData) -> np.ndarray:
         """The point `step` drives: the grasp point when an orientation task is on, else the

@@ -389,6 +389,65 @@ def test_the_grasp_point_is_not_the_point_the_solve_servos(scene):
         body.align_axis = None
 
 
+# ---- R118: actuator realism, and how little latency this control survives ------------
+
+def test_the_actuator_realism_knobs_are_off_by_default():
+    body = make_body("so101")
+    assert body.latency_steps == 0
+
+
+def test_a_servo_gain_spread_of_a_fifth_changes_nothing(so101_asset_dir, repo_root):
+    """Measured on four rooms at +-5, 10 and 20 % spread between the five joints: 3 of 3
+    every time. The control is insensitive to gain spread, which is the good news in R118.
+    """
+    import numpy as np
+
+    from mujoco_puzzle_gym.check import check_solver
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+    try:
+        env.body.set_servo_spread(env.model, [1.126, 0.801, 1.143, 0.813, 1.092])
+        res = check_solver(env, seeds=2, need=2)
+        assert res["successes"] == 2, res
+    finally:
+        env.close()
+
+
+def test_this_control_has_about_one_control_step_of_latency_margin(so101_asset_dir, repo_root):
+    """The number R118 exists to produce, and it is not comfortable.
+
+    Measured over four rooms, control steps of delay on the joint targets (0.02 s each):
+
+        latency 0:  pick_and_place 3/3 7.7 s, weigh_it_down 3/3 7.1, build_a_tower 3/3 9.8,
+                    fetch_the_steel 3/3 9.2
+        latency 1:  the first three still solve but 2.5-3x slower (20.4, 18.8, 22.9 s);
+                    fetch_the_steel is already 0/3
+        latency 2:  all four 0/3
+
+    So the shipped control tolerates about 20 ms and nothing at 40 ms, which is the order a
+    real servo bus costs. That is a sim-to-real finding, not a knob. If the control improves,
+    change the numbers here and say so in the spec.
+    """
+    from mujoco_puzzle_gym.check import check_solver
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.task import load_task
+
+    def solves(latency, seeds=2):
+        env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+        try:
+            env.body.latency_steps = latency
+            return check_solver(env, seeds=seeds, need=seeds)["successes"]
+        finally:
+            env.close()
+
+    assert solves(0) == 2
+    assert solves(1) == 2, "one step used to be survivable; if it is not, say so"
+    assert solves(2) == 0, ("two steps of latency used to kill it; if the control got "
+                            "better, update this and the spec")
+
+
 # ---- R105: it lifts what it holds, so it places over a wall rather than through it ----
 
 def test_only_this_body_lifts_what_it_holds():
