@@ -637,7 +637,6 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/conveyor_triage` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 17.0초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/build_a_tower` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 9.8초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/lever_arm` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 7.4초** | 이름 거부 `['grab']` | 예 |
-| `puzzles/tabletop/odd_one_out` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 11.9초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/pick_and_place` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 16.3초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/reach_target` | 통과 5/5, 1.5초 | 해답 0/5 | 통과 5/5, 0.6초 | 해답 0/5 | 아니오 |
 
@@ -1786,7 +1785,6 @@ def majority(inputs, state, dt):
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
 - `puzzles/tabletop/lever_arm`
-- `puzzles/tabletop/odd_one_out`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tabletop/weigh_it_down`

@@ -631,7 +631,6 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/conveyor_triage` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 17.0 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/build_a_tower` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 9.8 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/lever_arm` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 7.4 s** | 名前拒否 `['grab']` | はい |
-| `puzzles/tabletop/odd_one_out` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 11.9 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/pick_and_place` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 16.3 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/reach_target` | 通過 5/5, 1.5 s | 解法 0/5 | 通過 5/5, 0.6 s | 解法 0/5 | いいえ |
 
@@ -1780,7 +1779,6 @@ def majority(inputs, state, dt):
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
 - `puzzles/tabletop/lever_arm`
-- `puzzles/tabletop/odd_one_out`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tabletop/weigh_it_down`
