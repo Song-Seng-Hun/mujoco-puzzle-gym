@@ -75,7 +75,10 @@ M2_PARTS = [
     ({"type": "laser", "pos": [0, -0.3], "to": [0, 0.3]}, ["walk"]),
     ({"type": "pressure", "pos": [0, 0]}, ["grab"]),
     ({"type": "receptacle", "pos": [0, 0]}, ["grab"]),
-    ({"type": "checkpoint", "pos": [0, 0]}, ["walk"]),
+    # `checkpoint` asked for `walk` until R129, and it was an over-declaration: a flag is
+    # on when the body comes within `radius`, and a fixed arm's position is its gripper.
+    # The ask had closed staged training to the arm entirely.
+    ({"type": "checkpoint", "pos": [0, 0]}, []),
     ({"type": "gate", "expr": "1"}, []),
     ({"type": "counter", "up": "p"}, []),
     ({"type": "transmitter", "pos": [0, 0], "in": ["p"], "band": "x"}, []),
@@ -95,7 +98,7 @@ def test_m2_parts_merge_declared_capabilities(asset_dir, repo_root, tmp_path):
         raw["parts"].append({"name": "chk", "type": "checkpoint", "pos": [-0.7, -0.6],
                              "requires_body": ["grip"]})
     env = PuzzleEnv(room=_variant(repo_root, tmp_path, edit))
-    assert env.parts["chk"].requires_body == ["walk", "grip"]
+    assert env.parts["chk"].requires_body == ["grip"]      # the part itself asks for none (R129)
     res = check_body(env)
     assert not res["ok"] and res["missing"] == {"chk": ["grip"]}
     env.close()
