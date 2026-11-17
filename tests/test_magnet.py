@@ -127,6 +127,24 @@ def test_a_magnet_without_damping_throws_the_object_past_the_pad(make):
     assert damped.signals.get("coil") == 1
 
 
+def test_a_magnet_names_a_power_that_cannot_work(make):
+    """Both ends of the band it has to sit in, reported and not failed (the form
+    `trap/wind.py` uses): under the object's weight it never starts it moving, and over
+    twice that weight with no damping it throws it out of the field."""
+    from mujoco_puzzle_gym.check import check_parts
+
+    weak = make([box("b", 0.3, 0.0, mass=0.03), coil(power=0.1, accept=["b"])], name="weak")
+    assert "will not slide it" in check_parts(weak)["warnings"][0]
+
+    wild = make([box("b", 0.3, 0.0, mass=0.03), coil(power=4.0, damp=0.0, accept=["b"])],
+                name="wild")
+    assert "out of the field" in check_parts(wild)["warnings"][0]
+
+    fine = make([box("b", 0.3, 0.0, mass=0.03), coil(power=4.0, damp=1.0, accept=["b"])],
+                name="fine")
+    assert "warnings" not in check_parts(fine)
+
+
 def test_a_wind_cannot_hold_an_object_in_place(make):
     """R104: the measurement that justified the part. A wind's force is one constant
     direction, so the box it moves never stops - it crosses the zone and keeps going.

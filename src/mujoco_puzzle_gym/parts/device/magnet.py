@@ -187,9 +187,15 @@ class Magnet(Part):
             if part is None or getattr(part, "_bid", -1) < 0:
                 continue
             mass = float(env.model.body_subtreemass[part._bid])
-            if power and mass and power < mass * g:
+            if not (power and mass):
+                continue
+            if power < mass * g:
                 out.append(f"part {self.name!r}: power {power:g} N is under the weight of "
                            f"{name!r} ({mass * g:.2f} N); it will not slide it along the floor")
+            elif not float(self.live["damp"]) and power > 2 * mass * g:
+                out.append(f"part {self.name!r}: power {power:g} N with no `damp` is over twice "
+                           f"the weight of {name!r} ({mass * g:.2f} N); it will throw it past "
+                           f"the pad and out of the field")
         return out
 
     def target_mask(self, grid):
