@@ -85,3 +85,132 @@ def ball_progress(env):
     line = np.asarray(t.push_target(env, b)) - b
     n = float(np.linalg.norm(line))
     return float(best.vel(env.data)[:2] @ line / n) / env.hz if n > 1e-6 else 0.0
+
+
+@register_reward("grasp_progress", replace=True)
+def grasp_progress(env):
+    """Metres per env step the grab point closes on the object it still has to pick up
+    (R127). The carry task's missing shaping term, in the shape `ball_progress` set.
+
+    Why it is needed: `progress` pays for the body approaching its **current target**, and
+    in a carry room that target is the goal - measured on `pick_by_hand`. Nothing in the
+    reward pointed at the object, and measured over 4.36 M steps a policy never picked it
+    up at all (`stage` 0.0 throughout).
+
+    Two things it has to get right, both of them mistakes in the first version:
+
+      - **"this object is done" comes from the destination, not the object.** An object's
+        own `satisfied()` is False for ever (a cube has no condition of its own), so the
+        term went on charging for leaving a block that was already in the box: measured, a
+        scripted episode that grabs, carries and places summed **-1.736** - the term
+        punished the solution. Destinations keep an `inside` list, which is what
+        `ball_progress` reads too.
+      - **distance is measured from the grab site, not from `BodyState.pos`.** That point
+        moves between the wrist and the grasp point as the grasp pose toggles (R122, R125):
+        measured jumps of 0.075, 0.046, 0.018 and 0.011 m in an episode's first four steps,
+        which a distance reward would read as travel.
+
+    Zero while something is held - carrying it is `progress`'s job from there - and zero
+    when every object is delivered.
+    """
+    import numpy as np
+
+    site = getattr(env.world, "beak_site", None)
+    if site is None:
+        return 0.0
+    here = np.asarray(env.data.site_xpos[site], dtype=float)
+    delivered = set()
+    for part in env.parts.values():
+        delivered.update(getattr(part, "inside", ()) or ())
+    held = set(getattr(env.world, "held", ()) or ())
+    last = getattr(env, "_grasp_last", None)
+    if last is None:
+        last = env._grasp_last = {}
+    best, best_d, holding = None, np.inf, False
+    for part in env.parts.values():
+        if not hasattr(part, "handle_points") or part.parked:
+            continue
+        pts = np.asarray(part.handle_points(env.data), dtype=float)
+        d = float(np.min(np.linalg.norm(pts - here, axis=1)))
+        if any(b in held for b in part.root_body_ids(env.model)):
+            last[part.name] = d                     # keep it current, pay nothing
+            holding = True
+            continue
+        if part.name in delivered:
+            last.pop(part.name, None)
+            continue
+        if d < best_d:
+            best, best_d = part, d
+    if holding or best is None:
+        return 0.0
+    was = last.get(best.name)
+    last[best.name] = best_d
+    return 0.0 if was is None else float(was - best_d)
+
+
+@register_reward("grasp_hold", replace=True)
+def grasp_hold(env):
+    """1 the **first** time each object is held in an episode (R127).
+
+    The first version paid every time anything became held, and called that honest because
+    a contact hold can be dropped by physics. It is honest and it is farmable: measured, a
+    policy learned to open and shut the jaw on the block over and over and collected
+    **578** of this term per episode in the last window of a 20-minute run, with a success
+    rate of 0.0. Paying once per object per episode leaves the event rewarded and the loop
+    worthless.
+    """
+    held = set(getattr(env.world, "held", ()) or ())
+    state = getattr(env, "_grasp_paid", None)
+    if state is None or state[0] > env.steps:          # a new episode: `steps` went back
+        state = env._grasp_paid = [env.steps, set()]
+    state[0] = env.steps
+    fresh = held - state[1]
+    state[1] |= held
+    return float(bool(fresh))
+
+
+@register_reward("carry_progress", replace=True)
+def carry_progress(env):
+    """Metres per env step a **held** object closes on the place it belongs (R127).
+
+    The last gap in a carry room's reward. `grasp_progress` gets the gripper to the object
+    and `grasp_hold` pays for taking it; from there `progress` is supposed to take over, but
+    it pays for the **body** approaching its current target, and in `pick_by_hand` that
+    target is the goal rather than the box - so nothing pointed the carry at the
+    destination. Measured with the first two terms alone: a `sensors_only` policy learned to
+    pick the block up in 0.98 of episodes in 20 minutes, from never, and still delivered
+    none of them.
+
+    The destination is the first part that names the held object in its `objects:` and is
+    not satisfied yet. Zero when nothing is held.
+    """
+    import numpy as np
+
+    held = set(getattr(env.world, "held", ()) or ())
+    if not held:
+        return 0.0
+    last = getattr(env, "_carry_last", None)
+    if last is None:
+        last = env._carry_last = {}
+    for part in env.parts.values():
+        if not hasattr(part, "handle_points") or part.parked:
+            continue
+        if not any(b in held for b in part.root_body_ids(env.model)):
+            continue
+        where = np.asarray(part.pos(env.data)[:2], dtype=float)
+        for dest in env.parts.values():
+            # Destinations say what they take with `accepts(obj)` - `accept:` in a room -
+            # and that is what to ask: the first version looked for an `objects:` list and
+            # found nothing, so the term summed 0.000 over a solved episode and failed its
+            # own acceptance test.
+            takes = getattr(dest, "accepts", None)
+            if not callable(takes) or not takes(part):
+                continue
+            if getattr(dest, "satisfied", None) is not None and dest.satisfied():
+                continue
+            d = float(np.linalg.norm(where - np.asarray(dest.xy, dtype=float)))
+            was = last.get(part.name)
+            last[part.name] = d
+            return 0.0 if was is None else float(was - d)
+        return 0.0
+    return 0.0

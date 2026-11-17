@@ -155,6 +155,7 @@ class Beak(Part):
         if self.held is not None:
             if cmd <= GRAB_ON:
                 self.held, self._contact_lost = None, 0
+                world.held = set()
             elif self._pinched(model, data, world, self.objects[self.held]):
                 self._contact_lost = 0
             else:
@@ -162,6 +163,7 @@ class Beak(Part):
                 if self._contact_lost > CONTACT_GRACE:
                     dropped[self.held] = True
                     self.held, self._contact_lost = None, 0
+                    world.held = set()
             return
         if cmd <= GRAB_ON:
             self.armed = True
@@ -180,6 +182,12 @@ class Beak(Part):
                     self.too_heavy = True
                 else:
                     self.held, self._contact_lost = i, 0
+                    # `World.held` as well, not just our own index (R127). It is what floor
+                    # buttons, pressure plates, zones and receptacles subtract so a carried
+                    # object is not counted as resting on them (R5) - the weld path sets it
+                    # in `_grab` and the contact path did not, so a held object still read
+                    # as delivered, and `beak.holding` never fired for anything watching it.
+                    world.held = {int(model.body_rootid[obj.handle_bid])}
                     # The grasp pose has done its job; holding it through the carry keeps a
                     # row of the solve busy and the place suffers for it (R125): measured,
                     # `place` ended with the block outside the box in 4 of 4 episodes.
