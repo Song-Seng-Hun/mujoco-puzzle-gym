@@ -633,6 +633,9 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | 방 | 작은 몸 | 네발 | 팔 | 휴머노이드 | 배타적 |
 |---|---|---|---|---|---|
 | `puzzles/tabletop/weigh_it_down` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 11.5초** | 이름 거부 `['grab']` | 예 |
+| `puzzles/tabletop/dead_wedge` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 11.2초** | 이름 거부 `['grab']` | 예 |
+| `puzzles/tabletop/conveyor_triage` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 17.0초** | 이름 거부 `['grab']` | 예 |
+| `puzzles/tabletop/build_a_tower` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 9.8초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/pick_and_place` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 16.3초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/reach_target` | 통과 5/5, 1.5초 | 해답 0/5 | 통과 5/5, 0.6초 | 해답 0/5 | 아니오 |
 
@@ -1731,6 +1734,9 @@ def majority(inputs, state, dt):
 - `puzzles/roller/roll_delivery`
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
+- `puzzles/tabletop/build_a_tower`
+- `puzzles/tabletop/conveyor_triage`
+- `puzzles/tabletop/dead_wedge`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tabletop/weigh_it_down`

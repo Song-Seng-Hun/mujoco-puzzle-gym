@@ -643,6 +643,9 @@ Measured 2026-11-17, 5 seeds, each with the room's own task file:
 | Room | small body | quadruped | arm | humanoid | exclusive |
 |---|---|---|---|---|---|
 | `puzzles/tabletop/weigh_it_down` | solver 0/5 | refused `['grab']` | **pass 5/5, 11.5 s** | refused `['grab']` | yes |
+| `puzzles/tabletop/dead_wedge` | solver 0/5 | refused `['grab']` | **pass 5/5, 11.2 s** | refused `['grab']` | yes |
+| `puzzles/tabletop/conveyor_triage` | solver 0/5 | refused `['grab']` | **pass 5/5, 17.0 s** | refused `['grab']` | yes |
+| `puzzles/tabletop/build_a_tower` | solver 0/5 | refused `['grab']` | **pass 5/5, 9.8 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/pick_and_place` | solver 0/5 | refused `['grab']` | **pass 5/5, 16.3 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/reach_target` | pass 5/5, 1.5 s | solver 0/5 | pass 5/5, 0.6 s | solver 0/5 | no |
 

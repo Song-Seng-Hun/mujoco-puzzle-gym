@@ -63,6 +63,9 @@ APPROACH = 0.3       # [m] approach point in front of a handle / wall plate
 AT_POINT = 0.06      # [m] approach point reached
 WAIT_MOVING = 3.0    # [s] longest a grab waits for a moving object to come to rest
 MOVING_STEP = 0.002  # [m] moved per control step: this much means it is still being carried
+STACK_TOL = 0.02     # [m] how close a stacking place gets before it opens (R88)
+STACK_STILL = 0.4    # [s] it stands this long over the tower before opening
+STACK_OPEN = 0.6     # [s] and this long with the jaw open before the sub-goal ends
 PLACE_TOL = 0.03     # [m] cube centre this close to the target centre: let go
 HANG_TOL = 0.75      # hook: let go once the leading handle is this part of `tolerance` from the
                      # peg tip (or past it)
@@ -278,6 +281,11 @@ class Carrier:
     def place_act(self, cube, part, drop: bool = False) -> np.ndarray | None:
         env = self.env
         holding = self.held() is cube
+        if holding and hasattr(part, "place_height"):
+            return self._stack_act(cube, part)
+        if not holding and hasattr(part, "place_height") and self.phase == "stack":
+            self.phase = "away"
+
         if getattr(part, "shape", None) == "hook":
             return self._hang_act(cube, part, holding)
         target = np.asarray(part.xy, dtype=float)
@@ -309,6 +317,47 @@ class Carrier:
                 act = self._walk(target)
                 return act if act is not None else self.steer(target, SLOW)
         return self._let_go(cube, part)
+
+    def _stack_act(self, cube, part) -> np.ndarray | None:
+        """Put `cube` down **on** what is already on `part`, rather than beside it.
+
+        A path of its own, taken only by a part that answers `place_height` - today only
+        `stack` - so the rooms that place into a receptacle or a zone are untouched by
+        construction. They need the opposite of this: measured, what finishes their place is
+        the carry charging the target at full speed, pushing the object in (`A8` in
+        `docs/specs/2026-11-17-loaded-carry/spec.md`). A tower would be knocked over by that,
+        so this creeps instead, stops, and only then opens.
+
+        Measured without it, with the ordinary place: both blocks land on the patch and
+        0.083 m apart, which the part reads as a row and refuses, because the place lets go
+        as soon as the object is inside a wide patch's tolerance.
+        """
+        env = self.env
+        self.grab = 1.0
+        self.phase = "stack"
+        aim = np.asarray(part.place_xy(cube), dtype=float)
+        self._hold_tip_at(float(part.place_height(cube)))
+        err = float(np.linalg.norm(cube.pos(env.data)[:2] - aim))
+        if err > STACK_TOL:
+            self._settle = 0
+            # Aim the grab point, not the object: `steer` drives where the body is, and the
+            # object hangs wherever the grab left it - for this body up to 0.06 m to one
+            # side. Measured while aiming the object's target directly: the error flattened
+            # at 0.056-0.066 m and oscillated there, because the grab point was sitting on
+            # the target and the block beside it.
+            hold = cube.pos(env.data)[:2] - env.body_state.pos[:2]
+            return self.steer(aim - hold, SLOW)
+        self._settle += 1                      # over it: stand still, let it stop swinging
+        if self._settle <= STACK_STILL * env.hz:
+            return self._stand()
+        # Open, and keep standing while it opens. Returning None in the same step as
+        # `grab = -1.0` never opens anything: the sub-goal ends, the next one starts with
+        # `grab = 1.0`, and the object is carried into it still held - measured, the first
+        # block was dragged 0.39 m into the second grab and shoved the second block along.
+        self.grab = -1.0
+        if self._settle <= (STACK_STILL + STACK_OPEN) * env.hz:
+            return self._stand()
+        return None
 
     def _hang_act(self, obj, hook, holding: bool) -> np.ndarray | None:
         """Bring `obj`'s leading handle to the peg tip, let go there, walk off."""

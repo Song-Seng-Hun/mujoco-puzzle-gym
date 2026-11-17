@@ -706,7 +706,13 @@ per step, walk only once the block is clear. **It still tears** (0.30 -> 0.54 ->
 | 55 | 0.0240 | 0.0213 | 0.0122 |
 | 58 | 0.0270 | 0.0221 | 0.0124 |
 
-**The command rises 8 mm, the tip follows by 2 mm, and the block does not move at all.** The
+**The command rises 8 mm, the tip follows by 2 mm, and the block does not move at all.**
+
+**[Correction 2026-11-17]** That is a fact about radius **0.065 m** - folded in against the
+base - and not about the arm. Measured again at the radius its own solution picks from, **the
+arm does lift**: at r=0.279, ramping the head level 1 -> 0 over about 25 steps takes the block
+from z 0.015 to **0.125 m** with the hold's force staying at 0.20 N against a 3 N limit. Where
+the paragraphs below read "cannot lift", read them as being about this radius. The
 inverse kinematics is saturated, and the gap it leaves loads the weld past 3 N. The radius
 here is **0.065 m** - directly in front of the base, a folded posture. (In the room that
 works, `pick_and_place`, the grab happens at radius 0.277 m.)
@@ -868,6 +874,51 @@ spot the grid calls good - which the wait now lets it grab - and the box moved t
 carry vector that does work (y 0.14, 0.10, 0.06, 0.02), every one is 0/5. The block gets
 further, 0.303 -> 0.187 m, and stalls there. The conclusion holds **after** the pick spot was
 matched.
+
+### Solved - the receiver's **wall** was the culprit (R70 and R74, 2026-11-17)
+
+Every failure above shares one thing: the receiving part was a **box with a rim**. Take that
+away and the numbers invert - **dragging the block into a wide flat zone (`object_zone`,
+0.24 m) scores 22 of 25** on the grid, against 7 with the box. No raised carry needed. What
+the arm could not pass was a 0.06 m wall; with no wall, sliding it along the floor is enough.
+
+So the wedge room ships (`puzzles/tabletop/dead_wedge`): **20/20 at a mean of 11.2 s**, **0/5**
+with the demo cut to one `goto goal` step, and **exclusive** under `--all-bodies` (the small
+body fails the solver 0/5; the quadruped and the humanoid are refused by name). Three of the
+room's numbers are measurements and each failed first:
+
+- **The bin has no rim** - with a box, 49 destination positions and none solving.
+- **The belt stops short of the envelope** - 0.6 m of it pushed the block to radius 0.478
+  against a reach of 0.480, where the handle is outside and nothing is picked up. At 0.4 m the
+  hand-over sits at radius 0.30.
+- **The bin sits near the hand-over** - across the table (0.49 m) the carry gives up 0.13 m in.
+  At 0.18, 0.12 it solves, and so do 0.26, 0.20 and 0.10, 0.06.
+
+**The stacking room opened too - but it needed a place of its own**
+(`puzzles/tabletop/build_a_tower`, R88): **20/20 at a mean of 9.8 s**, 0/5 demo-cut, exclusive.
+The rooms that place into a receiver are finished by the carry *charging* the target, and
+correcting that takes two of them to 0/20 (A8 in the spec); a tower needs the opposite - creep,
+stop, then open. `Carrier._stack_act` takes that path only for a part that answers
+`place_height`. Three things were wrong first, each measured: the aim is **the top of the
+stack**, not the patch's centre (aiming at the centre left the two blocks 0.083 m apart); the
+aim has to be the **object's** target with the hold's offset taken out (`steer` drives the grab
+point, and the object hangs up to 0.06 m to one side - aiming it directly flattened the error
+at 0.056-0.066 m and oscillated); and the **open has to run for a step** (ending the sub-goal in
+the same step as `grab = -1.0` lets the next one close the jaw again, and the first block was
+dragged 0.39 m into the second grab).
+
+**The triage room falls out of the same finding** (`puzzles/tabletop/conveyor_triage`, R74):
+**two** belts bring one block each out of the wedge, from either side, and each goes to its own
+zone - **20/20 at a mean of 17.0 s**, 0/5 demo-cut, exclusive. Two measurements are new here:
+**one belt per block** (both on one belt arrive together, ram each other at its end and squeeze
+sideways to y 0.46, radius 0.46, putting the handle past the 0.48 m reach - slowing the belt to
+0.025 m/s does not help), and the zones sit **where the carry actually leaves the blocks** (the
+first version had the second block land 0.023 m outside its zone, so the room passed four steps
+and stalled at the goal).
+
+
+**The paragraphs below predate this finding**: "cannot be rescued by room design" assumed a
+box, and that assumption was the thing that was wrong.
 
 **And the wedge room cannot be rescued by room design - that is measured.** In the geometry
 where the belt hands the block over at r=0.300, the spot where the grab works, the receptacle

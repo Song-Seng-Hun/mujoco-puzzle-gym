@@ -78,6 +78,7 @@ class Stack(Part):
         self.on = False
         self.count = 0
         self._since = None                      # `data.time` the stack has rested since
+        self._data = None                       # last `update`'s data, for the place helpers
         self._on_out = self.outputs[:-1]        # the 0/1 channels (the last is `.count`)
 
     def build(self, spec):
@@ -93,6 +94,7 @@ class Stack(Part):
         self._since = None
 
     def update(self, model, data, body):
+        self._data = data        # the place helpers are asked outside `update` (carry.py)
         if not self.enabled():
             self.on = False
             for ch in self._on_out:
@@ -157,6 +159,28 @@ class Stack(Part):
         mid = obj.marker.id if getattr(obj, "marker", None) is not None else None
         return any(e == obj.name or e == getattr(obj, "object_kind", None)
                    or (type(e) is int and e == mid) for e in self.accept)
+
+    def _top_of(self, obj):
+        """((x, y), centre z) of the highest thing already counted here, or None."""
+        best = None
+        for rid, pos in candidates(self, self._data, None, "object", self.accept or None):
+            if in_rect(pos, self.xy, self.half) and (best is None or pos[2] > best[1]):
+                best = (np.asarray(pos[:2], dtype=float), float(pos[2]))
+        return best
+
+    def place_xy(self, obj):
+        """Where a place aims: the top of the stack if there is one, else the patch centre.
+        The centre is the wrong target for the second object - a stack is built on what is
+        already there, and aiming at the middle of a wide patch put the two side by side,
+        0.083 m apart, which this part reads as a row and refuses."""
+        top = self._top_of(obj) if self._data is not None else None
+        return top[0] if top is not None else np.asarray(self.xy, dtype=float)
+
+    def place_height(self, obj) -> float:
+        """The height to let go at [m]: on top of what is already here, else the floor."""
+        size = float(getattr(obj, "size", 0.03))
+        top = self._top_of(obj) if self._data is not None else None
+        return (top[1] + size) if top is not None else size / 2
 
     def place_tolerance(self, obj) -> float:
         """Where the scripted place lets go: anywhere inside the patch, less a margin for
