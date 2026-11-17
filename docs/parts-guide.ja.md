@@ -171,6 +171,38 @@ parts:
 - 値の連結`bind`: すべての部品が受け取る値です。`bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}`のように、実行中に変えられる数値をチャンネルに直線でつなぎ、体のステップごとに値の範囲で切って適用します。同じ値を`bind`と設定変更器の両方が変える場合は拒否します。
 - 解の順序と解答は、プラットフォームと回転台のマス、せり上がる柱のマスを避けて進みます。体が乗ったまま耐えられるかは歩行ポリシーが学んだ範囲の外なので、記録だけを取ります。2026-11-12の記録: プラットフォーム0.1・0.3 m/s、ベルト0.1・0.2 m/sで3秒間転びませんでした。
 
+## 光
+
+光は**向きを持つ経路**です。`laser`(R5)が「何かがビームを遮ったか」を問うのに対し、この家族は
+「光が届いたか、どれだけ届いたか」を問います。
+
+```yaml
+parts:
+  - {name: lamp, type: emitter, pos: [-1.3, 0.8], yaw: 0.0, power: 1.0, bounces: 1}
+  - {name: tilt, type: mirror, pos: [0.2, 0.8], yaw: 0.0, width: 0.24}
+  - {name: eye, type: photocell, pos: [0.2, 0.2], min_power: 0.5}
+```
+
+- 発光器(`emitter`)は`height`の高さで`yaw`の向きに光線を一本出し、板に当たると曲がる・減るかたちで
+  続きます。チャンネルは光線が光電池に届くと1です。
+- 光電池(`photocell`)は`<名前>`(届いた強さが`min_power`以上なら1)と`<名前>.power`(実数)を書きます。
+  部屋は「届いたか」と「どれだけか」を別々に問えます。
+- 板三つの`yaw`は**板が向く方向(法線)**です。+xへ進む光線は`yaw: -45`の鏡で+yへ出ます。`width`は
+  法線に垂直な幅です。三つとも壁のように体と物体を遮ります。
+- 鏡(`mirror`)は`1 - loss`を残して曲げます。フィルター(`filter`)は曲げずに`transmission`を掛けます。
+  スプリッター(`splitter`)は`split`をそのまま通し、`(1 - split)(1 - loss)`を反射します。
+- `bounces`は**曲がる回数**です。フィルターを直進するのは数えません(最初は数えていて、そのため
+  `bounces: 1`の部屋でフィルターの先の光電池がどの設定でも0.000を読み、対照が空になりました)。
+  経路全体の線は16本で打ち切ります — スプリッターは枝を増やすので深さだけでは足りません。
+- **壁と閉じた扉はすでにシャッターです。** 光線の上に内壁を一枚置けば光は切れます
+  (`tests/test_optics.py::test_a_closed_door_is_already_a_shutter`)。だからフィルターの役目は
+  オンオフではなく**減らすこと**で、`min_power`を問う光電池の隣でしかパズルになりません。
+- `yaw`・`split`・`transmission`は実行中に変えられるので、設定変更器(`setter`)や`bind`で狙いを体に
+  選ばせられます。解法順の判定は光線を追えないため、発光器は「部屋が宣言した調節器が入れば光は
+  届く」とだけ主張します(どの値が正解かは解法スクリプトが測ります)。
+- 部屋は二つ: `puzzles/light/aim_the_mirror`(20/20、11.0秒 — 答えが**向き**である最初の部屋)と
+  `puzzles/light/split_the_beam`(20/20、11.1秒 — 一本の光を扉二つが分け合い、0.5では両方閉じたまま)。
+
 ## 罠
 
 罠(`trap`分類)は体を押したり、倒したり、落としたりします。どれも`in`の信号がオンの間だけ動き(`in`がなければ常に)、強さは`power`一つで決めます。`enabled: 0`で止まります(`in`のない穴は常に開いていて止められず、`enable`や`enabled`を書くと拒否します。切り替えるには`in`を与えます)。`power`と`enabled`は実行中に変えられるので、設定変更器、`bind`、難易度段階(後述)で調整します。
@@ -631,6 +663,9 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/conveyor_triage` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 17.0 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/build_a_tower` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 9.8 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/lever_arm` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 7.4 s** | 名前拒否 `['grab']` | はい |
+| `puzzles/tabletop/fetch_the_steel` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 8.1 s** | 名前拒否 `['grab']` | はい |
+| `puzzles/light/aim_the_mirror` | **通過 5/5, 11.0 s** | 解法 0/5 | 名前拒否 `['walk']` | 解法 0/5 | はい |
+| `puzzles/light/split_the_beam` | **通過 5/5, 11.1 s** | 解法 0/5 | 名前拒否 `['walk']` | 解法 0/5 | はい |
 | `puzzles/tabletop/pick_and_place` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 16.3 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/reach_target` | 通過 5/5, 1.5 s | 解法 0/5 | 通過 5/5, 0.6 s | 解法 0/5 | いいえ |
 
@@ -1061,6 +1096,27 @@ def majority(inputs, state, dt):
 | `break_height` | float | m | `0.05` | [0.005, 2] | 可 | a contact starting as fast as a drop from this height breaks it |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: a broken egg fails the episode |
 
+### `emitter`
+
+役割`sensor`、更新段階`input`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | 可 | direction the ray leaves in (0: +x) |
+| `power` | float |  | `1.0` | [0, 100] | 可 | power it sends |
+| `bounces` | int |  | `2` | [0, 8] |  | how often one path may turn; going straight through a filter is free |
+| `height` | float | m | `0.06` | [0.02, 0.5] |  | beam height |
+
+### `filter`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | 可 | direction the panel faces (its normal; 0: +x) |
+| `width` | float | m | `0.12` | [0.03, 1] |  | width across the normal |
+| `transmission` | float |  | `0.5` | [0, 1] | 可 | share of the power that gets through |
+
 ### `floor_tile`
 
 役割`prop`、更新段階`device`。
@@ -1227,6 +1283,29 @@ def majority(inputs, state, dt):
 | `axis` | enum |  | `y` | `x`, `y` |  | direction the bar lies along |
 | `bottom` | float | m | `0.228` | [0.21, 0.246] |  | underside height; measured window: crouched head 0.20 m, rolling head 0.256 m |
 
+### `magnet`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `radius` | float | m | `0.35` | [0.05, 2] |  | objects nearer than this are pulled |
+| `power` | float | N | `1.0` | [0, 20] | 可 | force on each accepted object, toward the post |
+| `hold` | float | m | `0.06` | [0.02, 0.5] |  | inside this the pull tapers to zero and the channel reads 1 |
+| `height` | float | m | `0.2` | [0.02, 2] |  | objects count while their centre is lower than this |
+| `damp` | float | N s/m | `0.4` | [0, 20] | 可 | force against the object's own speed, so it settles instead of overshooting |
+| `accept` | list |  | `[]` |  |  | object parts it pulls (empty: every object) |
+
+### `mirror`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | 可 | direction the panel faces (its normal; 0: +x) |
+| `width` | float | m | `0.12` | [0.03, 1] |  | width across the normal |
+| `loss` | float |  | `0.05` | [0, 0.9] | 可 | share of the power lost in the reflection |
+
 ### `npc`
 
 役割`prop`、更新段階`device`。
@@ -1263,6 +1342,14 @@ def majority(inputs, state, dt):
 | `yaw` | float | deg | `0.0` | [-180, 180] |  | swing direction |
 | `period` | float | s | `1.6` | [0.3, 10] | 可 | one full swing |
 | `power` | float | deg | `40.0` | [0, 80] | 可 | swing amplitude while active |
+
+### `photocell`
+
+役割`sensor`、更新段階`input`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `min_power` | float |  | `0.3` | [0, 100] | 可 | power needed to read 1 |
 
 ### `pillar`
 
@@ -1507,6 +1594,17 @@ def majority(inputs, state, dt):
 | `thickness` | float | m | `0.03` | [0.01, 0.1] |  |  |
 | `power` | float | deg/s | `90.0` | [-720, 720] | 可 | turn rate while active (+: counter-clockwise) |
 
+### `splitter`
+
+役割`prop`、更新段階`device`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | 可 | direction the panel faces (its normal; 0: +x) |
+| `width` | float | m | `0.12` | [0.03, 1] |  | width across the normal |
+| `split` | float |  | `0.5` | [0, 1] | 可 | share of the power that carries straight on; the rest reflects |
+| `loss` | float |  | `0.1` | [0, 0.9] | 可 | share of the reflected power lost |
+
 ### `spring`
 
 役割`prop`、更新段階`device`。
@@ -1717,6 +1815,7 @@ def majority(inputs, state, dt):
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
 | `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
 | `device/low_bar` | `low_bar` | `length: 1.5`, `axis: y`, `bottom: 0.228` |
+| `device/magnet` | `magnet` | `radius: 0.4`, `power: 1.0`, `damp: 0.4`, `hold: 0.12` |
 | `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
@@ -1796,6 +1895,8 @@ def majority(inputs, state, dt):
 - `puzzles/circuit/sabotage_order`
 - `puzzles/circuit/wrong_wire`
 - `puzzles/coins/coin_lock`
+- `puzzles/light/aim_the_mirror`
+- `puzzles/light/split_the_beam`
 - `puzzles/roller/brake_strip`
 - `puzzles/roller/crosswind`
 - `puzzles/roller/glide_under`
@@ -1807,6 +1908,7 @@ def majority(inputs, state, dt):
 - `puzzles/tabletop/build_a_tower`
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
+- `puzzles/tabletop/fetch_the_steel`
 - `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`

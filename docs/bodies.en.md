@@ -82,6 +82,8 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `door` | - | o | o | A door that opens on a signal; the room sets the width (§6) |
 | `drawer` | `grab` | o | x | Bite the handle and pull |
 | `egg` | `grab` | o | x | An object picked up with the beak |
+| `emitter` | - | o | o | Sends light; a body in the way cuts it |
+| `filter` | - | o | o | A panel that dims light and blocks like a wall |
 | `floor_tile` | - | o | o | A floor tile; the room sets the height |
 | `gate` | - | o | o | Signals only |
 | `goal` | - | o | o | A position test, with no mechanism to operate |
@@ -93,8 +95,11 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `laundry` | `grab` | o | x | An object picked up with the beak |
 | `lever` | `grab` | o | x | Default `mode: grab`. For `push` see §3 |
 | `low_bar` | `roller` | o | x | A low bar you crouch under (§4) |
+| `magnet` | - | o | o | Pulls objects only; it never takes the body |
+| `mirror` | - | o | o | A panel that bends light and blocks like a wall |
 | `npc` | - | o | o | Moves on its own. The speed warning is relative to the body (§5) |
 | `pendulum` | - | o | o | An obstacle swung by a position servo |
+| `photocell` | - | o | o | Reads the light that arrived (reads only, so it asks for nothing) |
 | `pillar` | - | o | o | A static obstacle |
 | `pin` | `walk` | o | o | A bowling pin, knocked over by the body or a ball |
 | `pit` | - | o | o | A pit. The room sets the size (§6) |
@@ -111,6 +116,7 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `setter` | - | o | o | Signals only |
 | `source` | - | o | o | Signals only |
 | `spinner` | - | o | o | An obstacle turned by a velocity servo |
+| `splitter` | - | o | o | A panel that divides light and blocks like a wall |
 | `spring` | - | o | o | Writes velocity directly (mass-independent, §5) |
 | `stick` | `grab` | o | x | A tool picked up with the beak |
 | `swing_door` | - | o | o | Opens on a signal |

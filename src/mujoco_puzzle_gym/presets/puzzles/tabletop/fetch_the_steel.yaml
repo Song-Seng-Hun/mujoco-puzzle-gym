@@ -1,0 +1,52 @@
+# Fetch the steel (R98): two cubes sit where this body cannot work - inside its reach ring
+# but behind its base - and the magnet brings one of them round into the working sector. It
+# brings `steel` because that is the name in `accept`; `slug`, 0.40 m from the pad and well
+# inside the field, moved **0.11 mm** over the whole episode. The goal does not count until
+# the bin reads the cube (`enable: bin`), and the bin cuts the magnet (`clear: not bin`) so
+# that what is delivered can be put down somewhere else.
+#
+# Measured (M7 R98, 2026-11-17): 20/20 at a mean of 8.1 s. `mpg check --all-bodies` calls it
+# exclusive: two bodies are refused by name for `grab`, the small walking body with a grab
+# fails the solver here (0/5), and the arm passes 5/5.
+#
+# Two negative controls, both measured on this room:
+#
+#   - demo cut to a single `goto goal` step: **0/5** (nothing reaches the bin).
+#   - the same room with `power: 0`: **0/5**, stalled on `grab steel` at demo step 0. So the
+#     room is carried by the magnet, not by a cube the arm could have reached anyway.
+#
+# Three settings here are measurements, and each one failed first:
+#
+#   - **The pad is flat.** The first build put a 9 cm post at `pos`. The cube arrived and
+#     held, and then the jaw fouled the post and never picked it up - the same failure R70
+#     measured on a receptacle's rim. Nothing in this part now stands above 4 mm.
+#   - **`damp` 0.4, not 0.** Pull alone does not deliver: a constant force over the radius
+#     hands the object as much energy as friction takes back, so at 1.0 N the cube crossed
+#     the pad and rested 0.269 m away, outside the field. With damping it rests 4 mm away.
+#   - **`hold` 0.12, not 0.06.** With the shorter taper the cube overshot the pad by 0.12 m
+#     into the bin and *the room solved itself*: the cut-demo control passed 5/5 because the
+#     cube delivered itself into the bin on the way past. 0.08 m delivers to 11 mm but the
+#     grab then fails (0/3); 0.12 and 0.16 both give 3/3 with the control back at 0/3.
+#     Cranking `damp` to 1.0 instead fixes the overshoot and breaks the grab (0/3): the
+#     damping that settles the cube also fights the jaw that lifts it.
+#
+# The delivery point is not free either: swept over 25 positions with `tools/grab_grid.py`,
+# this carry works at 4 of them, all at y = 0.24 (the room's own numbers, measured with the
+# bin where it is). The pad sits in that row.
+name: table_fetch
+size: [1.6, 1.0]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [0.0, 0.0], yaw: 0.0}
+parts:
+  - {name: steel, type: cube, pos: [-0.35, 0.30], size: 0.03, mass: 0.03}
+  - {name: slug, type: cube, pos: [-0.30, 0.42], size: 0.03, mass: 0.03}
+  - {name: coil, type: magnet, pos: [0.01, 0.24], radius: 0.45, power: 1.0, damp: 0.4,
+     hold: 0.12, accept: [steel], enable: clear}
+  - {name: bin, preset: input/object_zone, pos: [0.18, 0.12], size: [0.24, 0.24],
+     objects: [steel]}
+  - {name: clear, preset: logic/not, in: [bin]}
+  - {name: goal, type: goal, pos: [0.10, -0.34], radius: 0.05, enable: bin}
+demo:
+  - grab steel
+  - drop steel bin
+  - goto goal

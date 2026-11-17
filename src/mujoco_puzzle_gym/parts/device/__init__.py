@@ -9,6 +9,8 @@ from .door import Door
 from .goal_net import GoalNet
 from .hitch_station import Anchor, HitchStation
 from .low_bar import LowBar
+from .magnet import Magnet
+from .optics import Filter, Mirror, Splitter
 from .pillar import Pillar
 from .platform import Platform
 from .rope import Rope
@@ -20,5 +22,5 @@ from .trapdoor import Trapdoor
 from .turntable import Turntable
 from .warp import Warp
 
-__all__ = ["AddonStation", "Anchor", "Conveyor", "Destroyer", "Door", "GoalNet", "HitchStation", "LowBar", "Pillar",
+__all__ = ["AddonStation", "Anchor", "Conveyor", "Destroyer", "Door", "GoalNet", "Filter", "HitchStation", "LowBar", "Magnet", "Mirror", "Pillar",
            "Platform", "Rope", "RopeDoor", "Setter", "Spring", "SwingDoor", "Trapdoor", "Turntable", "Warp"]

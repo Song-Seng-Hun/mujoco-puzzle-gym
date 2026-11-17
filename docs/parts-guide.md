@@ -171,6 +171,40 @@ parts:
 - 값 연결 `bind`: 모든 부품이 받는 값입니다. `bind: {speed: {from: lever.angle, map: [-1, 1, 0, 0.3]}}`처럼 실행 중 변경할 수 있는 수 값을 채널에 직선으로 잇고, 매 몸 스텝 값의 범위로 잘라 적용합니다. 같은 값을 `bind`와 설정 변경기가 함께 바꾸면 거절합니다.
 - 풀이 순서와 해답은 플랫폼과 회전판 칸, 솟을 기둥 칸을 피해 갑니다. 몸이 그 위에 탄 채 버티는지는 걷기 정책이 배운 범위 밖이라 기록만 합니다. 2026-11-12 기록: 플랫폼 0.1·0.3 m/s와 띠 0.1·0.2 m/s에서 3초 동안 넘어지지 않았습니다.
 
+## 빛
+
+빛은 **방향이 있는 경로**입니다. `laser`(R5)가 "무언가 빔을 끊었는가"를 묻는 것과 달리, 이 가족은
+"빛이 도착했는가, 얼마나 도착했는가"를 묻습니다.
+
+```yaml
+parts:
+  - {name: lamp, type: emitter, pos: [-1.3, 0.8], yaw: 0.0, power: 1.0, bounces: 1}
+  - {name: tilt, type: mirror, pos: [0.2, 0.8], yaw: 0.0, width: 0.24}
+  - {name: eye, type: photocell, pos: [0.2, 0.2], min_power: 0.5}
+```
+
+- 발광기(`emitter`)는 `height`에서 `yaw` 방향으로 광선 하나를 쏘고, 판을 만나면 꺾이거나 깎인 채
+  이어집니다. 채널은 광선이 광전지에 닿으면 1입니다.
+- 광전지(`photocell`)는 `<이름>`(도착한 세기가 `min_power` 이상이면 1)과 `<이름>.power`(실수)를
+  씁니다. 그래서 방은 "닿았는가"와 "얼마나"를 따로 물을 수 있습니다.
+- 판 셋의 `yaw`는 **판이 바라보는 방향(법선)**입니다. +x로 가는 광선은 `yaw: -45`인 거울에서 +y로
+  나갑니다. `width`는 법선에 수직인 폭입니다. 셋 다 벽처럼 몸과 물체를 막습니다.
+- 거울(`mirror`)은 `1 - loss`를 남기고 꺾습니다. 필터(`filter`)는 꺾지 않고 `transmission`을 곱합니다.
+  스플리터(`splitter`)는 `split`을 그대로 보내고 `(1 - split)(1 - loss)`를 반사합니다.
+- `bounces`는 **꺾이는 횟수**입니다. 필터를 똑바로 지나가는 것은 세지 않습니다(처음에는 세었고,
+  그 때문에 `bounces: 1`인 방에서 필터 뒤 광전지가 어떤 설정에서도 0.000을 읽어 대조가 빈 대조가
+  됐습니다). 경로 전체의 선 수는 16개로 막습니다 — 스플리터는 가지를 늘리므로 깊이만으로는
+  부족합니다.
+- **벽과 닫힌 문은 이미 셔터입니다.** 광선 위에 벽 한 장을 두면 빛이 끊깁니다
+  (`tests/test_optics.py::test_a_closed_door_is_already_a_shutter`). 그래서 필터가 메우는 자리는
+  켜고 끄기가 아니라 **깎기**입니다 — `min_power`를 묻는 광전지 옆에서만 퍼즐이 됩니다.
+- `yaw`·`split`·`transmission`은 실행 중 바꿀 수 있어서, 설정 변경기(`setter`)나 `bind`로 몸이 겨냥을
+  고르게 할 수 있습니다. 풀이 순서 판정은 광선을 따라가지 못하므로, 발광기는 "방이 선언한 조절기가
+  켜지면 빛이 도착한다"고만 말합니다(어느 값이 정답인지는 해답 스크립트가 측정합니다).
+- 방 둘: `puzzles/light/aim_the_mirror`(20/20, 11.0초 — 답이 **방향**인 첫 방)와
+  `puzzles/light/split_the_beam`(20/20, 11.1초 — 빛 하나를 문 둘이 나눠 쓰고, 0.5로 두면 둘 다
+  닫혀 있습니다).
+
 ## 함정
 
 함정(`trap` 분류)은 몸을 밀거나 넘어뜨리거나 떨어뜨립니다. 모두 `in`의 신호가 켜진 동안만 움직이고(`in`이 없으면 늘), 세기는 `power` 하나로 정합니다. `enabled: 0`이면 꺼집니다(`in`이 없는 구덩이는 늘 열려 있어 끌 수 없고, `enable`·`enabled`를 쓰면 거절합니다. 켜고 끄려면 `in`을 주세요). `power`와 `enabled`는 실행 중 바꿀 수 있어서 설정 변경기, `bind`, 난이도 단계(아래)로 조절합니다.
@@ -637,6 +671,9 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/conveyor_triage` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 17.0초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/build_a_tower` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 9.8초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/lever_arm` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 7.4초** | 이름 거부 `['grab']` | 예 |
+| `puzzles/tabletop/fetch_the_steel` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 8.1초** | 이름 거부 `['grab']` | 예 |
+| `puzzles/light/aim_the_mirror` | **통과 5/5, 11.0초** | 해답 0/5 | 이름 거부 `['walk']` | 해답 0/5 | 예 |
+| `puzzles/light/split_the_beam` | **통과 5/5, 11.1초** | 해답 0/5 | 이름 거부 `['walk']` | 해답 0/5 | 예 |
 | `puzzles/tabletop/pick_and_place` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 16.3초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/reach_target` | 통과 5/5, 1.5초 | 해답 0/5 | 통과 5/5, 0.6초 | 해답 0/5 | 아니오 |
 
@@ -1066,6 +1103,27 @@ def majority(inputs, state, dt):
 | `break_height` | float | m | `0.05` | [0.005, 2] | 예 | a contact starting as fast as a drop from this height breaks it |
 | `on_break` | enum |  | `none` | `none`, `fail` |  | fail: a broken egg fails the episode |
 
+### `emitter`
+
+역할 `sensor`, 갱신 단계 `input`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | 예 | direction the ray leaves in (0: +x) |
+| `power` | float |  | `1.0` | [0, 100] | 예 | power it sends |
+| `bounces` | int |  | `2` | [0, 8] |  | how often one path may turn; going straight through a filter is free |
+| `height` | float | m | `0.06` | [0.02, 0.5] |  | beam height |
+
+### `filter`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | 예 | direction the panel faces (its normal; 0: +x) |
+| `width` | float | m | `0.12` | [0.03, 1] |  | width across the normal |
+| `transmission` | float |  | `0.5` | [0, 1] | 예 | share of the power that gets through |
+
 ### `floor_tile`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -1232,6 +1290,29 @@ def majority(inputs, state, dt):
 | `axis` | enum |  | `y` | `x`, `y` |  | direction the bar lies along |
 | `bottom` | float | m | `0.228` | [0.21, 0.246] |  | underside height; measured window: crouched head 0.20 m, rolling head 0.256 m |
 
+### `magnet`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `radius` | float | m | `0.35` | [0.05, 2] |  | objects nearer than this are pulled |
+| `power` | float | N | `1.0` | [0, 20] | 예 | force on each accepted object, toward the post |
+| `hold` | float | m | `0.06` | [0.02, 0.5] |  | inside this the pull tapers to zero and the channel reads 1 |
+| `height` | float | m | `0.2` | [0.02, 2] |  | objects count while their centre is lower than this |
+| `damp` | float | N s/m | `0.4` | [0, 20] | 예 | force against the object's own speed, so it settles instead of overshooting |
+| `accept` | list |  | `[]` |  |  | object parts it pulls (empty: every object) |
+
+### `mirror`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | 예 | direction the panel faces (its normal; 0: +x) |
+| `width` | float | m | `0.12` | [0.03, 1] |  | width across the normal |
+| `loss` | float |  | `0.05` | [0, 0.9] | 예 | share of the power lost in the reflection |
+
 ### `npc`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -1268,6 +1349,14 @@ def majority(inputs, state, dt):
 | `yaw` | float | deg | `0.0` | [-180, 180] |  | swing direction |
 | `period` | float | s | `1.6` | [0.3, 10] | 예 | one full swing |
 | `power` | float | deg | `40.0` | [0, 80] | 예 | swing amplitude while active |
+
+### `photocell`
+
+역할 `sensor`, 갱신 단계 `input`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `min_power` | float |  | `0.3` | [0, 100] | 예 | power needed to read 1 |
 
 ### `pillar`
 
@@ -1512,6 +1601,17 @@ def majority(inputs, state, dt):
 | `thickness` | float | m | `0.03` | [0.01, 0.1] |  |  |
 | `power` | float | deg/s | `90.0` | [-720, 720] | 예 | turn rate while active (+: counter-clockwise) |
 
+### `splitter`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `yaw` | float | deg | `0.0` | [-180, 180] | 예 | direction the panel faces (its normal; 0: +x) |
+| `width` | float | m | `0.12` | [0.03, 1] |  | width across the normal |
+| `split` | float |  | `0.5` | [0, 1] | 예 | share of the power that carries straight on; the rest reflects |
+| `loss` | float |  | `0.1` | [0, 0.9] | 예 | share of the reflected power lost |
+
 ### `spring`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -1722,6 +1822,7 @@ def majority(inputs, state, dt):
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
 | `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
 | `device/low_bar` | `low_bar` | `length: 1.5`, `axis: y`, `bottom: 0.228` |
+| `device/magnet` | `magnet` | `radius: 0.4`, `power: 1.0`, `damp: 0.4`, `hold: 0.12` |
 | `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
@@ -1801,6 +1902,8 @@ def majority(inputs, state, dt):
 - `puzzles/circuit/sabotage_order`
 - `puzzles/circuit/wrong_wire`
 - `puzzles/coins/coin_lock`
+- `puzzles/light/aim_the_mirror`
+- `puzzles/light/split_the_beam`
 - `puzzles/roller/brake_strip`
 - `puzzles/roller/crosswind`
 - `puzzles/roller/glide_under`
@@ -1812,6 +1915,7 @@ def majority(inputs, state, dt):
 - `puzzles/tabletop/build_a_tower`
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
+- `puzzles/tabletop/fetch_the_steel`
 - `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
