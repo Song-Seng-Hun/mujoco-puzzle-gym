@@ -57,6 +57,10 @@ def weld_now(model, data, eq: int, parent: int, child: int) -> None:
     data.eq_active[eq] = 1
 
 
+#: Control steps a contact hold may lose its pinch before it counts as dropped (R121).
+CONTACT_GRACE = 3
+
+
 def add_beak(parts: dict[str, Part]) -> None:
     """Put the `_beak` part first in `parts` (once), holding every grabbable part; a later
     call adds grabbable parts added since (rope knots, R31)."""
@@ -72,7 +76,17 @@ def add_beak(parts: dict[str, Part]) -> None:
         return
     rest = list(parts.items())
     parts.clear()
-    parts[BEAK_PART] = Beak(BEAK_PART, objs)
+    beak = Beak(BEAK_PART, objs)
+    if any(str(o.cfg.get("hold", "weld")) == "contact" for o in objs):
+        # One object asking for a contact hold puts the whole beak in that mode: the mode
+        # decides the scene (no weld, and no contact exclusion), so it cannot be per-object
+        # at run time. A room that mixes them is refused below.
+        beak.hold = "contact"
+        mixed = [o.name for o in objs if str(o.cfg.get("hold", "weld")) != "contact"]
+        if mixed:
+            raise ValueError(f"`hold: contact` is all-or-nothing for a room's grabbables; "
+                             f"these still ask for a weld: {mixed}")
+    parts[BEAK_PART] = beak
     parts.update(rest)
 
 
@@ -90,9 +104,73 @@ class Beak(Part):
         for o in objects:
             self.outputs += [o.name + ".held", o.name + ".dropped"]
         self.held: int | None = None          # index into objects
+        #: "weld" (the default, R18) or "contact" (R121): what holds a grabbed object.
+        #:
+        #: `weld` attaches the object to the head with an `eq_active` constraint once a
+        #: handle is inside `grab_radius`. It is not a grip, and it is the single biggest
+        #: thing between this package and hardware. `contact` holds nothing: the object
+        #: stays put because two fingers are pressing it, and `held` is set from the
+        #: contacts themselves. Measured on the arm in a bare scene (no weld in the scene
+        #: at all): 10, 30 and 60 g lift 91-95 mm with friction 0.3 to 2.0.
+        #:
+        #: It needs a body with real fingers (`BodyAdapter.jaw_geoms`), so a walking body
+        #: with a beak keeps the weld whatever a room asks for.
+        self.hold = "weld"
+        self._contact_lost = 0
         self.armed = True
         self.too_heavy = False
         self._site_name: str | None = None
+
+    # ---- contact hold (R121) -----------------------------------------------------
+    def _contact_mode(self, world) -> bool:
+        return self.hold == "contact" and getattr(world.body, "jaw_geoms", None) is not None
+
+    def _pinched(self, model, data, world, obj) -> bool:
+        """True while both jaw sides touch `obj`: a pinch, not a brush."""
+        sides = world.body.jaw_geoms(model)
+        if not sides or len(sides) < 2:
+            return False
+        roots = set(obj.root_body_ids(model))
+        if not roots:
+            return False
+        touched = [False] * len(sides)
+        for i in range(data.ncon):
+            c = data.contact[i]
+            for g_a, g_b in ((int(c.geom1), int(c.geom2)), (int(c.geom2), int(c.geom1))):
+                if int(model.geom_bodyid[g_b]) not in roots:
+                    continue
+                for k, side in enumerate(sides):
+                    if g_a in side:
+                        touched[k] = True
+        return all(touched)
+
+    def _update_contact(self, model, data, world, cmd, dropped) -> None:
+        """`held` from the fingers instead of from a weld. Nothing is attached: the object
+        is held because it is being squeezed, so it can also be dropped by physics."""
+        if self.held is not None:
+            if cmd <= GRAB_ON:
+                self.held, self._contact_lost = None, 0
+            elif self._pinched(model, data, world, self.objects[self.held]):
+                self._contact_lost = 0
+            else:
+                self._contact_lost += 1
+                if self._contact_lost > CONTACT_GRACE:
+                    dropped[self.held] = True
+                    self.held, self._contact_lost = None, 0
+            return
+        if cmd <= GRAB_ON:
+            self.armed = True
+            return
+        if not self.armed:
+            return
+        for i, obj in enumerate(self.objects):
+            if getattr(obj, "grabbable_now", True) and self._pinched(model, data, world, obj):
+                limit = world.body.capabilities.limit("max_lift_mass") if world.body else np.inf
+                if obj.mass > limit:
+                    self.too_heavy = True
+                else:
+                    self.held, self._contact_lost = i, 0
+                return
 
     # ---- scene ------------------------------------------------------------------
     def attach_body(self, spec: mujoco.MjSpec, body) -> None:
@@ -102,6 +180,13 @@ class Beak(Part):
         if self._site_name is None:
             return
         head = spec.site(self._site_name).parent
+        if self.hold == "contact":
+            # Nothing to build: no weld, and crucially **no contact exclusion**. The weld
+            # path excludes gripper-to-object contacts so a welded handle can sit inside
+            # the jaw; leave that in and a pinch can never be detected, which is measured -
+            # the rooms stalled on their first `grab` with the mode on at run time only.
+            self._eq = []
+            return
         for o in self.objects:
             spec.add_equality(name=f"{self.name}/{o.name}", type=mujoco.mjtEq.mjEQ_WELD,
                               objtype=mujoco.mjtObj.mjOBJ_BODY, name1=head.name, name2=o.handle_body,
@@ -114,7 +199,8 @@ class Beak(Part):
             return
         self._site = model.site(self._site_name).id
         self._head = int(model.site_bodyid[self._site])
-        self._eq = [model.equality(f"{self.name}/{o.name}").id for o in self.objects]
+        self._eq = ([] if self.hold == "contact"
+                    else [model.equality(f"{self.name}/{o.name}").id for o in self.objects])
 
     def reset(self, model, data):
         self.held, self.armed, self.too_heavy = None, True, False
@@ -182,6 +268,13 @@ class Beak(Part):
             elif cmd <= GRAB_ON or not getattr(self.objects[i], "grabbable_now", True):
                 self._release(data)
         self.too_heavy = False
+        if self._contact_mode(w):
+            self._update_contact(model, data, w, cmd, dropped)
+            held = self.objects[self.held] if self.held is not None else None
+            w.tool_tip = (held.tip_point(data) if held is not None
+                          and hasattr(held, "tip_point") else None)
+            self._write(dropped)
+            return
         if cmd <= GRAB_ON:
             self.armed = True
         elif self.held is None and self.armed:

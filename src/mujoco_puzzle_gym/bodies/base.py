@@ -208,6 +208,23 @@ class BodyAdapter(ABC):
     #: `bodies/`).
     head_lifts_load: bool = False
 
+    def set_grab(self, level: float) -> None:
+        """Close or open a real gripper: `level` -1 open .. 1 closed, in action units (R121).
+
+        A body whose grab is a weld on a beak has nothing to move and ignores this; the env
+        hands it the same `grab` action that arms the weld, so both stay in step.
+        """
+
+    def jaw_geoms(self, model: mujoco.MjModel) -> list[list[int]] | None:
+        """Geom ids of each side of a real gripper, or None for a body without one (R121).
+
+        One list per side, so a hold can ask whether **both** sides touch an object - a
+        pinch rather than a brush. A body that answers None keeps the weld grab whatever a
+        room asks for, which is every walking body here: its grab is a beak, and `grab.py`
+        says what that is ("Not a physical grip").
+        """
+        return None
+
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:
         """Add the body to `spec` (a world with a floor) at `pose`; return `spec`."""

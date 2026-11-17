@@ -230,7 +230,10 @@ class Carrier:
         env = self.env
         if self.held() is cube:
             return None
-        self.grab = 1.0
+        # A beak carries its grab closed and the weld decides when it catches; fingers have
+        # to arrive **open** or they shut before the object is between them (R121). So a
+        # body that lifts its load opens while it approaches and closes once it is in.
+        self.grab = -1.0 if (env.body.head_lifts_load and self.phase == "approach") else 1.0
         here = np.asarray(cube.pos(env.data)[:2], dtype=float)
         moved = float(np.linalg.norm(here - self._was_at)) if self._was_at is not None else 0.0
         self._was_at = here

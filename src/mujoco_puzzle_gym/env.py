@@ -728,6 +728,12 @@ class PuzzleEnv(gym.Env):
                     self.body.crouch(self.data)
             else:
                 self.world.grab = float(v)
+                # A body with real fingers also has to **move** them (R121). Until now the
+                # grab action only reached the weld in `grab.py`, so the arm's jaw sat at
+                # its initial 0.0 for every episode ever run - measured, commanded to close
+                # it stayed at 0.000 rad - and nobody saw it, because a weld does not need
+                # fingers. `set_grab` is a no-op on a body whose grab is a beak.
+                self.body.set_grab(float(np.clip(v, -1.0, 1.0)))
 
     def scripted_action(self, move, head: float = -1.0, grab: float = -1.0,
                         crouch: float = -1.0) -> np.ndarray:

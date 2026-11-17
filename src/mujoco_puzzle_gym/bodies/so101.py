@@ -454,6 +454,29 @@ class So101Adapter(BodyAdapter):
             model.actuator_gainprm[gid, 0] = self._kp[i] * f[i]
             model.actuator_biasprm[gid, 1] = -self._kp[i] * f[i]
 
+    def set_grab(self, level: float) -> None:
+        """Drive the jaw: `level` -1 opens it, +1 closes it (R121).
+
+        The sign is the shared `grab` convention (above 0.5 is "closed"), and the joint runs
+        the other way - `ctrlrange` [-0.175, 1.745] with -0.175 shut and 1.745 wide open, so
+        measured finger-tip gaps are 0.0044 m at -1 and 0.0889 m at +1 of this `level`.
+        """
+        shut, wide = -0.175, 1.0
+        self.jaw_target = wide + (float(np.clip(level, -1.0, 1.0)) + 1.0) / 2.0 * (shut - wide)
+
+    def jaw_geoms(self, model: mujoco.MjModel) -> list[list[int]]:
+        """The two jaw sides' geoms (R121): the fixed jaw and the moving one. A contact hold
+        asks whether both touch the object, which is the difference between a pinch and a
+        brush."""
+        sides: list[list[int]] = [[], []]
+        for gid in range(model.ngeom):
+            name = model.geom(gid).name
+            if name.startswith(PREFIX + "fixed_jaw"):
+                sides[0].append(gid)
+            elif name.startswith(PREFIX + "moving_jaw"):
+                sides[1].append(gid)
+        return sides
+
     def control_point(self, data: mujoco.MjData) -> np.ndarray:
         """The point `step` drives: the grasp point when an orientation task is on, else the
         gripper site. One function, so the solve, the lead clamp and the aim agree (R117)."""
