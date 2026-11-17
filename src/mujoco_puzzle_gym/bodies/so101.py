@@ -129,6 +129,11 @@ class So101Adapter(BodyAdapter):
     #: Standing still is the zero command here: the command maps symmetrically onto the
     #: gripper's velocity, so a walking body's `(-1, 0, 0)` would be full speed backwards.
     stand_action = (0.0, 0.0, 0.0)
+    #: `set_head` is this body's working height, so a held object rises with it and the
+    #: carrier may lift one over a basket wall instead of pressing it against the wall
+    #: (`bodies/base.py` `head_lifts_load`). WORK_Z 0.12 m clears a receptacle's default
+    #: 0.06 m wall; a taller-walled box is out of this body's range and reads as before.
+    head_lifts_load = True
     #: Clearing a placed object means moving the jaw its own footprint plus the object's
     #: size away, not a walking body's 0.35 m, which can be outside this body's envelope.
     place_clearance = 0.10

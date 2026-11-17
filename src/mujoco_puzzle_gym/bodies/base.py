@@ -192,6 +192,21 @@ class BodyAdapter(ABC):
     #: face the target, then drive forward" can only ever drive radially outward; the
     #: lateral channel is the only way to reach anything else.
     holonomic: bool = False
+    #: True when `set_head` moves a **held object's** height, so the body can carry one
+    #: over an obstacle rather than into it (R105).
+    #:
+    #: For a walking body the head channel pitches the head: the beak rises, the feet
+    #: stay on the floor, and the way over a basket wall is to keep walking into it until
+    #: the body leans over the rim - which is what the shared `place` does and what was
+    #: measured for that body. A fixed-base arm cannot lean, and its head channel is the
+    #: gripper's working height, so the same press is a stall: measured on the arm over
+    #: the 25-cell grid of `puzzles/tabletop/pick_and_place`, 10 of 25 cells ended holding
+    #: the block with the gripper pushing the box wall at 37-50 N and three joints at
+    #: 100 % of their 2.94 N.m limit, and 8 more let go 0.09-0.24 m short. Even the 7 that
+    #: solved were pressing the wall at 17-29 N. So the carrier asks this instead of
+    #: asking which body it is (`tests/test_boundary.py` forbids body names outside
+    #: `bodies/`).
+    head_lifts_load: bool = False
 
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:

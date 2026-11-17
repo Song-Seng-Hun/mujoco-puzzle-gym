@@ -996,3 +996,31 @@ carries clear. That was wrong.
 So the clearing is a bug and at the same time a **guard that protects the walking bodies**.
 Fixing it properly means handling their path too, so only the measurement was kept and the
 change was not shipped.
+
+## 10. Placing over the rim (M7 R108, 2026-11-17)
+
+The grid in section 9 went from 7 of 25 to **25 of 25**. What changed is the place, not the
+inverse kinematics.
+
+Classifying all 25 cells by *how* they failed (one episode each): 7 ok, **10 driving into the
+box wall** (still holding the block, the gripper pushing the wall at 37-50 N with three joints
+at **100 %** of their 2.94 N.m torque limit), **8 letting go short** (0.089-0.244 m from the
+centre). Even the 7 that solved were **pressing** the wall at 17-29 N. No cell failed in the
+grab at all.
+
+The cause was a walking body's idea inside the shared place: lean on a basket wall and keep
+walking, and the body tips over the rim. A bolted arm cannot tip. So a body now declares
+`head_lifts_load` (its `set_head` moves a held object's height - the arm alone), and such a
+body takes `Carrier._lower_in_act`, which **carries the object 0.035 m above the wall top and
+drives it onto the centre** before lowering it in. The walking bodies' path is unchanged.
+
+The measurement also showed there were **two** walker ideas, not one: "the object leads the
+body, so back off and come again" is true on every approach for the arm. A first attempt that
+only lifted the object froze 21 of 25 cells in phase `back` and made the score **worse**,
+7 to 1. Hence a path of its own.
+
+The 0.035 m clearance has both ends measured: at 0.02 the fixed jaw still brushes the rim for
+four control steps at 14.7 N, and at 0.05 nothing touches the wall but the episode never
+finishes (400 steps). All seven shipped rooms hold their 20/20, and `pick_and_place` halved,
+16.3 s -> **8.0 s**. Widened to +-100 mm the grid is 19 of 25, and **five of the six** failures
+left are `grab` - which is where the next piece of work is.

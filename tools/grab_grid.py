@@ -9,6 +9,12 @@ for `puzzles/tabletop/pick_and_place`, and swept afterwards by hand the solution
 place on the other. That sweep lived in a scratch directory, so the number it produced could
 not be reproduced or compared against. This is that sweep, kept.
 
+Kept, and it has already moved twice: 3 of 25 when the room shipped, 7 of 25 after the M6
+carry work (A5, A9), and **25 of 25** since the box place stopped pressing the wall
+(R108, `Carrier._lower_in_act`). Widen it with `--span 100 --step 50` once it saturates:
+at 200x200 mm the same room is 19 of 25, and five of the six failures are `grab`, which is
+where the next piece of work is.
+
 It is a measuring tool, not a check: it fails nothing, it is not wired into `mpg check`, and
 a low score is a fact about the body's reach and the scripted solution, not a broken room.
 Use it as the objective when changing either - a change that raises the shipped room's score

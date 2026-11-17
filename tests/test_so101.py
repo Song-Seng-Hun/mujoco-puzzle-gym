@@ -169,6 +169,54 @@ def test_the_other_bodies_are_not_holonomic():
     assert all(not make_body(n).holonomic for n in BODIES if n != "so101")
 
 
+# ---- R105: it lifts what it holds, so it places over a wall rather than through it ----
+
+def test_only_this_body_lifts_what_it_holds():
+    """The declaration the carrier's box path is gated on. A walking body's head channel
+    pitches its head; this body's is the gripper's working height, so a held object rises
+    with it."""
+    assert make_body("so101").head_lifts_load is True
+    assert all(not make_body(n).head_lifts_load for n in BODIES if n != "so101")
+
+
+def test_the_arm_lowers_a_block_into_a_box_without_pressing_the_wall(so101_asset_dir, repo_root):
+    """R105, the measurement that moved the grid from 7 of 25 to 25 of 25.
+
+    Before the over-the-rim path the arm drove the block horizontally into the receptacle
+    at grab height: 10 of 25 block positions ended still holding it with the gripper
+    pushing the wall at 37-50 N and three joints at 100 % of their 2.94 N.m limit, 8 let
+    go 0.09-0.24 m short, and even the 7 that solved were pressing the wall at 17-29 N. So
+    what is asserted is the absence of that press, not just the success.
+    """
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+    try:
+        env.reset(seed=0)
+        model, data = env.model, env.data
+        walls = [model.geom(f"part/box/wall{i}").id for i in range(4)]
+        arm = {g for g in range(model.ngeom) if model.geom(g).name.startswith("so101/")}
+        solver, peak, force = ScriptedSolver(env), 0.0, np.zeros(6)
+        while True:
+            _, _, terminated, truncated, _ = env.step(solver.act())
+            for i in range(data.ncon):
+                c = data.contact[i]
+                if (c.geom1 in walls and c.geom2 in arm) or (c.geom2 in walls and c.geom1 in arm):
+                    mujoco.mj_contactForce(model, data, i, force)
+                    peak = max(peak, abs(float(force[0])))
+            if terminated or truncated:
+                break
+        box = env.parts["box"]
+        block = data.xpos[model.body("part/block").id]
+        assert peak < 1.0, f"the arm pressed the box wall at {peak:.1f} N"
+        assert (np.abs(block[:2] - box.xy) <= box.half).all(), block
+        assert not env.world.held, "it should have let go inside the box"
+    finally:
+        env.close()
+
+
 # ---- the gate, both ways -------------------------------------------------------------
 
 def test_a_walking_room_is_refused_by_name(so101_asset_dir, asset_dir, repo_root):
