@@ -265,7 +265,7 @@ def test_the_privileged_terms_are_declared_where_a_program_can_read_them():
     assert privileged_terms(None) == [] and privileged_terms([]) == []
 
 
-def test_exactly_one_shipped_task_could_be_observed_by_the_robot(repo_root):
+def test_the_tasks_a_robot_could_observe_are_named(repo_root):
     """The audit run on the real files, by the package's own standard.
 
     Two declarations say what a policy may see, and they are not the same test.
@@ -278,11 +278,12 @@ def test_exactly_one_shipped_task_could_be_observed_by_the_robot(repo_root):
 
     When this test was first written the answer was zero, and it had to be: the arm
     answered `None` for `view_camera` and has no rangefinder mount, so it had no
-    exteroception to be clean with. R115 wires its wrist camera, and
-    `task_pick_and_place_onboard.yaml` is the first task `obs_kind` calls `sensors_only`.
-    Read its header for how narrow that is - no policy solves it.
+    exteroception to be clean with. R115 wired its wrist camera, which made one possible,
+    and R126 added the second - the same observation over the room that is held by two
+    fingers instead of a weld. Read their headers for how narrow the claim is: no policy
+    solves either.
 
-    If the count changes, change it here and say so in the docs; the number is the point.
+    If the list changes, change it here and say so in the docs; the names are the point.
     """
     tasks = sorted((repo_root / "examples").glob("task_*.yaml"))
     assert tasks, "no example tasks found"
@@ -297,8 +298,9 @@ def test_exactly_one_shipped_task_could_be_observed_by_the_robot(repo_root):
             clean.append(path.name)
         if obs_kind(spec) == "sensors_only":
             sensors_only.append(path.name)
-    assert sensors_only == ["task_pick_and_place_onboard.yaml"], sensors_only
-    assert clean == ["task_pick_and_place_onboard.yaml"], clean
+    want = ["task_pick_and_place_onboard.yaml", "task_pick_by_hand_onboard.yaml"]
+    assert sensors_only == want, sensors_only
+    assert clean == want, clean
     assert len(tasks) > 10, "the audit has to be running on the real set"
 
 
@@ -343,3 +345,36 @@ def test_the_arm_has_an_eye_at_all(so101_asset_dir):
     mujoco.mj_forward(model, data)
     view = -np.asarray(data.cam_xmat[cam], float).reshape(3, 3)[:, 2]
     assert view[2] < -0.3, ("the eye should look down over the table", view)
+
+
+def test_all_five_hardware_items_compose_in_one_environment(so101_asset_dir, repo_root):
+    """R126: the arm, a contact grasp, and an observation a robot could produce, together.
+
+    `examples/task_pick_by_hand_onboard.yaml` is the `pick_by_hand` room - held by two
+    fingers pressing, with no weld in the scene - observed as `sensors_only`:
+    proprioception plus the gaze check on the markers the room carries. Measured: obs is
+    Box(24) = 3 + 3 + 3 and 15 marker values, one marker visible at reset, and the scripted
+    solution still carries it 3 of 3 at 11.3 s.
+
+    What this asserts is that the **environment** composes. It says nothing about a trained
+    policy solving it - no policy does, and the task's header carries that number.
+    """
+    from mujoco_puzzle_gym.check import check_solver
+    from mujoco_puzzle_gym.obs import obs_kind, privileged_terms
+    from mujoco_puzzle_gym.task import load_task
+
+    path = repo_root / "examples/task_pick_by_hand_onboard.yaml"
+    spec = yaml.safe_load(path.read_text())
+    assert obs_kind(spec) == "sensors_only", spec["obs"]
+    assert privileged_terms(spec["obs"]) == []
+
+    env = PuzzleEnv(task=load_task(path))
+    try:
+        assert env.parts["_beak"].hold == "contact"
+        assert not env.parts["_beak"]._eq, "a contact hold builds no welds"
+        obs, _ = env.reset(seed=0)
+        assert np.asarray(obs).shape == (24,), obs
+        res = check_solver(env, seeds=1, need=1)
+        assert res["successes"] == 1, res
+    finally:
+        env.close()
