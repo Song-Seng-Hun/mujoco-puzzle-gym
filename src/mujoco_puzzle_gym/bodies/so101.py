@@ -94,11 +94,12 @@ Z_GAIN = 12.0           # [1/s] P gain pulling the gripper back to `WORK_Z`
 #: The reset transient (+1.88 mm of overshoot) is the same at every gain, so the integral
 #: is not what causes it.
 #:
-#: The clamp is the anti-windup: without one, a gripper held down - by a lid, or pressing a
-#: block onto a table - would integrate for as long as it is held and spring when freed.
-#: 0.4 m.s is ten seconds of the worst sag ever measured here.
+#: The clamp is the anti-windup, and it is on the term's **contribution** in metres, not on
+#: the accumulator: without one, a gripper held down - by a lid, pressing a block onto a
+#: table, or asked for a pose it cannot hold - integrates for as long as it is held and then
+#: springs. 0.02 m is twice the worst sag ever measured here (8.65 mm while travelling).
 Z_I_GAIN = 10.0
-Z_I_CLAMP = 0.4
+Z_I_MAX = 0.02
 #: Gain [1/s] on the orientation task, when one is asked for (`align_axis`, R114).
 #:
 #: The solve is position-only by default and the gripper's orientation is whatever the five
@@ -267,7 +268,7 @@ class So101Adapter(BodyAdapter):
         self.jaw_target = 0.0
         self.work_z = WORK_Z               # `set_head` is held until changed; reset levels it
         mujoco.mj_forward(data.model, data)
-        self._aim = self._clamp(np.array(data.site_xpos[self._site], dtype=float))
+        self._aim = self._clamp(self.control_point(data))
 
     def _clamp(self, aim: np.ndarray) -> np.ndarray:
         """Hold an aim point inside the measured envelope, in the base's own frame."""
@@ -311,7 +312,15 @@ class So101Adapter(BodyAdapter):
         # Anti-windup (`MAX_LEAD`): the aim may not run away from the gripper. Without
         # this the arm carries on travelling after its command stops, by however far the
         # aim got ahead while the jaw was blocked.
-        now = np.asarray(data.site_xpos[self._site], dtype=float)
+        # The point the whole bookkeeping is about (R117). `gripperframe` by default, which
+        # is also what this body reports as its position; the middle of the finger gap when
+        # an orientation task is on, because that is where a grasp closes and it is not the
+        # site: measured 25.0 mm away in xy with the jaw open, 13.8 mm closed, 12 mm above
+        # the commanded height at the grab height. Moving only the solve's error to that
+        # point - and leaving this clamp on the site - made the two references push against
+        # each other and the arm folded inside 150 control steps (grasp point up at z 0.293,
+        # aim drifted to (0.0585, 0.0083)). So the lead clamp moves with it.
+        now = self.control_point(data)
         lead = aim - now
         n = float(np.linalg.norm(lead[:2]))
         if n > MAX_LEAD:
@@ -322,7 +331,13 @@ class So101Adapter(BodyAdapter):
             jacp = np.zeros((3, model.nv))
             jacr = np.zeros((3, model.nv)) if self.align_axis is not None else None
             mujoco.mj_jacSite(model, data, jacp, jacr, self._site)
-            err = self._aim - data.site_xpos[self._site]
+            here = self.control_point(data)
+            if jacr is not None:
+                # The Jacobian of that point: `v = v_site + w x r` for a point at world
+                # offset `r` from the site, which is this cross product per column.
+                jacp = jacp + np.cross(jacr.T, here - np.asarray(data.site_xpos[self._site],
+                                                                dtype=float)).T
+            err = self._aim - here
             # Height: proportional, plus an integral that is the one thing the position
             # servos cannot do for themselves (R111). A servo torque is `kp * (ctrl - qpos)`
             # and the target here is rebuilt from the *measured* angles each substep, so the
@@ -336,8 +351,15 @@ class So101Adapter(BodyAdapter):
             # (its bins sit where this carry puts a block, by its own header) and
             # `build_a_tower` the same, through a faster approach knocking the carried block
             # out of the jaw. Height alone leaves the planar dynamics untouched.
-            self._z_i = float(np.clip(self._z_i + err[2] * model.opt.timestep,
-                                      -Z_I_CLAMP, Z_I_CLAMP))
+            # Anti-windup on the **contribution**, not on the accumulator (R117). Clamping
+            # `z_i` alone was wrong by a factor of the gain: with `Z_I_GAIN` 10 a saturated
+            # 0.4 m.s accumulator asks for 4 m of height error. That never showed while the
+            # height was reachable - the rooms keep their numbers either way - but ask for
+            # an orientation the pose cannot hold and the z error stops converging, the
+            # accumulator saturates, and the solve folds the arm: measured, the controlled
+            # point climbed to z 0.293 within 150 control steps.
+            cap = Z_I_MAX / Z_I_GAIN if Z_I_GAIN > 0 else 0.0
+            self._z_i = float(np.clip(self._z_i + err[2] * model.opt.timestep, -cap, cap))
             err[2] = err[2] * Z_GAIN / IK_GAIN + Z_I_GAIN * self._z_i
             j = jacp[:, self._qvel]
             if jacr is not None:
@@ -362,6 +384,13 @@ class So101Adapter(BodyAdapter):
             mujoco.mj_step(model, data)
             if on_substep is not None:
                 on_substep(model, data)
+
+    def control_point(self, data: mujoco.MjData) -> np.ndarray:
+        """The point `step` drives: the grasp point when an orientation task is on, else the
+        gripper site. One function, so the solve, the lead clamp and the aim agree (R117)."""
+        if self.align_axis is None:
+            return np.asarray(data.site_xpos[self._site], dtype=float)
+        return self.grasp_point(data)
 
     def grasp_point(self, data: mujoco.MjData) -> np.ndarray:
         """Middle of the finger gap in world coordinates: where a grasp actually closes."""

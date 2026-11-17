@@ -319,6 +319,34 @@ def test_an_orientation_task_brings_the_jaw_s_opening_axis_where_it_is_asked(sce
     body.align_axis = None
 
 
+def test_the_height_integral_cannot_wind_up_past_its_cap(scene):
+    """R117: the anti-windup is on the term's contribution, not on the accumulator, and the
+    first version was wrong by a factor of the gain.
+
+    With `Z_I_GAIN` 10 a saturated 0.4 m.s accumulator asked for 4 m of height error. While
+    the height was reachable this never showed - the rooms keep their numbers either way -
+    but hold the arm somewhere it cannot satisfy and the solve folded it: measured, the
+    controlled point climbed to z 0.293 within 150 control steps. Now the contribution
+    cannot exceed `Z_I_MAX`, which is 0.02 m, twice the worst sag ever measured (8.65 mm).
+    """
+    from mujoco_puzzle_gym.bodies.so101 import Z_I_GAIN, Z_I_MAX
+
+    body, _, data = scene
+    body.reset(data)
+    body.align_axis = np.cross([0.0, 0.0, 1.0], [1.0, 0.0, 0.0])
+    body.jaw_target = 1.0
+    body.set_head(1.0)
+    try:
+        for _ in range(400):                      # eight seconds of an unreachable ask
+            body.step(data, (0.0, 0.0, 0.0))
+            assert abs(Z_I_GAIN * body._z_i) <= Z_I_MAX + 1e-9, body._z_i
+        tip = np.array(data.site_xpos[body._site], float)
+        assert np.isfinite(data.qpos).all()
+        assert tip[2] < 0.2, ("the arm folded up instead of holding the pose", tip)
+    finally:
+        body.align_axis = None
+
+
 def test_the_grasp_point_is_not_the_point_the_solve_servos(scene):
     """Why an aligned jaw still does not grasp, as three numbers (R114).
 
