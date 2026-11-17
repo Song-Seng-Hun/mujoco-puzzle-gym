@@ -363,6 +363,12 @@ class So101Adapter(BodyAdapter):
             if on_substep is not None:
                 on_substep(model, data)
 
+    def grasp_point(self, data: mujoco.MjData) -> np.ndarray:
+        """Middle of the finger gap in world coordinates: where a grasp actually closes."""
+        a = np.mean([data.geom_xpos[g] for g in self._fixed_tips], axis=0)
+        b = np.mean([data.geom_xpos[g] for g in self._moving_tips], axis=0)
+        return (np.asarray(a, dtype=float) + np.asarray(b, dtype=float)) / 2.0
+
     def opening_axis(self, data: mujoco.MjData) -> np.ndarray:
         """Unit world direction the jaw opens along: fixed finger tips to moving ones.
 
