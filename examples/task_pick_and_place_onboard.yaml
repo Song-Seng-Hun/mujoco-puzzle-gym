@@ -21,10 +21,11 @@
 #   - nothing here models actuator latency, backlash, servo-to-servo spread or sensor
 #     noise (the camera accepts `noise:` and this task does not use it), and the grab is
 #     still a weld, not contact (specs/2026-11-17-arm-steady-state R113 items 1, 4, 5).
-#   - **no policy solves this task.** Measured on the version that still carried `beak`, a
-#     3-minute PPO run goes end to end - 49,156 steps, 120 episodes, **success rate 0.0** -
-#     with the mean return rising from -1.04 to +2.18, which is the progress term improving
-#     and not a solve. Whether it is learnable from the camera alone is unmeasured.
+#   - **no policy solves this task.** Measured on this exact task: a 3-minute PPO run goes
+#     end to end (`obs_kind` confirmed `sensors_only`), 47,000 steps, 116 episodes,
+#     **success rate 0.0**, mean return -0.97 -> +0.94 - the progress term improving, not a
+#     solve. Three minutes is evidence about neither side; the privileged version of a
+#     *walking* room took 15 minutes to reach 0.99 (docs/training-log.md #1).
 room: ../src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_and_place.yaml
 body: so101
 actions: [move, head, grab]
