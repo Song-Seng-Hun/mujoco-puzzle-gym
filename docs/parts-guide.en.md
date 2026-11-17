@@ -647,6 +647,7 @@ Measured 2026-11-17, 5 seeds, each with the room's own task file:
 | `puzzles/tabletop/conveyor_triage` | solver 0/5 | refused `['grab']` | **pass 5/5, 17.0 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/build_a_tower` | solver 0/5 | refused `['grab']` | **pass 5/5, 9.8 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/lever_arm` | solver 0/5 | refused `['grab']` | **pass 5/5, 7.4 s** | refused `['grab']` | yes |
+| `puzzles/tabletop/odd_one_out` | solver 0/5 | refused `['grab']` | **pass 5/5, 11.9 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/pick_and_place` | solver 0/5 | refused `['grab']` | **pass 5/5, 16.3 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/reach_target` | pass 5/5, 1.5 s | solver 0/5 | pass 5/5, 0.6 s | solver 0/5 | no |
 
@@ -1798,6 +1799,7 @@ Role `switch`, update stage `input`.
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
 - `puzzles/tabletop/lever_arm`
+- `puzzles/tabletop/odd_one_out`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tabletop/weigh_it_down`

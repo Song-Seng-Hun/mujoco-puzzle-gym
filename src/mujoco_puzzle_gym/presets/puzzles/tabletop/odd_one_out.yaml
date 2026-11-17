@@ -1,0 +1,49 @@
+# The odd one out (R92): three blocks that look the same, and the plate only counts the one
+# whose weight falls in the band. Put the right one on it and the goal counts
+# (`enable: in_band`).
+#
+# **This room needed no new code**, and that is the point of it. Three models were asked for
+# part ideas on 2026-11-17 and seven of their proposals were a part for comparing or
+# windowing mass; a spec for one was written and approved before anyone tried what already
+# exists. `pressure` emits `<name>.mass` and a gate expression takes comparisons, so a weight
+# window is one line of room file:
+#
+#     {name: in_band, type: gate, expr: "pan.mass >= 0.030 and pan.mass <= 0.038"}
+#
+# The capability is held down by `tests/test_signals.py::test_a_gate_reads_a_mass_window` so
+# it cannot be forgotten again. What an expression *cannot* do is arithmetic between
+# channels, which is why a tolerance on a *difference* needs a part (`beam`, R90) and a
+# window does not.
+#
+# The masses are chosen so no pair of blocks can fake the band: 20, 35 and 50 g against a
+# 30-38 g window, and the lightest pair is already 55 g.
+#
+# Measured (M6 R92, 2026-11-17, 20 seeds):
+#
+# - the room as it ships: **20/20** at a mean of 11.9 s;
+# - the demo cut to a single `goto goal` step: **0/5**;
+# - the same demo placing the 20 g block instead: **0/5**; the 50 g block instead: **0/5**.
+#   Those two are what make it a weight room rather than a put-something-there room.
+#
+# `mpg check --all-bodies` calls it exclusive: the jaw body is the only one that solves it,
+# two bodies are refused by name for `grab`, and the small body that has a grab is 0/5.
+#
+# The plate keeps its default 0.25 m size on purpose. Shrunk to 0.14 m the scripted place
+# gets a tolerance of 0.03 m instead of 0.065 m (`PressurePlate.place_tolerance`), and
+# measured, the block was left 0.33 m away with the place reported as finished - the R78
+# postcondition guard does not cover a plate, because a plate has no `accepts`.
+name: table_odd_one_out
+size: [1.2, 1.0]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [-0.3, 0.0], yaw: 0.0}
+parts:
+  - {name: right, type: cube, pos: [-0.05, -0.12], size: 0.03, mass: 0.035}
+  - {name: light, type: cube, pos: [-0.14, 0.26], size: 0.03, mass: 0.020}
+  - {name: heavy, type: cube, pos: [0.14, 0.26], size: 0.03, mass: 0.050}
+  - {name: pan, preset: input/pressure_plate, pos: [0.0, 0.14], min_mass: 0.001}
+  - {name: in_band, type: gate, expr: "pan.mass >= 0.030 and pan.mass <= 0.038"}
+  - {name: goal, type: goal, pos: [0.05, -0.25], radius: 0.05, enable: in_band}
+demo:
+  - grab right
+  - place right pan
+  - goto goal

@@ -54,6 +54,8 @@ PRESET_TASKS["puzzles/tabletop/conveyor_triage"] = ROOT / "examples/task_conveyo
 PRESET_TASKS["puzzles/tabletop/build_a_tower"] = ROOT / "examples/task_build_a_tower.yaml"
 #: M6 R93: mass x distance - the first room that asks for a distance from a pivot.
 PRESET_TASKS["puzzles/tabletop/lever_arm"] = ROOT / "examples/task_lever_arm.yaml"
+#: M6 R92: a weight window from `pressure.mass` and one gate expression, and no new part.
+PRESET_TASKS["puzzles/tabletop/odd_one_out"] = ROOT / "examples/task_odd_one_out.yaml"
 #: M6 R94: two doors on one pool - the first room where something runs out.
 PRESET_TASKS["puzzles/budget/two_openings"] = ROOT / "examples/task_two_openings.yaml"
 #: R34 circuit presets whose `demo:` pecks a cover or carries a fuse (`head`, `grab`).

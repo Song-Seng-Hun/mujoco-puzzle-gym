@@ -1,0 +1,12 @@
+# Task for `puzzles/tabletop/odd_one_out` (M6 R92). `actions: [move, head, grab]` because the
+# room's solution closes the jaw; `fall` termination is off because this body cannot fall.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/tabletop/odd_one_out.yaml
+body: so101
+actions: [move, head, grab]
+env: {hz: 10, episode_seconds: 40}
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
+reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+termination: {success: true, fall: false}
+algo: ppo
+net: [128, 128]
+n_envs: 12
