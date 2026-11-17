@@ -706,7 +706,13 @@ per step, walk only once the block is clear. **It still tears** (0.30 -> 0.54 ->
 | 55 | 0.0240 | 0.0213 | 0.0122 |
 | 58 | 0.0270 | 0.0221 | 0.0124 |
 
-**The command rises 8 mm, the tip follows by 2 mm, and the block does not move at all.** The
+**The command rises 8 mm, the tip follows by 2 mm, and the block does not move at all.**
+
+**[Correction 2026-11-17]** That is a fact about radius **0.065 m** - folded in against the
+base - and not about the arm. Measured again at the radius its own solution picks from, **the
+arm does lift**: at r=0.279, ramping the head level 1 -> 0 over about 25 steps takes the block
+from z 0.015 to **0.125 m** with the hold's force staying at 0.20 N against a 3 N limit. Where
+the paragraphs below read "cannot lift", read them as being about this radius. The
 inverse kinematics is saturated, and the gap it leaves loads the weld past 3 N. The radius
 here is **0.065 m** - directly in front of the base, a folded posture. (In the room that
 works, `pick_and_place`, the grab happens at radius 0.277 m.)
