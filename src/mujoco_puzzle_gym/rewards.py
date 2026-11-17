@@ -238,3 +238,68 @@ def hold_time(env):
     """
     held = set(getattr(env.world, "held", ()) or ())
     return float(bool(held))
+
+
+def _carry_potential(env) -> float:
+    """The task's progress as a single number, for `carry_potential` (R128).
+
+    Three phases, arranged so each real step forward raises it:
+
+        nothing held      -(1 + distance from the grab site to the object)
+        holding it        -(distance from the object to where it belongs)
+        delivered         +1
+
+    So taking the object is a jump of about +1, carrying it is the distance it closes, and
+    dropping it gives the jump straight back. The size of that jump is what makes holding
+    worth more than hovering, and the shape is what makes none of it farmable.
+    """
+    import numpy as np
+
+    site = getattr(env.world, "beak_site", None)
+    if site is None:
+        return 0.0
+    here = np.asarray(env.data.site_xpos[site], dtype=float)
+    held = set(getattr(env.world, "held", ()) or ())
+    delivered = set()
+    for part in env.parts.values():
+        delivered.update(getattr(part, "inside", ()) or ())
+    best = None
+    for part in env.parts.values():
+        if not hasattr(part, "handle_points") or part.parked:
+            continue
+        if part.name in delivered:
+            continue
+        mine = any(b in held for b in part.root_body_ids(env.model))
+        pts = np.asarray(part.handle_points(env.data), dtype=float)
+        d = float(np.min(np.linalg.norm(pts - here, axis=1)))
+        if mine:
+            for dest in env.parts.values():
+                takes = getattr(dest, "accepts", None)
+                if callable(takes) and takes(part):
+                    away = float(np.linalg.norm(np.asarray(part.pos(env.data)[:2], float)
+                                                - np.asarray(dest.xy, float)))
+                    return -away
+            return 0.0
+        if best is None or d < best:
+            best = d
+    if best is None:
+        return 1.0                      # everything is where it belongs
+    return -(1.0 + best)
+
+
+@register_reward("carry_potential", replace=True)
+def carry_potential(env):
+    """Potential-based shaping for a carry room: the **change** in `_carry_potential` (R128).
+
+    One term instead of the four bonuses R127 measured, because each of those became the
+    easiest reward in the room as soon as it existed - the ladder is in
+    `docs/training-log.md`: a grab bonus taught grabbing and nothing else, a per-step hold
+    bonus taught holding still for 224 of 400 steps. A difference of a state function
+    cannot be collected twice: standing still pays zero, dropping the object hands back
+    exactly what taking it paid, and the only way to keep earning is to get closer to
+    done (Ng, Harada and Russell, 1999).
+    """
+    now = _carry_potential(env)
+    was = getattr(env, "_carry_phi", None)
+    env._carry_phi = now
+    return 0.0 if was is None else float(now - was)
