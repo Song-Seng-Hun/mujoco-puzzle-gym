@@ -837,7 +837,10 @@ passes**.
 
 **And the wedge room cannot be rescued by room design - that is measured.** In the geometry
 where the belt hands the block over at r=0.300, the spot where the grab works, the receptacle
-was moved over 25 positions (x 0.05-0.35, y -0.30 to +0.02) and **every one is 0**. Against
+was moved over 25 positions (x 0.05-0.35, y -0.30 to +0.02) and every one is 0. That sweep had
+a gap - the belt puts the block down at y ~ +0.30 and the boxes were all at y <= +0.02, on the
+far side - so 20 more were run **near** the hand-over point (x -0.12 to 0.26, y 0.14 to 0.34),
+and those are **all 0 too**: 45 positions, none of them solving. Against
 that, `pick_and_place` picks at r=0.277 and only the destination 0.331 solves. So the pocket
 belongs to the **pair** (pick spot, destination), and the wedge room's hand-over point has no
 partner. R70 and R74 are therefore not "more geometry" but items to revisit once the loaded
