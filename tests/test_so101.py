@@ -287,6 +287,80 @@ def test_the_solve_stays_finite_at_the_envelope_edge(scene, cmd):
     assert worst_rate < 5.0
 
 
+# ---- R114: an orientation task, and what still stands between it and a grasp ---------
+
+def test_the_solve_takes_no_orientation_task_unless_one_is_asked_for():
+    """Off by default, because every shipped room was measured on the 3-row solve. The
+    seven arm rooms hold 20/20 at identical times with this code in (7.7, 7.1, 12.8, 18.6,
+    9.8, 7.4, 9.3 s), which is what "off" has to mean."""
+    assert make_body("so101").align_axis is None
+
+
+def test_an_orientation_task_brings_the_jaw_s_opening_axis_where_it_is_asked(scene):
+    """What the position-only solve could not do. Measured at the grasp height: without a
+    task the opening axis is 43-48 % vertical, so the fingers cannot straddle something
+    lying on the table; with one it comes to 0.2-0.4 %."""
+    body, _, data = scene
+    body.reset(data)
+    body.align_axis = None
+    body.jaw_target = 1.0
+    body.set_head(1.0)
+    for _ in range(250):
+        body.step(data, (0.0, 0.0, 0.0))
+    assert abs(body.opening_axis(data)[2]) > 0.3
+
+    body.reset(data)
+    body.align_axis = np.cross([0.0, 0.0, 1.0], [1.0, 0.0, 0.0])   # across a radial approach
+    body.jaw_target = 1.0
+    body.set_head(1.0)
+    for _ in range(250):
+        body.step(data, (0.0, 0.0, 0.0))
+    assert abs(body.opening_axis(data)[2]) < 0.01, body.opening_axis(data)
+    body.align_axis = None
+
+
+def test_the_grasp_point_is_not_the_point_the_solve_servos(scene):
+    """Why an aligned jaw still does not grasp, as three numbers (R114).
+
+    The solve drives `gripperframe`, and the finger gap's midpoint is somewhere else: 25 mm
+    away in xy with the jaw open, 13.8 mm with it closed - so the offset is not even
+    constant - and 12 mm above the commanded height at the grab height, which is above the
+    middle of a 30 mm cube. Driving the site onto an object therefore leaves the object
+    outside the fingers, which is what the measurements showed: the jaw closed all the way
+    to -0.175 rad on nothing while the cube sat undisturbed 0.0 mm away.
+
+    So the next piece of work is a grasp frame - servo the gap's midpoint, not the wrist
+    site - and this test is here to fail when that lands, with the numbers it has to beat.
+    """
+    body, _, data = scene
+    body.reset(data)
+    body.align_axis = np.cross([0.0, 0.0, 1.0], [1.0, 0.0, 0.0])
+    try:
+        def mid():
+            a = np.mean([data.geom_xpos[g] for g in body._fixed_tips], axis=0)
+            b = np.mean([data.geom_xpos[g] for g in body._moving_tips], axis=0)
+            return (a + b) / 2.0
+
+        body.jaw_target = 1.0
+        for _ in range(250):
+            body.step(data, (0.0, 0.0, 0.0))
+        site = np.array(data.site_xpos[body._site], float)
+        open_off = float(np.linalg.norm((mid() - site)[:2]))
+        body.jaw_target = -1.0
+        for _ in range(200):
+            body.step(data, (0.0, 0.0, 0.0))
+        site = np.array(data.site_xpos[body._site], float)
+        shut_off = float(np.linalg.norm((mid() - site)[:2]))
+        assert open_off > 0.02 and shut_off > 0.01, (open_off, shut_off)
+        assert abs(open_off - shut_off) > 0.005, "the offset is constant after all: say so"
+        body.set_head(1.0)
+        for _ in range(200):
+            body.step(data, (0.0, 0.0, 0.0))
+        assert mid()[2] - float(data.site_xpos[body._site][2]) > 0.005
+    finally:
+        body.align_axis = None
+
+
 # ---- R105: it lifts what it holds, so it places over a wall rather than through it ----
 
 def test_only_this_body_lifts_what_it_holds():
