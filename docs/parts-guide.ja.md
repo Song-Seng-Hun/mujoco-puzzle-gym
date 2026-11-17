@@ -996,6 +996,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hold` | enum |  | `weld` | `weld`, `contact` |  | what holds it when grabbed: a weld (R18) or the gripper's own contact (R121; needs a body with fingers, `BodyAdapter.jaw_geoms`) |
 | `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `size` | float | m | `0.04` | [0.02, 0.3] |  | edge length |
 | `handles` | list |  | `['+x', '-x', '+y', '-y']` |  |  | faces with a beak handle: +x, -x, +y, -y, +z |
@@ -1088,6 +1089,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hold` | enum |  | `weld` | `weld`, `contact` |  | what holds it when grabbed: a weld (R18) or the gripper's own contact (R121; needs a body with fingers, `BodyAdapter.jaw_geoms`) |
 | `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `radius` | float | m | `0.022` | [0.01, 0.06] |  | egg radius (x, y) |
 | `height` | float | m | `0.06` | [0.02, 0.15] |  | egg height (z) |
@@ -1196,6 +1198,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hold` | enum |  | `weld` | `weld`, `contact` |  | what holds it when grabbed: a weld (R18) or the gripper's own contact (R121; needs a body with fingers, `BodyAdapter.jaw_geoms`) |
 | `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `radius` | float | m | `0.03` | [0.015, 0.1] |  |  |
 | `roll_friction` | float | m | `0.002` | [0, 0.05] |  | rolling friction (low: it rolls on once let go) |
@@ -1225,6 +1228,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hold` | enum |  | `weld` | `weld`, `contact` |  | what holds it when grabbed: a weld (R18) or the gripper's own contact (R121; needs a body with fingers, `BodyAdapter.jaw_geoms`) |
 | `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `head` | float | m | `0.04` | [0.02, 0.1] |  | side of the square head (the marker sits on it) |
 | `shaft` | float | m | `0.05` | [0.01, 0.2] |  | shaft length along +x |
@@ -1250,6 +1254,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hold` | enum |  | `weld` | `weld`, `contact` |  | what holds it when grabbed: a weld (R18) or the gripper's own contact (R121; needs a body with fingers, `BodyAdapter.jaw_geoms`) |
 | `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `size` | vec | m | `[0.12, 0.1]` | [0.04, 0.4] |  | cloth [x, y] |
 | `thickness` | float | m | `0.006` | [0.002, 0.03] |  |  |
@@ -1639,6 +1644,7 @@ def majority(inputs, state, dt):
 | `friction` | float |  | `1.0` | [0, 2] |  | sliding friction |
 | `grab_radius` | float | m | `0.04` | [0.005, 0.2] |  | the beak grabs a handle this close to its tip (R18) |
 | `max_hold_force` | float | N | `3.0` | [0.01, 100] |  | the grab lets go when holding it takes more force |
+| `hold` | enum |  | `weld` | `weld`, `contact` |  | what holds it when grabbed: a weld (R18) or the gripper's own contact (R121; needs a body with fingers, `BodyAdapter.jaw_geoms`) |
 | `hitch` | bool |  | `False` |  |  | a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's |
 | `length` | float | m | `0.2` | [0.08, 0.5] |  | rod length along +x |
 | `width` | float | m | `0.016` | [0.006, 0.04] |  | square rod side |
