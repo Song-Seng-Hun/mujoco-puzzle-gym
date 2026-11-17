@@ -28,11 +28,19 @@ def test_guide_names_every_part_and_preset():
     assert not missing
 
 
-def test_guide_tables_match_mpg_parts_markdown():
-    text = GUIDE.read_text()
+@pytest.mark.parametrize("lang, name", [("ko", "docs/parts-guide.md"),
+                                        ("en", "docs/parts-guide.en.md"),
+                                        ("ja", "docs/parts-guide.ja.md")])
+def test_guide_tables_match_mpg_parts_markdown(lang, name):
+    """All three languages, not just Korean. Only Korean was checked until 2026-11-17, and
+    the other two had drifted: the Japanese table was 35 rows short of the parts that
+    existed and one English row still carried a Korean word. `catalog.LANGS` holds the only
+    strings that differ."""
+    text = (ROOT / name).read_text()
     assert text.count(catalog.TABLE_BEGIN) == 1 and text.count(catalog.TABLE_END) == 1
     table = text.split(catalog.TABLE_BEGIN + "\n")[1].split(catalog.TABLE_END)[0]
-    assert table == catalog.markdown(), "refresh docs/parts-guide.md with `mpg parts --markdown`"
+    assert table == catalog.markdown(lang), \
+        f"refresh {name} with `.venv/bin/python tools/refresh_parts_tables.py`"
 
 
 # ---- R25: the agent entry points and their links ------------------------------------

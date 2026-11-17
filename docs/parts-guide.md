@@ -759,6 +759,33 @@ def majority(inputs, state, dt):
 | `frictionloss` | float | N m | `0.01` | [0, 1] | 예 | wheel joint friction while the body is on the strip |
 | `damping` | float | N m s/rad | `0.0` | [0, 1] | 예 | wheel joint damping while the body is on the strip |
 
+### `budget`
+
+역할 `prop`, 갱신 단계 `logic`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | where the budget stands (`body: true`) or where guides draw it |
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
+| `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
+| `amount` | float |  | `10.0` | [0, 1e+06] | 예 | what the pool starts an episode with |
+| `spend` | enum |  | `time` | `time`, `flow` |  | time: `rate`/s per load that is on; flow: `rate`/s while any load is on |
+| `rate` | float |  | `1.0` | [0.0001, 10000] |  | units spent per second (see `spend`) |
+| `loads` | list |  | — |  |  | channels that draw from the pool |
+| `refill` | str |  | — |  |  | channel whose turn-on puts `amount` back |
+
 ### `button`
 
 역할 `switch`, 갱신 단계 `input`.
