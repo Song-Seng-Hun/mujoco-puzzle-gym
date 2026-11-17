@@ -114,6 +114,16 @@ Z_I_MAX = 0.02
 #: same 3-row solve it was measured with. Three control changes measured earlier today each
 #: broke a shipped room; this one is written so that it cannot.
 ALIGN_GAIN = 6.0
+#: Where a grasp closes, as a **fixed** offset in the gripper site's own frame [m] (R120).
+#:
+#: Measured from the finger-tip geoms with the jaw open, which is the pose an approach
+#: straddles an object in. It has to be fixed rather than read live, because the live
+#: midpoint travels with the jaw - measured (-0.0116, 0, +0.0226) open, (-0.0010, 0,
+#: +0.0069) half open, (-0.0009, 0, -0.0184) shut, so 4 cm along the site's own z - and the
+#: jaw joint is **not** in the solve's column set, so that travel is motion the Jacobian
+#: cannot see. Servoing the live point made the arm chase it: 7 cm of drift over 8 s with a
+#: zero command.
+GRASP_OFFSET = (-0.0116, 0.0001, 0.0226)
 #: Actuator realism the arm did not model at all (R118). Both default to "none", so every
 #: room that ships today runs exactly as it was measured.
 #:
@@ -216,6 +226,9 @@ class So101Adapter(BodyAdapter):
         #: World direction to bring the jaw's opening axis onto, or None for no orientation
         #: task (the default, and what every shipped room uses). Set it to grasp by contact.
         self.align_axis: np.ndarray | None = None
+        #: Rows the orientation task adds: 3 pins the whole orientation, 1 only brings the
+        #: opening axis onto the plane `align_axis` spans (R120).
+        self.align_rows = 3
         #: Control steps of delay on the joint targets (R118); 0 = none, the default.
         self.latency_steps = 0
         self._queue: list[np.ndarray] = []
@@ -341,7 +354,13 @@ class So101Adapter(BodyAdapter):
         now = self.control_point(data)
         lead = aim - now
         n = float(np.linalg.norm(lead[:2]))
-        if n > MAX_LEAD:
+        # Only while a command is running (R120). The clamp re-anchors the aim to
+        # "wherever the point is now, plus `MAX_LEAD` along the residual", which is right
+        # for a blocked jaw under a live command and a **ratchet** without one: if anything
+        # holds the residual open - an orientation task spending the same joints, say - the
+        # aim is re-planted 0.03 m ahead every step and the arm creeps with a zero command.
+        # Measured before this: 76 mm of travel over 8 s, commanded to stand still.
+        if n > MAX_LEAD and float(np.hypot(vx, vy)) > 1e-9:
             aim[:2] = now[:2] + lead[:2] * (MAX_LEAD / n)
         self._aim = aim
         steps = max(1, round(self.control_dt / model.opt.timestep))
@@ -388,8 +407,20 @@ class So101Adapter(BodyAdapter):
                 axis = self.opening_axis(data)
                 want = np.asarray(self.align_axis, dtype=float)
                 want = want / max(float(np.linalg.norm(want)), 1e-9)
-                j = np.vstack([j, jacr[:, self._qvel]])
-                err = np.concatenate([err, np.cross(axis, want) * ALIGN_GAIN])
+                if self.align_rows == 1:
+                    # One row, not three (R120). Three rows pin the whole orientation, and
+                    # with three position rows that is six constraints on five joints -
+                    # measured, the solve could then not even hold the grab height (site z
+                    # 0.0422 against the 0.0200 asked). One row asks for a single scalar
+                    # instead: `s = axis . want` to zero, so the opening axis only has to
+                    # leave `want`'s direction. `ds/dt = (w x axis) . want = w . (axis x
+                    # want)`, which is the row below.
+                    row = np.cross(axis, want) @ jacr[:, self._qvel]
+                    j = np.vstack([j, row])
+                    err = np.append(err, -float(np.dot(axis, want)) * ALIGN_GAIN)
+                else:
+                    j = np.vstack([j, jacr[:, self._qvel]])
+                    err = np.concatenate([err, np.cross(axis, want) * ALIGN_GAIN])
             # Damped least squares: J^T (J J^T + lambda^2 I)^-1 e. The damping is what
             # keeps the solve finite near the envelope's edge, where the Jacobian loses
             # rank and an undamped pseudo-inverse would ask for an enormous joint rate.
@@ -431,7 +462,16 @@ class So101Adapter(BodyAdapter):
         return self.grasp_point(data)
 
     def grasp_point(self, data: mujoco.MjData) -> np.ndarray:
-        """Middle of the finger gap in world coordinates: where a grasp actually closes."""
+        """Where a grasp closes, in world coordinates: `GRASP_OFFSET` carried by the site.
+
+        Rigid in the site's frame on purpose (see `GRASP_OFFSET`); `live_grasp_point` is the
+        measured one, kept so the two can be measured against each other."""
+        site = np.asarray(data.site_xpos[self._site], dtype=float)
+        rot = np.asarray(data.site_xmat[self._site], dtype=float).reshape(3, 3)
+        return site + rot @ np.asarray(GRASP_OFFSET, dtype=float)
+
+    def live_grasp_point(self, data: mujoco.MjData) -> np.ndarray:
+        """Middle of the finger gap as the geometry actually has it, jaw angle and all."""
         a = np.mean([data.geom_xpos[g] for g in self._fixed_tips], axis=0)
         b = np.mean([data.geom_xpos[g] for g in self._moving_tips], axis=0)
         return (np.asarray(a, dtype=float) + np.asarray(b, dtype=float)) / 2.0

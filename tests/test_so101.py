@@ -389,6 +389,93 @@ def test_the_grasp_point_is_not_the_point_the_solve_servos(scene):
         body.align_axis = None
 
 
+# ---- R120: it can grasp by contact, with no weld anywhere -----------------------------
+
+def _cube_scene(so101_asset_dir, mass=0.03, half=0.015, mu=1.0):
+    """A bare body scene with one free cube. No room, so no `World` and **no weld**: what
+    holds the cube here is friction and contact or nothing."""
+    body = make_body("so101")
+    spec = body.spawn(flat_floor_spec(), (0.0, 0.0, 0.0))
+    cube = spec.worldbody.add_body(name="cube", pos=[0.215, 0.0, half])
+    cube.add_freejoint()
+    cube.add_geom(name="cube", type=mujoco.mjtGeom.mjGEOM_BOX, size=[half] * 3, mass=mass,
+                  rgba=(0.8, 0.3, 0.3, 1.0), friction=[mu, 0.005, 0.0001])
+    model = spec.compile()
+    data = mujoco.MjData(model)
+    body.reset(data)
+    return body, model, data
+
+
+def _drive(body, data, xy, steps, speed=0.06):
+    for _ in range(steps):
+        v = np.asarray(xy, float) - body.control_point(data)[:2]
+        d = float(np.linalg.norm(v))
+        v = v / max(d, 1e-9) * min(speed, d * 2)
+        yaw = body.state(data).yaw
+        c, s = math.cos(-yaw), math.sin(-yaw)
+        body.step(data, (c * v[0] - s * v[1], s * v[0] + c * v[1], 0.0))
+
+
+@pytest.mark.parametrize("mass,standoff", [(0.03, 0.08), (0.06, 0.08), (0.01, 0.02)])
+def test_the_jaw_lifts_a_cube_by_contact(so101_asset_dir, mass, standoff):
+    """R120, and the whole point of R113 item 1: the arm picks a cube up with its fingers.
+
+    Measured lifts, 30 g and 60 g at a 0.08 m stand-off and 10 g at 0.02 m: 95.3, 92.3 and
+    91.2 mm, with the jaw stalling on the cube at +0.13 to +0.18 rad (closed onto something,
+    not shut on nothing) and 16-23 contacts. Friction 0.3 and 2.0 both lift as well.
+
+    Three of my own wrong turns had to be undone first, and each one is in the spec: the
+    controlled point was read live (it travels 4 cm with the jaw, which the solve cannot
+    see), the orientation task used three rows (six constraints on five joints - the solve
+    could not even hold the grab height), and the lead clamp re-anchored itself every step
+    (76 mm of creep under a zero command).
+    """
+    body, model, data = _cube_scene(so101_asset_dir, mass=mass)
+    cid = model.body("cube").id
+    cube_xy = np.array([0.215, 0.0])
+    radial = cube_xy / np.linalg.norm(cube_xy)
+    body.align_axis = np.array([0.0, 0.0, 1.0])     # the opening axis must leave vertical
+    body.align_rows = 1
+    body.jaw_target = 1.0                           # open
+    body.set_head(1.0)
+    _drive(body, data, cube_xy - radial * standoff, 200)
+    for _ in range(100):
+        body.step(data, (0.0, 0.0, 0.0))
+    z0 = float(data.xpos[cid][2])
+    _drive(body, data, cube_xy, 250, speed=0.035)
+    body.jaw_target = -1.0                          # close
+    for _ in range(160):
+        body.step(data, (0.0, 0.0, 0.0))
+    assert data.qpos[body._jaw_q] > 0.05, "the jaw shut on nothing"
+    body.set_head(0.0)                              # lift
+    for _ in range(300):
+        body.step(data, (0.0, 0.0, 0.0))
+    assert float(data.xpos[cid][2]) - z0 > 0.05, (mass, data.xpos[cid])
+
+
+def test_one_orientation_row_reaches_the_table_and_three_do_not(scene):
+    """Why `align_rows` exists. Three rows pin the whole orientation: three position rows
+    plus three is six constraints on five joints, and measured, the solve then holds the
+    site at z 0.0422 when asked for 0.0200 - it cannot get down to the table at all. One row
+    asks only that the opening axis leave the vertical, and reaches site z 0.0151 with the
+    axis just as horizontal (0.003 against 0.008)."""
+    body, _, data = scene
+    out = {}
+    for rows, want in ((3, np.cross([0.0, 0.0, 1.0], [1.0, 0.0, 0.0])),
+                       (1, np.array([0.0, 0.0, 1.0]))):
+        body.reset(data)
+        body.align_axis, body.align_rows = want, rows
+        body.jaw_target = 1.0
+        body.set_head(1.0)
+        for _ in range(300):
+            body.step(data, (0.0, 0.0, 0.0))
+        out[rows] = (abs(body.opening_axis(data)[2]), float(data.site_xpos[body._site][2]))
+    body.align_axis, body.align_rows = None, 3
+    assert out[1][0] < 0.02 and out[3][0] < 0.02, out      # both get the axis horizontal
+    assert out[1][1] < 0.025, out                          # one row reaches the table
+    assert out[3][1] > 0.035, out                          # three rows cannot
+
+
 # ---- R118: actuator realism, and how little latency this control survives ------------
 
 def test_the_actuator_realism_knobs_are_off_by_default():
