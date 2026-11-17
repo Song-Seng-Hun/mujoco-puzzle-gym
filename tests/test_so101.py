@@ -419,3 +419,61 @@ def test_the_approach_standoff_is_this_body_s_own(so101_asset_dir):
 
     cube = builtin_parts()["cube"]("c", {"pos": [0.0, 0.0]})
     assert So101Adapter.approach_clearance > cube.grab_radius
+
+
+def test_a_grab_waits_for_an_object_a_belt_is_still_carrying(tmp_path, so101_asset_dir):
+    """The approach aims at where the handle is now, so an object still being carried is
+    grabbed wherever it happened to be when it first came within reach.
+
+    Measured on a belt that lands a block at the one spot this body can pick from: the arm
+    took it at the belt's *start* instead, 0.22 m short, because that was the first reachable
+    moment. The wait is bounded (`WAIT_MOVING`) so an object that never rests is still
+    approached, and it is measured as movement per control step rather than from `vel`: a
+    `conveyor` carries what stands on it by setting positions, so a block riding a belt reads
+    almost no velocity and the first version of this never triggered once.
+    """
+    import warnings
+
+    import numpy as np
+    import yaml
+
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+
+    room = tmp_path / "belt.yaml"
+    room.write_text(yaml.safe_dump({
+        "name": "belt", "size": [1.6, 1.0], "wall": {"thickness": 0.02, "height": 0.1},
+        "spawn": {"pos": [-0.3, 0.0], "yaw": 0.0},
+        "parts": [
+            {"name": "block", "type": "cube", "pos": [-0.42, -0.16], "size": 0.03,
+             "mass": 0.02},
+            {"name": "belt", "type": "conveyor", "pos": [-0.24, -0.16], "size": [0.38, 0.16],
+             "axis": "x", "speed": 0.1, "trigger": "object"},
+            {"name": "box", "type": "receptacle", "pos": [0.0, 0.14], "size": [0.12, 0.12],
+             "accept": ["block"]},
+            {"name": "goal", "type": "goal", "pos": [0.05, -0.25], "radius": 0.05},
+        ],
+        "demo": ["grab block", "place block box", "goto goal"],
+    }))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        env = PuzzleEnv(task={"room": str(room), "body": "so101",
+                              "actions": ["move", "head", "grab"],
+                              "env": {"hz": 10, "episode_seconds": 40}})
+    try:
+        env.reset(seed=0)
+        solver = ScriptedSolver(env)
+        solver.reset()
+        beak = env.parts["_beak"]
+        at = None
+        for _ in range(200):
+            act = solver.act()
+            env.step(act if act is not None else np.zeros(env.action_space.shape))
+            if beak.held is not None:
+                at = env.parts["block"].pos(env.data)[:2].copy()
+                break
+        assert at is not None, "the block was never picked up"
+        # The belt runs -0.43 to -0.05 in x; taken at its start this was -0.27.
+        assert at[0] > -0.10, f"grabbed at {np.round(at, 3)}, not where the belt put it"
+    finally:
+        env.close()

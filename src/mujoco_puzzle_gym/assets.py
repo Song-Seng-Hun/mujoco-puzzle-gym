@@ -14,6 +14,8 @@ import io
 import json
 import os
 import tarfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -56,10 +58,33 @@ def _quarantine(path: Path) -> Path:
     return bad
 
 
+#: Tries per file, and the wait before each retry [s]. A reset connection is not a wrong URL
+#: and not a wrong hash: CI's fast suite failed with `ConnectionResetError: [Errno 104]
+#: Connection reset by peer` while test fixtures fetched two bodies' models, which took five
+#: fixture setups and one test with it, while the same shard passed locally. Nothing about the
+#: verification is relaxed - the caller still hashes what arrives, so a truncated file is
+#: still refused; this only stops one dropped connection from failing a whole run.
+HTTP_TRIES = 3
+HTTP_BACKOFF = (2.0, 4.0)
+
+
 def _http_get(url: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        return resp.read()
+    for i in range(HTTP_TRIES):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as exc:
+            # A 404 or a 403 is an answer: the lock names something that is not there, or the
+            # host refuses, and asking again twice only delays the error that has to be read.
+            # Server-side failures (5xx) are retried like a dropped connection.
+            if exc.code < 500 or i == HTTP_TRIES - 1:
+                raise
+        except (urllib.error.URLError, OSError):
+            if i == HTTP_TRIES - 1:
+                raise
+        time.sleep(HTTP_BACKOFF[min(i, len(HTTP_BACKOFF) - 1)])
+    raise AssertionError("unreachable")       # the loop either returns or raises
 
 
 def _download(lock: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, bytes]:

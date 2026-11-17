@@ -835,6 +835,21 @@ Changing the receptacle moves which step fails without raising the count: a wall
 among several, and a room for this body has to be designed around **where the arm itself
 passes**.
 
+**A grab now waits for an object a belt is still carrying** (2026-11-17). The approach aims
+at where the handle is *now*, so an object still in transit is taken wherever it happened to
+be when it first came within reach - measured, the arm took it at the belt's **start**
+(-0.268, -0.162), 0.22 m short of where the belt lands it (-0.048, -0.160). It now stands and
+waits while the object moves more than 2 mm per control step, bounded by `WAIT_MOVING` (3 s).
+Measured as **movement per step rather than from `vel`**: a `conveyor` carries what stands on
+it by setting positions, so a block riding a belt reads almost no velocity, and the first
+version of this check never triggered once. The grid stays at 7 of 25, so nothing regressed.
+
+**The wedge room still does not work.** With the belt landing the block exactly on the pick
+spot the grid calls good - which the wait now lets it grab - and the box moved to match the
+carry vector that does work (y 0.14, 0.10, 0.06, 0.02), every one is 0/5. The block gets
+further, 0.303 -> 0.187 m, and stalls there. The conclusion holds **after** the pick spot was
+matched.
+
 **And the wedge room cannot be rescued by room design - that is measured.** In the geometry
 where the belt hands the block over at r=0.300, the spot where the grab works, the receptacle
 was moved over 25 positions (x 0.05-0.35, y -0.30 to +0.02) and every one is 0. That sweep had

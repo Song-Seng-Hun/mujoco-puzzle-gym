@@ -234,3 +234,57 @@ def test_a_lock_may_pin_a_model_without_a_policy():
     result = assets.fetch(LOCK)
     assert result["verified"] is True
     assert set(result["source"]) == {"github"}
+
+
+def test_a_dropped_connection_is_retried(monkeypatch):
+    """CI's fast suite failed on `ConnectionResetError: [Errno 104] Connection reset by peer`
+    while fixtures fetched two bodies' models - five fixture setups and one test with it,
+    where the same shard passed locally. One dropped connection should not fail a run.
+
+    Nothing about the verification is relaxed: the caller hashes what arrives, so this only
+    decides how many times the bytes are asked for.
+    """
+    from mujoco_puzzle_gym import assets
+
+    calls = []
+
+    class Resp:
+        def read(self):
+            return b"payload"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def flaky(req, timeout=None):
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise ConnectionResetError(104, "Connection reset by peer")
+        return Resp()
+
+    monkeypatch.setattr(assets.urllib.request, "urlopen", flaky)
+    monkeypatch.setattr(assets.time, "sleep", lambda s: None)
+    assert assets._http_get("https://example.invalid/x") == b"payload"
+    assert len(calls) == 2, calls
+
+
+def test_a_missing_file_is_not_retried(monkeypatch):
+    """The other side: a 404 is an answer - the lock names something that is not there - and
+    asking twice more only delays the error that has to be read."""
+    import urllib.error
+
+    from mujoco_puzzle_gym import assets
+
+    calls = []
+
+    def missing(req, timeout=None):
+        calls.append(timeout)
+        raise urllib.error.HTTPError("https://example.invalid/x", 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(assets.urllib.request, "urlopen", missing)
+    monkeypatch.setattr(assets.time, "sleep", lambda s: None)
+    with pytest.raises(urllib.error.HTTPError):
+        assets._http_get("https://example.invalid/x")
+    assert len(calls) == 1, calls
