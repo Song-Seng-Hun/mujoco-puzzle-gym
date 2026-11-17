@@ -50,6 +50,8 @@ PRESET_TASKS["puzzles/tabletop/weigh_it_down"] = ROOT / "examples/task_weigh_it_
 PRESET_TASKS["puzzles/tabletop/dead_wedge"] = ROOT / "examples/task_dead_wedge.yaml"
 #: M5 R74: two belts, two bins, one at a time.
 PRESET_TASKS["puzzles/tabletop/conveyor_triage"] = ROOT / "examples/task_conveyor_triage.yaml"
+#: M5 R88: one block on another, which needs a place of its own (`Carrier._stack_act`).
+PRESET_TASKS["puzzles/tabletop/build_a_tower"] = ROOT / "examples/task_build_a_tower.yaml"
 #: R34 circuit presets whose `demo:` pecks a cover or carries a fuse (`head`, `grab`).
 PRESET_TASKS.update({f"puzzles/circuit/{n}": ROOT / f"examples/task_{n}.yaml"
                      for n in ("peck_cable", "wrong_wire", "fuse_repair", "jam_the_turret",

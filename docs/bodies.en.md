@@ -894,6 +894,19 @@ room's numbers are measurements and each failed first:
 - **The bin sits near the hand-over** - across the table (0.49 m) the carry gives up 0.13 m in.
   At 0.18, 0.12 it solves, and so do 0.26, 0.20 and 0.10, 0.06.
 
+**The stacking room opened too - but it needed a place of its own**
+(`puzzles/tabletop/build_a_tower`, R88): **20/20 at a mean of 9.8 s**, 0/5 demo-cut, exclusive.
+The rooms that place into a receiver are finished by the carry *charging* the target, and
+correcting that takes two of them to 0/20 (A8 in the spec); a tower needs the opposite - creep,
+stop, then open. `Carrier._stack_act` takes that path only for a part that answers
+`place_height`. Three things were wrong first, each measured: the aim is **the top of the
+stack**, not the patch's centre (aiming at the centre left the two blocks 0.083 m apart); the
+aim has to be the **object's** target with the hold's offset taken out (`steer` drives the grab
+point, and the object hangs up to 0.06 m to one side - aiming it directly flattened the error
+at 0.056-0.066 m and oscillated); and the **open has to run for a step** (ending the sub-goal in
+the same step as `grab = -1.0` lets the next one close the jaw again, and the first block was
+dragged 0.39 m into the second grab).
+
 **The triage room falls out of the same finding** (`puzzles/tabletop/conveyor_triage`, R74):
 **two** belts bring one block each out of the wedge, from either side, and each goes to its own
 zone - **20/20 at a mean of 17.0 s**, 0/5 demo-cut, exclusive. Two measurements are new here:

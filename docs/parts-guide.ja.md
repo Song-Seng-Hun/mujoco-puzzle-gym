@@ -629,6 +629,7 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/weigh_it_down` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 11.5 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/dead_wedge` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 11.2 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/conveyor_triage` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 17.0 s** | 名前拒否 `['grab']` | はい |
+| `puzzles/tabletop/build_a_tower` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 9.8 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/pick_and_place` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 16.3 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/reach_target` | 通過 5/5, 1.5 s | 解法 0/5 | 通過 5/5, 0.6 s | 解法 0/5 | いいえ |
 

@@ -551,3 +551,39 @@ def test_the_triage_room_sorts_two_blocks_one_at_a_time(repo_root, tmp_path, so1
     finally:
         env.close()
     assert cut == 0, f"the goal was reached without sorting: {cut}/3"
+
+
+@pytest.mark.slow
+def test_building_a_tower_needs_a_place_of_its_own(repo_root, tmp_path, so101_asset_dir):
+    """R88: one block on another. The ordinary place lets go as soon as the object is inside
+    the target's tolerance, which on a patch wide enough to catch this body's carry put the two
+    blocks 0.083 m apart - a row, which `stack` refuses by design.
+
+    `Carrier._stack_act` is taken only by a part that answers `place_height`: it creeps with
+    the hold's offset taken out of the aim, stops over the tower, opens, and keeps standing
+    while it opens (returning None in the same step as the open never opens anything - the next
+    sub-goal starts by closing the jaw again, and the block is carried into it still held).
+    """
+    import warnings
+
+    from mujoco_puzzle_gym import catalog
+    from mujoco_puzzle_gym.check import check
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import run_episode
+    from mujoco_puzzle_gym.task import load_task
+
+    room = catalog.PRESET_ROOT / "puzzles/tabletop/build_a_tower.yaml"
+    task = repo_root / "examples/task_build_a_tower.yaml"
+    res = check(room, task=task, seeds=20, need=18, snap_dir=tmp_path)
+    assert res["ok"], res
+    assert res["solver"]["successes"] >= 18
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        env = PuzzleEnv(task=load_task(task))
+    try:
+        env.room.demo[:] = [("goto", "goal")]
+        cut = sum(bool(run_episode(env, s).get("success")) for s in range(3))
+    finally:
+        env.close()
+    assert cut == 0, f"the goal was reached without the tower: {cut}/3"

@@ -1,0 +1,39 @@
+# Build a tower (R71's room, R88): two blocks and a patch that reads a stack. The goal does not
+# count until the patch reads two of them stacked, which a row of two lying side by side does
+# not satisfy - that distinction is the `stack` part's whole point.
+#
+# Measured (M5 R88, 2026-11-17): 20/20 at a mean of 9.8 s, **0/5** with the demo cut to a
+# single `goto goal` step, and exclusive under `mpg check --all-bodies`.
+#
+# This room needed a place of its own, and three of its numbers failed first:
+#
+#   - **The blocks start at the radius this body works at** (about 0.28 m) and **outside the
+#     patch**. One version put the second block 0.19 m out, folded in against the base, where
+#     the arm shoved it to 0.43 m and out of reach; another had the patch wide enough to
+#     contain it at the start, so the place aimed at the block it was about to fetch.
+#   - **The patch is where the carry actually leaves things**, and wide. With it 0.12 m across
+#     the first block landed 4 mm outside.
+#   - **The place aims the grab point, not the object.** `steer` drives where the body is, and
+#     the object hangs where the grab left it - up to 0.06 m to one side - so aiming the
+#     object's own target flattened the error at 0.056-0.066 m and oscillated there.
+#
+# The place that puts one block on another is `Carrier._stack_act`, taken only by a part that
+# answers `place_height`: it creeps, stops over the tower, opens, and keeps standing while it
+# opens. The rooms that place into a receptacle or a zone need the opposite - what finishes
+# their place is the carry charging the target - and they are untouched: `docs/specs/
+# 2026-11-17-loaded-carry/spec.md` has that measurement as A8.
+size: [1.2, 1.0]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [-0.3, 0.0], yaw: 0.0}
+parts:
+  - {name: b1, type: cube, pos: [-0.05, -0.12], size: 0.03, mass: 0.02}
+  - {name: b2, type: cube, pos: [-0.05, 0.22], size: 0.03, mass: 0.02}
+  - {name: tower, type: stack, pos: [0.02, 0.02], size: [0.24, 0.24], need: 2,
+     height: 0.04, settle: 0.3, accept: [b1, b2]}
+  - {name: goal, type: goal, pos: [0.05, -0.28], radius: 0.05, enable: tower}
+demo:
+  - grab b1
+  - place b1 tower
+  - grab b2
+  - place b2 tower
+  - goto goal
