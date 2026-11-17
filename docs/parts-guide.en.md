@@ -647,6 +647,7 @@ Measured 2026-11-17, 5 seeds, each with the room's own task file:
 | `puzzles/tabletop/conveyor_triage` | solver 0/5 | refused `['grab']` | **pass 5/5, 17.0 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/build_a_tower` | solver 0/5 | refused `['grab']` | **pass 5/5, 9.8 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/lever_arm` | solver 0/5 | refused `['grab']` | **pass 5/5, 7.4 s** | refused `['grab']` | yes |
+| `puzzles/tabletop/fetch_the_steel` | solver 0/5 | refused `['grab']` | **pass 5/5, 8.1 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/pick_and_place` | solver 0/5 | refused `['grab']` | **pass 5/5, 16.3 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/reach_target` | pass 5/5, 1.5 s | solver 0/5 | pass 5/5, 0.6 s | solver 0/5 | no |
 
@@ -1251,6 +1252,19 @@ Role `prop`, update stage `device`.
 | `axis` | enum |  | `y` | `x`, `y` |  | direction the bar lies along |
 | `bottom` | float | m | `0.228` | [0.21, 0.246] |  | underside height; measured window: crouched head 0.20 m, rolling head 0.256 m |
 
+### `magnet`
+
+Role `prop`, update stage `device`.
+
+| Value | Kind | Unit | Default | Range | Runtime change | Description |
+|---|---|---|---|---|---|---|
+| `radius` | float | m | `0.35` | [0.05, 2] |  | objects nearer than this are pulled |
+| `power` | float | N | `1.0` | [0, 20] | yes | force on each accepted object, toward the post |
+| `hold` | float | m | `0.06` | [0.02, 0.5] |  | inside this the pull tapers to zero and the channel reads 1 |
+| `height` | float | m | `0.2` | [0.02, 2] |  | objects count while their centre is lower than this |
+| `damp` | float | N s/m | `0.4` | [0, 20] | yes | force against the object's own speed, so it settles instead of overshooting |
+| `accept` | list |  | `[]` |  |  | object parts it pulls (empty: every object) |
+
 ### `npc`
 
 Role `prop`, update stage `device`.
@@ -1741,6 +1755,7 @@ Role `switch`, update stage `input`.
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
 | `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
 | `device/low_bar` | `low_bar` | `length: 1.5`, `axis: y`, `bottom: 0.228` |
+| `device/magnet` | `magnet` | `radius: 0.4`, `power: 1.0`, `damp: 0.4`, `hold: 0.12` |
 | `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
@@ -1831,6 +1846,7 @@ Role `switch`, update stage `input`.
 - `puzzles/tabletop/build_a_tower`
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
+- `puzzles/tabletop/fetch_the_steel`
 - `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`

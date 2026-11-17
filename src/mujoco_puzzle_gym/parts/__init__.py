@@ -3,7 +3,7 @@
 from ..registry import register_part
 from .base import Part
 from .beak import Dial, Dispenser, Drawer, Egg, HandleBall, Key, Laundry, Lever, PullCord, Stick
-from .device import (AddonStation, Anchor, Conveyor, Destroyer, Door, GoalNet, HitchStation, LowBar, Pillar, Platform,
+from .device import (AddonStation, Anchor, Conveyor, Destroyer, Door, GoalNet, HitchStation, LowBar, Magnet, Pillar, Platform,
                      Rope, RopeDoor, Setter, Spring, SwingDoor, Trapdoor, Turntable, Warp)
 from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
@@ -55,6 +55,7 @@ register_part("spring", Spring, replace=True)
 register_part("setter", Setter, replace=True)
 register_part("target", Target, replace=True)
 register_part("wind", Wind, replace=True)
+register_part("magnet", Magnet, replace=True)
 register_part("pusher", Pusher, replace=True)
 register_part("spinner", Spinner, replace=True)
 register_part("pendulum", Pendulum, replace=True)

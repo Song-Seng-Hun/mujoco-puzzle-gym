@@ -637,6 +637,7 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/conveyor_triage` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 17.0초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/build_a_tower` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 9.8초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/lever_arm` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 7.4초** | 이름 거부 `['grab']` | 예 |
+| `puzzles/tabletop/fetch_the_steel` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 8.1초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/pick_and_place` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 16.3초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/reach_target` | 통과 5/5, 1.5초 | 해답 0/5 | 통과 5/5, 0.6초 | 해답 0/5 | 아니오 |
 
@@ -1232,6 +1233,19 @@ def majority(inputs, state, dt):
 | `axis` | enum |  | `y` | `x`, `y` |  | direction the bar lies along |
 | `bottom` | float | m | `0.228` | [0.21, 0.246] |  | underside height; measured window: crouched head 0.20 m, rolling head 0.256 m |
 
+### `magnet`
+
+역할 `prop`, 갱신 단계 `device`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `radius` | float | m | `0.35` | [0.05, 2] |  | objects nearer than this are pulled |
+| `power` | float | N | `1.0` | [0, 20] | 예 | force on each accepted object, toward the post |
+| `hold` | float | m | `0.06` | [0.02, 0.5] |  | inside this the pull tapers to zero and the channel reads 1 |
+| `height` | float | m | `0.2` | [0.02, 2] |  | objects count while their centre is lower than this |
+| `damp` | float | N s/m | `0.4` | [0, 20] | 예 | force against the object's own speed, so it settles instead of overshooting |
+| `accept` | list |  | `[]` |  |  | object parts it pulls (empty: every object) |
+
 ### `npc`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -1722,6 +1736,7 @@ def majority(inputs, state, dt):
 | `device/goal_net` | `goal_net` | `width: 0.36`, `depth: 0.2`, `height: 0.12` |
 | `device/lift_pillar` | `pillar` | `size: [0.1, 0.4]`, `height: 0.25`, `speed: 0.2`, `mode: follow` |
 | `device/low_bar` | `low_bar` | `length: 1.5`, `axis: y`, `bottom: 0.228` |
+| `device/magnet` | `magnet` | `radius: 0.4`, `power: 1.0`, `damp: 0.4`, `hold: 0.12` |
 | `device/moving_platform` | `platform` | `size: [0.3, 0.3]`, `path: [[0.0, 0.0, 0.03], [0.6, 0.0, 0.03]]`, `speed: 0.1`, `mode: pingpong` |
 | `device/oneshot_door` | `door` | `mode: oneshot`, `width: 0.5`, `axis: y` |
 | `device/reset_pad` | `warp` | `to: reset`, `size: [0.25, 0.25]` |
@@ -1812,6 +1827,7 @@ def majority(inputs, state, dt):
 - `puzzles/tabletop/build_a_tower`
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
+- `puzzles/tabletop/fetch_the_steel`
 - `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`

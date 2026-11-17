@@ -87,6 +87,7 @@
 | `laundry` | `grab` | o | x | 부리로 집는 물체 |
 | `lever` | `grab` | o | x | 기본 `mode: grab`. `push`는 §3 |
 | `low_bar` | `roller` | o | x | 웅크려 지나가는 낮은 바(§4) |
+| `magnet` | - | o | o | 물체만 끈다. 몸은 받지 않음 |
 | `npc` | - | o | o | 스스로 움직임. 속도 경고는 몸 상대(§5) |
 | `pendulum` | - | o | o | 위치 서보로 휘두르는 장애물 |
 | `pillar` | - | o | o | 정적 장애물 |

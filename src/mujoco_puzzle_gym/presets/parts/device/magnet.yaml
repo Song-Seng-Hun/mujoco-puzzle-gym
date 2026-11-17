@@ -1,0 +1,9 @@
+# Magnet (R98): pulls the objects in `accept` to its pad and holds them there while its
+# `in` channels are on. `damp` and `hold` are the measured delivery settings (R98 header of
+# `puzzles/tabletop/fetch_the_steel`): without them the object crosses the pad and leaves
+# the field. Set: pos, accept; optional radius, power [N], in, enable.
+type: magnet
+radius: 0.4
+power: 1.0
+damp: 0.4
+hold: 0.12

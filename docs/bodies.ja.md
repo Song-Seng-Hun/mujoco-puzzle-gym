@@ -89,6 +89,7 @@
 | `laundry` | `grab` | o | x | くちばしでつかむ物体 |
 | `lever` | `grab` | o | x | 既定は`mode: grab`。`push`は§3 |
 | `low_bar` | `roller` | o | x | かがんで通る低いバー(§4) |
+| `magnet` | - | o | o | 物体だけを引く。体は対象外 |
 | `npc` | - | o | o | 自分で動く。速度の警告は体に対する相対(§5) |
 | `pendulum` | - | o | o | 位置サーボで振り回す障害物 |
 | `pillar` | - | o | o | 静的な障害物 |

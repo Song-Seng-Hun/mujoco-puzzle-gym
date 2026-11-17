@@ -93,6 +93,7 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `laundry` | `grab` | o | x | An object picked up with the beak |
 | `lever` | `grab` | o | x | Default `mode: grab`. For `push` see §3 |
 | `low_bar` | `roller` | o | x | A low bar you crouch under (§4) |
+| `magnet` | - | o | o | Pulls objects only; it never takes the body |
 | `npc` | - | o | o | Moves on its own. The speed warning is relative to the body (§5) |
 | `pendulum` | - | o | o | An obstacle swung by a position servo |
 | `pillar` | - | o | o | A static obstacle |

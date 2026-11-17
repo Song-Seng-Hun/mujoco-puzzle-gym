@@ -56,6 +56,8 @@ PRESET_TASKS["puzzles/tabletop/build_a_tower"] = ROOT / "examples/task_build_a_t
 PRESET_TASKS["puzzles/tabletop/lever_arm"] = ROOT / "examples/task_lever_arm.yaml"
 #: M6 R94: two doors on one pool - the first room where something runs out.
 PRESET_TASKS["puzzles/budget/two_openings"] = ROOT / "examples/task_two_openings.yaml"
+#: M7 R98: the magnet brings the cube the arm cannot reach, and only the one it accepts.
+PRESET_TASKS["puzzles/tabletop/fetch_the_steel"] = ROOT / "examples/task_fetch_the_steel.yaml"
 #: R34 circuit presets whose `demo:` pecks a cover or carries a fuse (`head`, `grab`).
 PRESET_TASKS.update({f"puzzles/circuit/{n}": ROOT / f"examples/task_{n}.yaml"
                      for n in ("peck_cable", "wrong_wire", "fuse_repair", "jam_the_turret",
