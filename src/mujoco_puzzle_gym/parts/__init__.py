@@ -8,7 +8,7 @@ from .device import (AddonStation, Anchor, Conveyor, Destroyer, Door, GoalNet, H
 from .floor import FloorTile
 from .floor.coin import Coin, CoinGroup, CoinLock
 from .goal import Goal
-from .input import (Button, Checkpoint, Laser, PressurePlate, Receptacle, Stack, Target,
+from .input import (Beam, Button, Checkpoint, Laser, PressurePlate, Receptacle, Stack, Target,
                     Zone)
 from .logic import Counter, Gate, Receiver, Relay, Source, Transmitter, Wire
 from .npc import Npc
@@ -33,6 +33,7 @@ register_part("laser", Laser, replace=True)
 register_part("pressure", PressurePlate, replace=True)
 register_part("receptacle", Receptacle, replace=True)
 register_part("stack", Stack, replace=True)
+register_part("beam", Beam, replace=True)
 register_part("checkpoint", Checkpoint, replace=True)
 register_part("swing_door", SwingDoor, replace=True)
 register_part("trapdoor", Trapdoor, replace=True)

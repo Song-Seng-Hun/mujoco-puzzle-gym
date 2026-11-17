@@ -269,3 +269,71 @@ def test_lap_counter_three_laps(make, ccw, want):
     assert drive(env, route, 3)
     assert env.signals.get("laps.count") == want
     assert env.signals.get("laps.reached") == float(want >= 3)
+
+
+# ---- balance beam (R90) ------------------------------------------------------------------
+BEAM_PIVOT = 0.035
+BEAM_TOP = BEAM_PIVOT + 0.012 + 0.012    # plank top plus a box half: where a box rests
+
+
+def _beam_room(make, **kw):
+    part = {"name": "beam", "type": "beam", "pos": [0, 0], "span": 0.28,
+            "pivot_height": BEAM_PIVOT, **kw}
+    boxes = [{"name": n, "type": "t_box", "pos": [x, 0.0], "half": 0.0125, "mass": 0.02}
+             for n, x in (("a", -0.8), ("b", 0.8))]
+    return make([part, *boxes])
+
+
+def _load(env, **at):
+    """Put the named boxes on the plank at those x offsets and let it settle."""
+    for name, x in at.items():
+        env.parts[name].put(env.data, [x, 0.0, BEAM_TOP])
+    settle(env, 2.0)
+    return env.parts["beam"]
+
+
+def test_a_beam_balances_equal_mass_at_equal_distance(make):
+    env = _beam_room(make)
+    beam = _load(env, a=-0.10, b=0.10)
+    assert abs(beam.angle) < 1.0
+    assert env.signals.get("beam") == 1
+
+
+def test_a_beam_tips_when_the_same_mass_moves_outward(make):
+    """The one thing no existing part or expression can ask: mass x distance. Equal masses
+    at unequal distances are not balanced, and the heavier moment reads in the angle's
+    sign (+ = the +x end down)."""
+    # A fresh room per case: loading a plank that is already tilted puts the boxes at the
+    # wrong height, which is a test artefact and not what the part does.
+    beam = _load(_beam_room(make), a=-0.12, b=0.04)
+    assert beam.satisfied() is False
+    assert beam.angle < -3.0                      # the -x end, the longer arm, goes down
+    beam = _load(_beam_room(make), a=-0.04, b=0.12)
+    assert beam.satisfied() is False
+    assert beam.angle > 3.0
+
+
+def test_a_beam_reads_a_torque_not_just_a_side(make):
+    """One 20 g box at +0.12 m is 0.0235 N m; against the default 0.09 N m/rad spring the
+    plank has to sit near 0.0235 / 0.09 = 0.26 rad. The reading is a measurement, which is
+    what lets a room ask for a distance rather than a direction."""
+    env = _beam_room(make, tilt_limit=30.0)
+    beam = _load(env, a=-0.0, b=0.12)
+    env.parts["a"].put(env.data, [0.0, 0.8, 0.02])     # only one box on the plank
+    settle(env, 2.0)
+    want = np.degrees(0.02 * 9.81 * 0.12 / 0.09)
+    assert abs(beam.angle) == pytest.approx(want, rel=0.25)
+
+
+def test_a_beam_settles_before_it_reads(make):
+    """A plank swinging through level is not a balanced plank: `settle` holds the output off
+    until the hinge has been quiet that long."""
+    env = _beam_room(make, settle=0.5)
+    beam = env.parts["beam"]
+    env.parts["a"].put(env.data, [-0.10, 0.0, BEAM_TOP + 0.05])    # dropped, so it swings
+    env.parts["b"].put(env.data, [0.10, 0.0, BEAM_TOP + 0.05])
+    settle(env, 0.2)
+    assert env.signals.get("beam") == 0
+    settle(env, 2.0)
+    assert env.signals.get("beam") == 1
+    assert abs(beam.angle) < 1.0

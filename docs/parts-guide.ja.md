@@ -726,6 +726,22 @@ def majority(inputs, state, dt):
 | `roll_damping` | float | N m s/rad | `0.0` | [0, 1] |  | damping on the rotational dofs |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
 
+### `beam`
+
+役割`sensor`、更新段階`input`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `span` | float | m | `0.24` | [0.08, 1.5] |  | plank length end to end |
+| `width` | float | m | `0.05` | [0.02, 0.5] |  |  |
+| `pivot_height` | float | m | `0.035` | [0.01, 0.4] |  | hinge height above the floor |
+| `tilt_limit` | float | deg | `18.0` | [3, 60] |  | how far each end can drop before the hinge stops |
+| `balance_band` | float | deg | `3.0` | [0.2, 30] | はい | level within this reads on |
+| `settle` | float | s | `0.4` | [0, 5] |  | the hinge must be this quiet before it reads on |
+| `lip` | float | m | `0.005` | [0, 0.03] |  | rim around the plank so a tilted load stays on it |
+| `stiffness` | float | N m/rad | `0.09` | [0.005, 5] |  | the spring that pulls the plank back to level; the angle measures torque |
+| `damping` | float | N m s/rad | `0.02` | [0, 1] |  | hinge damping: too little and a light load never settles |
+
 ### `brake_strip`
 
 役割`prop`、更新段階`device`。
