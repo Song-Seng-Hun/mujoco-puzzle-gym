@@ -11,10 +11,12 @@
 # same 27.9 s - so twenty seeds are the same
 # episode twenty times, and the number says the solution works at this one block position.
 # Moved, it used often not to. That is what changed in M7 (R108, `Carrier._lower_in_act`):
-# sweeping the block over 80x80 mm in 20 mm steps now solves **25 of 25**, where it solved
+# sweeping the block over 80x80 mm in 20 mm steps now solves **24 of 25**, where it solved
 # 3 of 25 when this room shipped and 7 of 25 after the M6 carry work. Widened to 200x200 mm
-# in 50 mm steps it is 19 of 25, and five of the six that are left stall in the **grab** -
-# the envelope, not the place. The mean time halved with it, 16.3 s -> 8.0 s, because the
+# in 50 mm steps it is **22 of 25**. Every failure left on either grid is a `grab` - the
+# envelope, not the place (R111 traded one cell of the narrow grid for three of the wide
+# one when the place became one path for the whole body). The mean time halved, 16.3 s ->
+# 7.7 s, because the
 # place no longer wrestles the box wall: measured before the change, 10 of the 25 cells
 # ended holding the block with the gripper pushing a wall at 37-50 N and three joints at
 # 100 % of their 2.94 N.m torque limit, 8 let go 0.09-0.24 m short, and even the 7 that

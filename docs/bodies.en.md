@@ -1024,3 +1024,42 @@ four control steps at 14.7 N, and at 0.05 nothing touches the wall but the episo
 finishes (400 steps). All seven shipped rooms hold their 20/20, and `pick_and_place` halved,
 16.3 s -> **8.0 s**. Widened to +-100 mm the grid is 19 of 25, and **five of the six** failures
 left are `grab` - which is where the next piece of work is.
+
+## 11. The steady state, and the distance left to hardware (M7 R111-R113, 2026-11-17)
+
+**The planar steady state was already sound.** Inside the envelope a drive at a point
+0.30 m away ends 0.0001 m short, three targets with a 30 g block in the jaw end 0.03-0.04 mm
+short, a constant command is tracked at 0.969-0.999, and standing still `kp * (ctrl - qpos)`
+equals `qfrc_bias` to 0.043 N.m. Both readings that had been taken for an inverse-kinematics
+failure were something else: one aimed at a point **0.528 m** from the base, outside the
+declared 0.48 m, where `_clamp` stops the aim on purpose; the other is the trapped jaw
+section 9 already describes.
+
+**The real defect was height**: 1.91 mm of sag with an empty jaw, 2.47-5.27 mm holding a
+block, **8.65 mm** while travelling at the command ceiling - against a 0.04 m grab radius
+and a 0.02 m table. The target is rebuilt from the measured angles every substep, so the
+servo's lead pays for holding the arm up first, and with no integrator that error stays. An
+integral on the height alone (`Z_I_GAIN` 10, clamp 0.4 m.s, cleared when the setpoint moves)
+brings it to 0.001 mm settled and 1.66 mm travelling.
+
+A gravity feed-forward was measured and **not shipped**: it fixes the sag better (0.02 mm)
+but hands back the planar authority too, and `conveyor_triage` and `build_a_tower` went
+20/20 -> 0/20, because the shipped rooms are tuned to the carry they have.
+
+The integral's change of timing set off **two latent walking-body assumptions**. Gating them
+saved two rooms and killed a third, so instead a body that answers `head_lifts_load` now
+takes one path for every place target except a hook and a stack: `Carrier._lower_in_act`
+replaces the rim press (R108), the retry rule (true on every approach for a jaw that holds
+the object ahead of itself) and carrying at release height (which drives the object through
+whatever it is put beside).
+
+Result: all seven rooms **20/20** (times within 15 %, `weigh_it_down` 11.5 -> 7.1 s), the
+grid 24 of 25 at +-40 mm and 22 of 25 at +-100 mm, and **no `place` failure left on either
+grid** - everything remaining is a `grab`.
+
+**It is not a hardware policy yet.** The privileged observation terms are now declared where
+a program can read them (`obs.PRIVILEGED_OBS`: `part_pos`, `part_state`, `target_pos`), and
+the audit says **every** `examples/task_*.yaml` uses at least one: zero observation-clean
+tasks. The five things left - a contact grasp instead of the weld, a clean task, evidence
+from a trained policy, actuator latency and randomization, sensor noise - are listed with
+their state in `docs/specs/2026-11-17-arm-steady-state/spec.md` R113.

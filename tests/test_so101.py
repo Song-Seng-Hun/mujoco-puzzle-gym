@@ -169,6 +169,124 @@ def test_the_other_bodies_are_not_holonomic():
     assert all(not make_body(n).holonomic for n in BODIES if n != "so101")
 
 
+# ---- R111: what "the steady state is sound" means here, as numbers ------------------
+
+def _drive_to(body, data, aim, steps=300):
+    """Drive the gripper at a world point the way a controller would, and return the tip."""
+    for _ in range(steps):
+        now = np.array(data.site_xpos[body._site], float)
+        v = (aim - now)[:2]
+        v = v / max(float(np.linalg.norm(v)), 1e-9) * min(0.15, float(np.linalg.norm(v)) * 2)
+        yaw = body.state(data).yaw
+        c, s = math.cos(-yaw), math.sin(-yaw)
+        body.step(data, (c * v[0] - s * v[1], s * v[0] + c * v[1], 0.0))
+    return np.array(data.site_xpos[body._site], float)
+
+
+def test_the_command_is_tracked_as_a_velocity(scene):
+    """Measured ratios of travelled to commanded speed: 0.986, 0.999, 0.969, 0.990."""
+    body, _, data = scene
+    for cmd in [(0.15, 0.0, 0.0), (0.05, 0.0, 0.0), (0.0, 0.15, 0.0), (0.10, 0.10, 0.0)]:
+        body.reset(data)
+        for _ in range(25):                      # half a second to spin up
+            body.step(data, cmd)
+        p0 = np.array(data.site_xpos[body._site], float)
+        for _ in range(50):                      # one second
+            body.step(data, cmd)
+        p1 = np.array(data.site_xpos[body._site], float)
+        want = math.hypot(cmd[0], cmd[1])
+        got = float(np.linalg.norm((p1 - p0)[:2]))
+        assert 0.95 <= got / want <= 1.05, (cmd, got, want)
+
+
+def test_standing_still_costs_no_command_error(scene):
+    """Standing still, the servo's lead is paying for the arm's weight and not for a
+    position error: `kp * (ctrl - qpos)` equals the pose's own bias torque to 0.05 N.m, and
+    the gripper is at the height it was asked for.
+
+    The second half of that is what the height integral buys (R111). The target is rebuilt
+    from the measured angles every substep, so without an integral the lead that holds the
+    arm up has to come out of the inverse-kinematics increment and the gripper settles low:
+    measured 1.91 mm with an empty jaw, 2.47-5.27 mm holding a 30 g block, and up to
+    8.65 mm while travelling at the command ceiling - against a 0.04 m grab radius and a
+    0.02 m table height. With it: 0.001 mm settled and 1.66 mm travelling.
+    """
+    body, model, data = scene
+    body.reset(data)
+    for _ in range(100):                                  # two seconds of zero command
+        body.step(data, (0.0, 0.0, 0.0))
+    lead = np.array(data.ctrl[body._ctrl], float) - np.array(data.qpos[body._qpos], float)
+    torque = body._kp * lead
+    bias = np.array(data.qfrc_bias[body._qvel], float)
+    assert np.abs(torque - bias).max() < 0.05, (torque, bias)
+    assert abs(float(data.site_xpos[body._site][2]) - WORK_Z) < 0.001
+
+
+def test_a_drive_ends_where_it_was_aimed_loaded_and_unloaded(so101_asset_dir, repo_root):
+    """Inside the declared envelope the steady state is sub-millimetre, with or without a
+    block in the jaw: measured 0.03-0.04 mm of planar error at three targets 0.216-0.350 m
+    from the base, and the working height held to within a millimetre.
+
+    The planar half of that was already true before this work and is asserted here so it
+    stays true; what was not true is the height (see
+    `test_standing_still_costs_no_command_error`).
+
+    Two earlier readings of this as an inverse-kinematics failure were neither. One drove at
+    a point 0.528 m from the base - outside the declared 0.48 m - where `_clamp` stops the
+    aim on purpose, and read the 52 mm that was left as a stall. The other is already
+    written down in `bodies/base.py` (`approach_clearance`): the approach point landed
+    inside the room's receptacle, so the jaw was trapped, and driving the tip at the same
+    handle directly reached it in 30 control steps.
+    """
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+    try:
+        env.reset(seed=0)
+        body, data = env.body, env.data
+        bx, by, _ = body._base_pose
+        targets = [(bx + 0.25, by + 0.05), (bx + 0.18, by - 0.12), (bx + 0.35, by + 0.0)]
+        for x, y in targets:                               # unloaded first
+            aim = np.array([x, y, WORK_Z])
+            tip = _drive_to(body, data, aim)
+            assert np.linalg.norm((aim - tip)[:2]) < 5e-4, (x, y, tip)
+        solver = ScriptedSolver(env)
+        while not env.world.held:                          # the scripted grab, nothing else
+            env.step(solver.act())
+        body.set_head(0.0)
+        for x, y in targets:                               # and now with the block in the jaw
+            aim = np.array([x, y, WORK_Z])
+            tip = _drive_to(body, data, aim)
+            assert env.world.held, "it dropped the block on the way"
+            assert np.linalg.norm((aim - tip)[:2]) < 5e-4, (x, y, tip)
+            assert abs(tip[2] - WORK_Z) < 0.001, tip
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("cmd", [(0.15, 0.0, 0.0), (-0.15, 0.0, 0.0),
+                                 (0.15, 0.0, 1.0), (0.15, 0.15, 0.0)])
+def test_the_solve_stays_finite_at_the_envelope_edge(scene, cmd):
+    """Eight seconds of a command that drives into the edge, the base, or spins there: the
+    damped least squares stays finite, the gripper stops at the declared reach rather than
+    past it, and no joint rate runs away. Measured max torques 1.44-2.94 N.m and max joint
+    rates 1.04-2.14 rad/s."""
+    body, _, data = scene
+    body.reset(data)
+    worst_tau = worst_rate = 0.0
+    for _ in range(int(8.0 / body.control_dt)):
+        body.step(data, cmd)
+        worst_tau = max(worst_tau, float(np.abs(data.actuator_force[body._ctrl]).max()))
+        worst_rate = max(worst_rate, float(np.abs(data.qvel[body._qvel]).max()))
+    tip = np.array(data.site_xpos[body._site], float)
+    assert np.isfinite(data.qpos).all() and np.isfinite(data.qvel).all()
+    assert math.hypot(tip[0], tip[1]) <= REACH_MAX + 0.001, tip
+    assert worst_tau <= float(body._tau_max.max()) + 1e-6
+    assert worst_rate < 5.0
+
+
 # ---- R105: it lifts what it holds, so it places over a wall rather than through it ----
 
 def test_only_this_body_lifts_what_it_holds():

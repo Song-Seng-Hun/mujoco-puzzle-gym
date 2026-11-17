@@ -297,9 +297,8 @@ class Carrier:
 
         if getattr(part, "shape", None) == "hook":
             return self._hang_act(cube, part, holding)
-        if (holding and getattr(part, "shape", None) == "box"
-                and env.body.head_lifts_load and self.phase not in ("still", "drop")):
-            return self._lower_in_act(cube, part)
+        if holding and env.body.head_lifts_load and self.phase not in ("still", "drop"):
+            return self._lower_in_act(cube, part, drop)
         target = np.asarray(part.xy, dtype=float)
         tol = part.place_tolerance(cube) if hasattr(part, "place_tolerance") else PLACE_TOL
         if holding and self.phase == "back":           # overshot: walk off and come again
@@ -348,8 +347,15 @@ class Carrier:
         self.grab = 1.0
         self.phase = "stack"
         aim = np.asarray(part.place_xy(cube), dtype=float)
-        self._hold_tip_at(float(part.place_height(cube)))
         err = float(np.linalg.norm(cube.pos(env.data)[:2] - aim))
+        # Over what is already there, not through it (R111). Holding the final height for
+        # the whole approach carries the object straight at the block it is about to be
+        # stacked on. A weak enough servo scraped past; once the gravity feed-forward gave
+        # the arm its full authority back, the carried block was knocked out of the jaw
+        # 0.068 m short of the aim and the room went 20/20 -> 0/20. Same shape of mistake
+        # as the box place in R108: approach high, lower when over.
+        want_z = float(part.place_height(cube))
+        self._hold_tip_at(want_z if err <= STACK_TOL else want_z + RIM_CLEAR)
         if err > STACK_TOL:
             self._settle = 0
             # Aim the grab point, not the object: `steer` drives where the body is, and the
@@ -371,36 +377,48 @@ class Carrier:
             return self._stand()
         return None
 
-    def _lower_in_act(self, cube, part) -> np.ndarray | None:
-        """Carry `cube` **over** a box's wall and in, rather than pressing it against the
-        wall until the body leans over the rim.
+    def _lower_in_act(self, cube, part, drop: bool = False) -> np.ndarray | None:
+        """The place a body that lifts its load takes: carry the object **over** whatever is
+        at the target, drive it there, and lower it in.
 
-        A path of its own, taken only by a body that answers `head_lifts_load` (`bodies/
-        base.py`), so the walking bodies keep the press that was measured for them. Two
-        walker assumptions sit in the ordinary place and both are stalls for a fixed-base
-        arm, which is why this is a path and not a flag:
+        Taken by any body that answers `head_lifts_load` (`bodies/base.py`), for every
+        place target except a hook and a stack, which have paths of their own. It is a
+        path rather than a flag on the walking bodies' place because **three** of that
+        place's assumptions are about walking, and each one was measured to be a stall
+        here:
 
-          - the press itself: measured over the 25-cell grid, 10 cells ended holding the
-            block with the gripper pushing the wall at 37-50 N, three joints at 100 % of
-            their torque limit;
-          - "the object leads the body, so back off and come again": the arm's jaw holds
-            the object ahead of the tip, so that test is true on every approach. Lifting
-            the object without taking this path left 21 of 25 cells in phase `back`,
-            frozen at (-0.16, 0.05) for the rest of the episode.
+          - "lean on the basket wall and keep walking, and the body tips over the rim":
+            the arm is bolted down and cannot tip. Over the 25-cell grid of
+            `puzzles/tabletop/pick_and_place`, 10 cells ended holding the block with the
+            gripper pushing the wall at 37-50 N and three joints at 100 % of their 2.94
+            N.m torque limit, 8 let go 0.09-0.24 m short, and even the 7 that solved were
+            pressing the wall at 17-29 N (R108).
+          - "the object is as far from the target as I am, so walk off and come again":
+            the jaw holds the object ahead of the tip, so that test is true on **every**
+            approach. Carrying the object high without taking this path froze 21 of 25
+            cells in phase `back`; gating the rule instead of replacing the path fixed
+            two rooms and broke a third (`fetch_the_steel`, 20/20 -> 0/20) (R111).
+          - "carry at the height you will release at": that drives the object through
+            whatever it is being put next to. In `conveyor_triage` the retry dragged the
+            held block along the floor until the weld let go.
 
-        So: hold the object a clearance above the wall top, drive the **object** (not the
-        grab point) onto the centre, and hand over to `_let_go` once it is inside the
-        walls, which lowers it to the height it was picked up at and opens there.
+        So: hold the **object** a clearance above what is at the target, steer so that the
+        object - not the grab point - lands on it, and hand over to `_let_go`, which lowers
+        it to the height it was picked up at and opens there. `drop` keeps its meaning: the
+        head goes level first, and the object is released from there.
         """
         env = self.env
         self.grab = 1.0
         self.phase = "over"
-        aim = np.asarray(part.xy, dtype=float)
-        inner = part.half - part.wall_t - RIM_CLEAR
-        if bool((np.abs(cube.pos(env.data)[:2] - aim) <= inner).all()):
+        aim = np.asarray(part.place_xy(cube) if hasattr(part, "place_xy") else part.xy,
+                         dtype=float)
+        tol = part.place_tolerance(cube) if hasattr(part, "place_tolerance") else PLACE_TOL
+        if float(np.linalg.norm(cube.pos(env.data)[:2] - aim)) <= tol:
             self.phase = "still"
+            if drop:
+                self.head = -1.0
             return self._stand()
-        self._hold_tip_at(self._rim_z(part), lambda: cube.pos(env.data))
+        self._hold_tip_at(self._carry_z(part, cube), lambda: cube.pos(env.data))
         # Aim the grab point, not the object, for the reason `_stack_act` measured: the
         # object hangs wherever the grab left it, so steering its target puts the grab
         # point on the centre and the object beside it.
@@ -478,12 +496,16 @@ class Carrier:
             act[0] = max(act[0], SLOW)  # from the stance after letting go (cube_plate seed 11)
         return act
 
-    def _rim_z(self, part) -> float:
-        """Height to carry an object at to clear a box's wall [m]: the wall top plus
-        `RIM_CLEAR`. It is the **object** that is held there, not the tip - `_lower_in_act`
-        passes the object's position to `_hold_tip_at` - so the clearance is measured where
-        the rim is actually crossed."""
+    def _carry_z(self, part, cube) -> float:
+        """Height to carry an object at so it clears what is at the target [m].
+
+        A box's wall top, a stack's next place height, or the floor for a flat zone or
+        plate - plus `RIM_CLEAR`. It is the **object** that is held there, not the tip
+        (`_lower_in_act` passes the object's position to `_hold_tip_at`), so the clearance
+        is measured where the obstacle is actually crossed."""
         floor = float(getattr(part, "_floor", 0.0))
+        if hasattr(part, "place_height"):
+            return float(part.place_height(cube)) + RIM_CLEAR
         return floor + float(getattr(part, "wall_h", 0.0)) + RIM_CLEAR
 
     def _blocked_ahead(self) -> bool:

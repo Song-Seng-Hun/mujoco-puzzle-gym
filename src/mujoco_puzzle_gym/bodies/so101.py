@@ -85,6 +85,20 @@ GRAB_Z = 0.02
 #: worth of travel at the command ceiling (0.15 m/s x 0.02 s x 10).
 MAX_LEAD = 0.03
 Z_GAIN = 12.0           # [1/s] P gain pulling the gripper back to `WORK_Z`
+#: Integral gain and clamp [m.s] on the working-height error (`step`).
+#:
+#: Swept, with the arm holding a zero command for 3 s and then travelling at the command
+#: ceiling for 3 s (settled sag / sag while travelling, mm): 0 and 1 both -1.91 / -8.65,
+#: 3 gives -0.005 / -2.61, and 10 and 30 both -0.001 / -1.66. 10 is the first value at the
+#: flat end of that sweep, and 30 measuring the same says it is not perched on a cliff.
+#: The reset transient (+1.88 mm of overshoot) is the same at every gain, so the integral
+#: is not what causes it.
+#:
+#: The clamp is the anti-windup: without one, a gripper held down - by a lid, or pressing a
+#: block onto a table - would integrate for as long as it is held and spring when freed.
+#: 0.4 m.s is ten seconds of the worst sag ever measured here.
+Z_I_GAIN = 10.0
+Z_I_CLAMP = 0.4
 IK_GAIN = 8.0           # [1/s] how hard the solve chases the aim point
 DAMPING = 0.05          # damped-least-squares lambda for the inverse kinematics
 #: Measured envelope (see the module docstring).
@@ -169,6 +183,7 @@ class So101Adapter(BodyAdapter):
         self._data: mujoco.MjData | None = None
         self._base_pose: Pose = (0.0, 0.0, 0.0)
         self._aim = np.zeros(3)            # the aim point `step` drives (world frame)
+        self._z_i = 0.0                    # integrated working-height error [m.s]
         self.jaw_target = 0.0
         #: Height the z term holds the jaw at [m]; `set_head` moves it (WORK_Z .. GRAB_Z).
         self.work_z = WORK_Z
@@ -213,12 +228,18 @@ class So101Adapter(BodyAdapter):
         self._site = int(model.site(PREFIX + SITE).id)
         self._base_body = int(model.body(PREFIX + "base").id)
         self._range = model.jnt_range[[model.joint(PREFIX + n).id for n in ARM_JOINTS]]
+        #: Position-servo gain [N.m/rad] and torque ceiling [N.m], read from the model
+        #: rather than written here, so a re-exported arm cannot silently disagree with
+        #: the feed-forward (`step`). Measured on the shipped model: 998.22 and 2.94.
+        self._kp = model.actuator_gainprm[self._ctrl, 0].copy()
+        self._tau_max = np.abs(model.actuator_forcerange[self._ctrl]).max(axis=1)
 
     def reset(self, data: mujoco.MjData, pose: Pose = (0.0, 0.0, 0.0)) -> None:
         """Restore the home pose. **`pose` is ignored**: the base is welded to the world
         where `spawn` put it, so an episode cannot place this body somewhere else."""
         if self._data is not data:
             self._bind(data)
+        self._z_i = 0.0
         data.qpos[self._qpos] = HOME
         data.qvel[self._qvel] = 0.0
         data.ctrl[self._ctrl] = HOME
@@ -282,7 +303,22 @@ class So101Adapter(BodyAdapter):
             jacp = np.zeros((3, model.nv))
             mujoco.mj_jacSite(model, data, jacp, None, self._site)
             err = self._aim - data.site_xpos[self._site]
-            err[2] *= Z_GAIN / IK_GAIN         # hold the working height a little harder
+            # Height: proportional, plus an integral that is the one thing the position
+            # servos cannot do for themselves (R111). A servo torque is `kp * (ctrl - qpos)`
+            # and the target here is rebuilt from the *measured* angles each substep, so the
+            # lead has to pay for holding the arm up before it buys any motion, and the
+            # gripper settles below the height it was asked for: measured 1.91 mm with an
+            # empty jaw and 2.47-5.27 mm holding a 30 g block, against a 0.04 m grab radius
+            # and a 0.02 m table height. The integral is on **z alone** on purpose. Feeding
+            # the whole bias torque forward fixes the same sag (0.02 mm and 0.32-0.64 mm)
+            # but hands the arm back its full planar authority too, and the shipped rooms
+            # are tuned to the carry it has: measured, `conveyor_triage` went 20/20 -> 0/20
+            # (its bins sit where this carry puts a block, by its own header) and
+            # `build_a_tower` the same, through a faster approach knocking the carried block
+            # out of the jaw. Height alone leaves the planar dynamics untouched.
+            self._z_i = float(np.clip(self._z_i + err[2] * model.opt.timestep,
+                                      -Z_I_CLAMP, Z_I_CLAMP))
+            err[2] = err[2] * Z_GAIN / IK_GAIN + Z_I_GAIN * self._z_i
             j = jacp[:, self._qvel]
             # Damped least squares: J^T (J J^T + lambda^2 I)^-1 e. The damping is what
             # keeps the solve finite near the envelope's edge, where the Jacobian loses
@@ -354,7 +390,15 @@ class So101Adapter(BodyAdapter):
         lets this arm reach down to something lying on the table. A task without it leaves
         the jaw at the working height, exactly as before.
         """
-        self.work_z = WORK_Z + float(np.clip(level, 0.0, 1.0)) * (GRAB_Z - WORK_Z)
+        want = WORK_Z + float(np.clip(level, 0.0, 1.0)) * (GRAB_Z - WORK_Z)
+        if want != self.work_z:
+            # Setpoint change: drop the integrated height error (R111). Carrying it across
+            # a 0.10 m step between the working height and the table makes the next command
+            # a spike, and measured, that spike broke the weld grab - `conveyor_triage` left
+            # its first block 0.035 m from where it picked it up and stalled on the next
+            # grab (0/20), while the room's own bins never moved.
+            self._z_i = 0.0
+        self.work_z = want
 
     def grab_site(self) -> str:
         """The jaw's own site: what the weld grab (R18) attaches an object to.

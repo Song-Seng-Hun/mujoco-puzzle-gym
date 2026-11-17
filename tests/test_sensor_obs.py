@@ -237,3 +237,48 @@ def test_critic_obs_rejects_sac(tmp_path):
     path.write_text(yaml.safe_dump({"room": str(ROOM), "critic_obs": ["part_pos"]}))
     with pytest.raises(TaskError, match="actor-critic"):
         train(path, minutes=1.0, algo="sac", runs_dir=tmp_path / "runs", run_id="x")
+
+
+# ---- R112: which observation terms a robot could not produce -------------------------
+
+def test_the_privileged_terms_are_declared_where_a_program_can_read_them():
+    """`PRIVILEGED_OBS` and the "Privileged:" labels in the term docstrings are the same
+    fact written twice, so this fails if either side drifts.
+
+    Why it matters: a task meant to train a policy for hardware is disqualified by any of
+    these - they read the simulator's own state (a part's exact position, a part's internal
+    state, which part the solution wants next), and nothing on the robot produces them. The
+    labels were already in the docstrings; the tuple is the version `privileged_terms()`
+    can check a task against.
+    """
+    import inspect
+
+    from mujoco_puzzle_gym.obs import PRIVILEGED_OBS, privileged_terms
+    from mujoco_puzzle_gym.registry import OBS
+
+    labelled = {n for n, o in OBS.items()
+                if (inspect.getdoc(o) or "").lstrip().startswith("Privileged:")}
+    assert labelled == set(PRIVILEGED_OBS), (labelled, PRIVILEGED_OBS)
+    assert privileged_terms(["lin_vel", "part_pos", {"item": "target_pos"}, "camera"]) == \
+        ["part_pos", "target_pos"]
+    assert privileged_terms(["lin_vel", "gravity", "camera", "rangefinder", "beak"]) == []
+    assert privileged_terms(None) == [] and privileged_terms([]) == []
+
+
+def test_every_shipped_task_says_whether_its_policy_could_leave_the_simulator(repo_root):
+    """Not a judgement on the tasks - the shipped ones train with privileged observations on
+    purpose - but the audit has to work on the real files, and it has to find both answers.
+    Measured over `examples/*.yaml`: every one of them uses at least one privileged term,
+    so today **no** shipped task is observation-clean, and that is the honest state of this.
+    """
+    tasks = sorted((repo_root / "examples").glob("task_*.yaml"))
+    assert tasks, "no example tasks found"
+    from mujoco_puzzle_gym.obs import privileged_terms
+
+    clean, dirty = [], []
+    for path in tasks:
+        spec = yaml.safe_load(path.read_text()) or {}
+        (dirty if privileged_terms(spec.get("obs")) else clean).append(path.name)
+    assert dirty, "the audit found nothing privileged in any task, which cannot be right"
+    assert not clean, ("a task is observation-clean now; say so in the docs rather than "
+                       "leaving this test asserting the old state", clean)
