@@ -1,0 +1,44 @@
+# Conveyor triage (R74): two belts bring two blocks out of the 140-degree sector behind this
+# body's base, one from each side, and each block belongs in its own bin. The body has to take
+# them one at a time and put each where it goes.
+#
+# Measured (M5 R74, 2026-11-17): 20/20 at a mean of 17.0 s, **0/5** with the demo cut to a
+# single `goto goal` step, and exclusive under `mpg check --all-bodies` (two bodies refused by
+# name for `grab`, and the small body that has one fails the solver here).
+#
+# Two of the numbers are measurements that failed first:
+#
+#   - **No bin has a rim.** This body cannot reach over a receptacle's wall: carrying a block
+#     to one brings it 0.056 m from the centre where the inside needs 0.020, and releasing
+#     there bounces it out. A flat zone takes the same carry at 22 of 25 block positions
+#     (`tools/grab_grid.py`), against 7 with a box.
+#   - **One belt per block.** With both blocks on one belt they arrive together, ram each other
+#     at the belt's end and squeeze sideways off it to y 0.46, radius 0.46, where the handle is
+#     past this arm's 0.48 m reach and nothing is ever picked up. Slowing the belt to 0.025 m/s
+#     did not fix it. Two belts, one per lane, do.
+#
+# And the bins sit where the carry actually puts the blocks: the first version had them 0.08 m
+# further in and the second drop landed 0.023 m outside its bin, so the room read as solved
+# four steps deep and then failed at the goal.
+size: [1.6, 1.2]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [0.0, 0.0], yaw: 0.0}
+parts:
+  - {name: dark, type: cube, pos: [-0.35, 0.30], size: 0.03, mass: 0.02}
+  - {name: light, type: cube, pos: [-0.35, -0.30], size: 0.03, mass: 0.02}
+  - {name: belt_dark, type: conveyor, pos: [-0.15, 0.30], size: [0.4, 0.2], axis: x,
+     speed: 0.1, trigger: object}
+  - {name: belt_light, type: conveyor, pos: [-0.15, -0.30], size: [0.4, 0.2], axis: x,
+     speed: 0.1, trigger: object}
+  - {name: bin_dark, preset: input/object_zone, pos: [0.20, 0.22], size: [0.24, 0.24],
+     objects: [dark]}
+  - {name: bin_light, preset: input/object_zone, pos: [0.20, -0.22], size: [0.24, 0.24],
+     objects: [light]}
+  - {name: both, preset: logic/and, in: [bin_dark, bin_light]}
+  - {name: goal, type: goal, pos: [0.38, 0.0], radius: 0.05, enable: both}
+demo:
+  - grab dark
+  - drop dark bin_dark
+  - grab light
+  - drop light bin_light
+  - goto goal

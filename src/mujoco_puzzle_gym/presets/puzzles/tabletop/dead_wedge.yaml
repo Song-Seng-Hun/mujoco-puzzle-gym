@@ -1,0 +1,42 @@
+# The dead wedge (R70): the block starts where this body can never reach, and the room brings
+# it. A belt laid behind the base carries it round into the reachable sector; the body picks it
+# up where the belt sets it down and slides it into the bin. The goal does not count until the
+# bin reads the block (`enable: bin`).
+#
+# Measured (M5 R70, 2026-11-17): 20/20 at a mean of 11.2 s, and **0/5** with the demo cut to a
+# single `goto goal` step, so the win cannot be had without moving the block.
+# `mpg check --all-bodies` calls it exclusive: two bodies are refused by name for `grab`, and
+# the small body that has a grab fails the solver here (0/5).
+#
+# Three things about this room are measurements rather than taste, and each one failed first:
+#
+#   - **The bin has no rim.** The first eleven versions used a `receptacle`, whose walls this
+#     body cannot reach over: carrying the block raised brings it to 0.056 m of the box centre
+#     where the inside needs 0.020, because a link fouls the wall (2.111 N), and released there
+#     it bounces out 0.107 m. Swept over 49 destination positions with a box, nothing solved.
+#     A wide flat zone takes the same carry at 22 of 25 block positions on
+#     `tools/grab_grid.py`.
+#   - **The belt stops short of the envelope.** Running it 0.6 m long pushed the block to
+#     radius 0.478 against a reach of 0.480, where the handle is outside and nothing is ever
+#     picked up. It ends at 0.05 m now, which leaves the hand-over at radius 0.30.
+#   - **The bin sits near the hand-over.** With it across the table (0.49 m away) the carry
+#     gives up 0.13 m in. At 0.18, 0.12 - about 0.25 m - it solves; so do 0.26, 0.20 and
+#     0.10, 0.06, all 5/5.
+#
+# The history, including the attempts that did not work, is in `docs/bodies.md` section 9 and
+# `docs/specs/2026-11-16-body-only-gimmicks/spec.md`.
+name: table_dead_wedge
+size: [1.6, 1.0]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [0.0, 0.0], yaw: 0.0}
+parts:
+  - {name: block, type: cube, pos: [-0.35, 0.30], size: 0.03, mass: 0.02}
+  - {name: belt, type: conveyor, pos: [-0.15, 0.30], size: [0.4, 0.2], axis: x, speed: 0.1,
+     trigger: object}
+  - {name: bin, preset: input/object_zone, pos: [0.18, 0.12], size: [0.24, 0.24],
+     objects: [block]}
+  - {name: goal, type: goal, pos: [0.10, -0.34], radius: 0.05, enable: bin}
+demo:
+  - grab block
+  - drop block bin
+  - goto goal

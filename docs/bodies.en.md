@@ -875,6 +875,38 @@ carry vector that does work (y 0.14, 0.10, 0.06, 0.02), every one is 0/5. The bl
 further, 0.303 -> 0.187 m, and stalls there. The conclusion holds **after** the pick spot was
 matched.
 
+### Solved - the receiver's **wall** was the culprit (R70 and R74, 2026-11-17)
+
+Every failure above shares one thing: the receiving part was a **box with a rim**. Take that
+away and the numbers invert - **dragging the block into a wide flat zone (`object_zone`,
+0.24 m) scores 22 of 25** on the grid, against 7 with the box. No raised carry needed. What
+the arm could not pass was a 0.06 m wall; with no wall, sliding it along the floor is enough.
+
+So the wedge room ships (`puzzles/tabletop/dead_wedge`): **20/20 at a mean of 11.2 s**, **0/5**
+with the demo cut to one `goto goal` step, and **exclusive** under `--all-bodies` (the small
+body fails the solver 0/5; the quadruped and the humanoid are refused by name). Three of the
+room's numbers are measurements and each failed first:
+
+- **The bin has no rim** - with a box, 49 destination positions and none solving.
+- **The belt stops short of the envelope** - 0.6 m of it pushed the block to radius 0.478
+  against a reach of 0.480, where the handle is outside and nothing is picked up. At 0.4 m the
+  hand-over sits at radius 0.30.
+- **The bin sits near the hand-over** - across the table (0.49 m) the carry gives up 0.13 m in.
+  At 0.18, 0.12 it solves, and so do 0.26, 0.20 and 0.10, 0.06.
+
+**The triage room falls out of the same finding** (`puzzles/tabletop/conveyor_triage`, R74):
+**two** belts bring one block each out of the wedge, from either side, and each goes to its own
+zone - **20/20 at a mean of 17.0 s**, 0/5 demo-cut, exclusive. Two measurements are new here:
+**one belt per block** (both on one belt arrive together, ram each other at its end and squeeze
+sideways to y 0.46, radius 0.46, putting the handle past the 0.48 m reach - slowing the belt to
+0.025 m/s does not help), and the zones sit **where the carry actually leaves the blocks** (the
+first version had the second block land 0.023 m outside its zone, so the room passed four steps
+and stalled at the goal).
+
+
+**The paragraphs below predate this finding**: "cannot be rescued by room design" assumed a
+box, and that assumption was the thing that was wrong.
+
 **And the wedge room cannot be rescued by room design - that is measured.** In the geometry
 where the belt hands the block over at r=0.300, the spot where the grab works, the receptacle
 was moved over 25 positions (x 0.05-0.35, y -0.30 to +0.02) and every one is 0. That sweep had

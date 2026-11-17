@@ -477,3 +477,77 @@ def test_a_grab_waits_for_an_object_a_belt_is_still_carrying(tmp_path, so101_ass
         assert at[0] > -0.10, f"grabbed at {np.round(at, 3)}, not where the belt put it"
     finally:
         env.close()
+
+
+@pytest.mark.slow
+def test_the_dead_wedge_room_needs_the_room_to_fetch_the_block(repo_root, tmp_path,
+                                                               so101_asset_dir):
+    """R70: the block starts in the 140-degree sector behind this body's base, which no pose
+    reaches, and a belt carries it round into the reachable part. The body picks it up where
+    the belt sets it down and slides it into a bin; the goal does not count until the bin reads
+    the block.
+
+    Three of the room's numbers are measurements, and each one failed first: the bin has no rim
+    (a `receptacle`'s walls cannot be reached over - 49 destinations with a box, none solving),
+    the belt stops short of the envelope (0.6 m of it pushed the block to radius 0.478 against
+    a reach of 0.480, where nothing is ever picked up), and the bin sits near the hand-over
+    (across the table, 0.49 m, the carry gives up 0.13 m in).
+    """
+    import warnings
+
+    from mujoco_puzzle_gym import catalog
+    from mujoco_puzzle_gym.check import check
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import run_episode
+    from mujoco_puzzle_gym.task import load_task
+
+    room = catalog.PRESET_ROOT / "puzzles/tabletop/dead_wedge.yaml"
+    task = repo_root / "examples/task_dead_wedge.yaml"
+    res = check(room, task=task, seeds=20, need=18, snap_dir=tmp_path)
+    assert res["ok"], res
+    assert res["solver"]["successes"] >= 18
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        env = PuzzleEnv(task=load_task(task))
+    try:
+        env.room.demo[:] = [("goto", "goal")]
+        cut = sum(bool(run_episode(env, s).get("success")) for s in range(3))
+    finally:
+        env.close()
+    assert cut == 0, f"the goal was reached without the block: {cut}/3"
+
+
+@pytest.mark.slow
+def test_the_triage_room_sorts_two_blocks_one_at_a_time(repo_root, tmp_path, so101_asset_dir):
+    """R74: two belts bring two blocks out of the sector behind this body's base, one from each
+    side, and each belongs in its own bin.
+
+    Two of the room's numbers failed first. No bin has a rim, because this body cannot reach
+    over one. And there is one belt per block: with both on one belt they arrive together, ram
+    each other at its end and squeeze sideways off it to radius 0.46, past this arm's 0.48 m
+    reach, so nothing is ever picked up - slowing the belt to 0.025 m/s did not fix that.
+    """
+    import warnings
+
+    from mujoco_puzzle_gym import catalog
+    from mujoco_puzzle_gym.check import check
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import run_episode
+    from mujoco_puzzle_gym.task import load_task
+
+    room = catalog.PRESET_ROOT / "puzzles/tabletop/conveyor_triage.yaml"
+    task = repo_root / "examples/task_conveyor_triage.yaml"
+    res = check(room, task=task, seeds=20, need=18, snap_dir=tmp_path)
+    assert res["ok"], res
+    assert res["solver"]["successes"] >= 18
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        env = PuzzleEnv(task=load_task(task))
+    try:
+        env.room.demo[:] = [("goto", "goal")]
+        cut = sum(bool(run_episode(env, s).get("success")) for s in range(3))
+    finally:
+        env.close()
+    assert cut == 0, f"the goal was reached without sorting: {cut}/3"
