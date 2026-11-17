@@ -630,6 +630,7 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/dead_wedge` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 11.2 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/conveyor_triage` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 17.0 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/build_a_tower` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 9.8 s** | 名前拒否 `['grab']` | はい |
+| `puzzles/tabletop/lever_arm` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 7.4 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/pick_and_place` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 16.3 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/reach_target` | 通過 5/5, 1.5 s | 解法 0/5 | 通過 5/5, 0.6 s | 解法 0/5 | いいえ |
 
@@ -738,6 +739,8 @@ def majority(inputs, state, dt):
 | `tilt_limit` | float | deg | `18.0` | [3, 60] |  | how far each end can drop before the hinge stops |
 | `balance_band` | float | deg | `3.0` | [0.2, 30] | 可 | level within this reads on |
 | `settle` | float | s | `0.4` | [0, 5] |  | the hinge must be this quiet before it reads on |
+| `ballast` | float | kg | `0.0` | [0, 10] |  | a fixed weight built into the plank: what the room's load has to balance |
+| `ballast_at` | float | m | `-0.08` | [-1.5, 1.5] |  | where the ballast sits along the plank (0 is the pivot) |
 | `lip` | float | m | `0.005` | [0, 0.03] |  | rim around the plank so a tilted load stays on it |
 | `stiffness` | float | N m/rad | `0.09` | [0.005, 5] |  | the spring that pulls the plank back to level; the angle measures torque |
 | `damping` | float | N m s/rad | `0.02` | [0, 1] |  | hinge damping: too little and a light load never settles |
@@ -1774,6 +1777,7 @@ def majority(inputs, state, dt):
 - `puzzles/tabletop/build_a_tower`
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
+- `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tabletop/weigh_it_down`

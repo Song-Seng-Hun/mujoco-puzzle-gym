@@ -1,0 +1,42 @@
+# The lever arm (R90): the plank already carries a fixed weight off to one side, so levelling
+# it is not a matter of putting the block *on* it but of putting the block at the right
+# *distance* from the pivot. The goal does not count until the plank reads level
+# (`enable: beam`).
+#
+# This is the one measurement the package could not ask for before. `pressure` sums the mass
+# on a plate, and a gate expression compares or windows two of those sums - both measured,
+# and locked down in `tests/test_signals.py` - but no expression can do arithmetic between
+# channels, so mass x distance had nowhere to live. The 12 g ballast at -0.07 m is
+# -0.00084 kg m, and the 20 g block cancels it at +0.042 m.
+#
+# Measured (M6 R93, 2026-11-17): 20/20 at a mean of 7.4 s, and **0/5** with the demo cut to a
+# single `goto goal` step. `mpg check --all-bodies` calls it exclusive: the jaw body is the
+# only one that solves it, two bodies are refused by name for `grab`, and the small body that
+# has a grab fails the solver here (0/5).
+#
+# Read that 20/20 for what it is: the five seeds come out identical, so it says the solution
+# works where this room puts the block, not how often it works in general (the same caveat
+# the other tabletop rooms carry).
+#
+# The negative control is a test rather than a number here, because the thing to disprove is
+# that the room is a place-anywhere room wearing a measurement:
+# `tests/test_sensors.py::test_a_beam_with_ballast_needs_the_right_distance` puts the same
+# box at the pivot and the plank stays 5.2 deg down, outside the 3 deg band.
+#
+# The scripted answer gets the distance from the part: `beam.place_xy` works out where the
+# new load cancels the moment already on the plank, the way `stack.place_xy` aims at the top
+# of a tower. The demo says `place block beam` and names no distance. A learning policy gets
+# no such help - it sees `beam` and `beam.angle` and nothing else.
+name: table_lever
+size: [1.2, 1.0]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [-0.3, 0.0], yaw: 0.0}
+parts:
+  - {name: block, type: cube, pos: [-0.05, -0.12], size: 0.03, mass: 0.02}
+  - {name: beam, type: beam, pos: [0.0, 0.10], span: 0.24, width: 0.06,
+     ballast: 0.012, ballast_at: -0.07, balance_band: 3.0}
+  - {name: goal, type: goal, pos: [0.05, -0.25], radius: 0.05, enable: beam}
+demo:
+  - grab block
+  - place block beam
+  - goto goal

@@ -17,6 +17,10 @@ On when both hold:
 - the hinge rate has stayed under `REST_RATE` for `settle` seconds, so a plank swinging
   through level on its way past does not read as balanced.
 
+`ballast` is a weight built into the plank at `ballast_at`. It is what makes a room able to
+ask for a *distance*: a `cube` can only start resting on another cube, so without it nothing
+could be on the plank at the episode start and the balancing spot would always be the pivot.
+
 Channels: its own (or `out`) 0/1, and `<name>.angle` [deg, + = the +x end down; measured].
 
 The angle is a torque reading, not just a direction. One 20 g cube resting at x = +0.122 m
@@ -43,9 +47,10 @@ guessed:
   which way it fell, which is strictly more than the requirement asked for.
 
 - **The plank is not a bridge.** The spec sketched a levelled plank as a path to walk. It
-  is not offered as one: the walking policy is trained to `max_slope` 5 deg (duck) and 6 deg
-  (go2) on *static* ground, and the planner has no notion of a surface that tilts under the
-  body. A room that wants a crossing should raise a static `platform` from this signal.
+  is not offered as one: a walking body declares its `max_slope` for *static* ground (5 and
+  6 deg for the two that walk, measured in `docs/bodies.md`), and the planner has no notion
+  of a surface that tilts under the body. A room that wants a crossing should raise a static
+  `platform` from this signal.
 """
 
 from __future__ import annotations
@@ -84,6 +89,10 @@ class Beam(Part):
               doc="level within this reads on"),
         Field("settle", "float", 0.4, unit="s", min=0.0, max=5.0,
               doc="the hinge must be this quiet before it reads on"),
+        Field("ballast", "float", 0.0, unit="kg", min=0.0, max=10.0,
+              doc="a fixed weight built into the plank: what the room's load has to balance"),
+        Field("ballast_at", "float", -0.08, unit="m", min=-1.5, max=1.5,
+              doc="where the ballast sits along the plank (0 is the pivot)"),
         Field("lip", "float", 0.005, unit="m", min=0.0, max=0.03,
               doc="rim around the plank so a tilted load stays on it"),
         Field("stiffness", "float", 0.09, unit="N m/rad", min=0.005, max=5.0,
@@ -103,9 +112,15 @@ class Beam(Part):
         self.pivot = float(c["pivot_height"])
         self.limit = float(c["tilt_limit"])
         self.half = np.array([self.span / 2, self.width / 2])
+        self.ballast = float(c["ballast"])
+        self.ballast_at = float(c["ballast_at"])
+        if self.ballast and abs(self.ballast_at) > self.span / 2:
+            raise SchemaError(f"part {name!r}: ballast_at {self.ballast_at:g} m is off a plank "
+                              f"of span {self.span:g} m")
         self.on = False
         self.angle = 0.0
         self._since = None
+        self._data = None          # last `update`'s data: the place helpers are asked outside it
 
     def build(self, spec):
         body = super().build(spec)
@@ -126,11 +141,18 @@ class Beam(Part):
         plank.add_geom(name=self.body_name + "/plank", type=mujoco.mjtGeom.mjGEOM_BOX,
                        size=[self.span / 2, self.width / 2, 0.006], pos=[0, 0, 0.006],
                        mass=PLANK_MASS, rgba=OFF_RGBA)
+        if self.ballast:
+            # Built into the plank, not resting on it: a room can ask for a distance without
+            # needing an object to start in mid-air (a `cube` can only `rest_on` another cube).
+            plank.add_geom(name=self.body_name + "/ballast", type=mujoco.mjtGeom.mjGEOM_BOX,
+                           size=[0.012, self.width / 2 - 0.006, 0.010],
+                           pos=[self.ballast_at, 0, 0.022], mass=self.ballast,
+                           rgba=(0.30, 0.34, 0.40, 1.0))
         lip = float(self.cfg["lip"])
         if lip:
-            # A rim, not a wall. R70 measured that this arm's own links foul a 0.06 m
-            # receptacle wall (2.111 N against it); 5 mm is an order of magnitude under the
-            # 0.04 m grab radius and well under GRAB_Z, and without it a plank at a few
+            # A rim, not a wall. R70 measured a jaw body's own links fouling a 0.06 m
+            # receptacle wall (2.111 N against it); 5 mm is an order of magnitude under that
+            # body's 0.04 m grab radius and well under GRAB_Z, and without it a plank at a few
             # degrees loses its load (measured: a 20 g cube ran off to x=-0.162 m).
             for sx in (-1, 1):
                 plank.add_geom(name=f"{self.body_name}/lip{'px' if sx > 0 else 'mx'}",
@@ -165,6 +187,7 @@ class Beam(Part):
         return math.degrees(float(data.qvel[self._va]))
 
     def update(self, model, data, body):
+        self._data = data
         self.angle = math.degrees(float(data.qpos[self._qa]))
         if not self.enabled():
             return
@@ -188,6 +211,53 @@ class Beam(Part):
 
     def satisfied(self):
         return self.on
+
+    # ---- where a scripted place aims (carry.py) ----------------------------------------
+    # A plank is the first receiving part where *where* on it matters, so it has to answer
+    # with a point rather than its own centre. The scripted `place` can only aim at the one
+    # point a part gives it - that limitation is what withdrew spec R89's two pans - and a
+    # part that answers `place_height` gets the arm's slow, precise path. So this part works
+    # out the balancing spot itself: the moment the new object has to cancel is already on
+    # the plank, and a room's demo says `place cube beam` without naming a distance. A
+    # learning policy gets no such help; it sees the angle and nothing else.
+
+    def _loads(self, data):
+        """(local x [m], mass [kg]) of every free object resting on the plank."""
+        world = self.world
+        if world is None or data is None:
+            return []
+        out = []
+        for rid, owner in world.objects.items():
+            if rid in world.held or owner.parked:
+                continue
+            pos = np.asarray(data.xpos[rid], dtype=float)
+            local = pos[:2] - self.xy
+            if abs(local[0]) > self.span / 2 or abs(local[1]) > self.width / 2:
+                continue
+            if pos[2] < self.pivot:            # under the plank, not on it
+                continue
+            out.append((float(local[0]), float(getattr(owner, "mass", 0.0) or 0.0)))
+        return out
+
+    def balance_x(self, data, mass: float) -> float:
+        """Local x [m] where `mass` cancels what is already on the plank, clipped inside it.
+        With an empty plank that is the pivot, which is also the spot that keeps it level."""
+        if mass <= 0:
+            return 0.0
+        moment = self.ballast * self.ballast_at + sum(x * m for x, m in self._loads(data))
+        edge = self.span / 2 - 0.02
+        return float(np.clip(-moment / mass, -edge, edge))
+
+    def place_xy(self, obj):
+        want = self.balance_x(self._data, float(getattr(obj, "mass", 0.0) or 0.0))
+        return np.array([self.xy[0] + want, self.xy[1]], dtype=float)
+
+    def place_height(self, obj) -> float:
+        """Plank top at the aiming point, tilt included, plus the object's half height."""
+        want = self.balance_x(self._data, float(getattr(obj, "mass", 0.0) or 0.0))
+        rise = want * math.tan(math.radians(-self.angle))
+        size = float(getattr(obj, "size", 0.03))
+        return self.pivot + 0.012 + rise + size / 2
 
     def place_tolerance(self, obj) -> float:
         """Scripted `place`: the plank is narrow, so let go close to where it was aimed."""

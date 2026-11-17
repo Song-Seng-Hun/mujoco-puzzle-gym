@@ -64,7 +64,9 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `addon_station` | `walk`, `roller` | o | x | Device that attaches an add-on to the body |
 | `anchor` | - | o | o | A post standing on the floor, nothing to do with the body |
 | `ball` | `walk` | o | o | The body walks up and pushes it to roll |
+| `beam` | - | o | o | It only reads a hinged plank; what goes on it is the room's business |
 | `brake_strip` | `walk`, `roller` | o | x | A strip that stops the wheels |
+| `budget` | - | o | o | Signals only |
 | `button` | `walk` | o | o | Stepping on it. Judged by the body's centre coordinates |
 | `cannon` | - | o | o | Fires on a signal, nothing to do with the body |
 | `checkpoint` | `walk` | o | o | Stepping on it |

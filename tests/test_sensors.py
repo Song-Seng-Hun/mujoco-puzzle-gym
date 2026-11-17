@@ -337,3 +337,20 @@ def test_a_beam_settles_before_it_reads(make):
     settle(env, 2.0)
     assert env.signals.get("beam") == 1
     assert abs(beam.angle) < 1.0
+
+
+def test_a_beam_with_ballast_needs_the_right_distance(make):
+    """The negative control for the `lever_arm` room: putting the load *on* the plank is not
+    enough, because the ballast is off to one side. 12 g at -0.07 m is -0.00084 kg m, so a
+    20 g box levels it at +0.042 m and leaves it 5.2 deg down at the pivot - outside a 3 deg
+    band. Without this the room would be a place-anywhere room wearing a measurement."""
+    env = _beam_room(make, ballast=0.012, ballast_at=-0.07, balance_band=3.0)
+    beam = env.parts["beam"]
+    env.parts["b"].put(env.data, [0.8, 0.8, 0.02])            # out of the way
+    assert _load(env, a=0.0).satisfied() is False             # at the pivot: still tipped
+    assert beam.angle < -3.0
+    want = beam.balance_x(env.data, 0.02)
+    assert want == pytest.approx(0.042, abs=0.004)
+    env = _beam_room(make, ballast=0.012, ballast_at=-0.07, balance_band=3.0)
+    env.parts["b"].put(env.data, [0.8, 0.8, 0.02])
+    assert _load(env, a=0.042).satisfied() is True
