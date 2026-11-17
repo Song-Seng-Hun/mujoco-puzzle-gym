@@ -72,6 +72,12 @@ HANG_TOL = 0.75      # hook: let go once the leading handle is this part of `tol
 SETTLE = 1.5         # [s] longest stand after letting go
 REST_SPEED = 0.02    # [m/s] cube this slow: placed
 AWAY = 0.35          # [m] walk off this far from a placed cube
+#: [m] Stand-off behind an object for a finger grab, and how close the grasp point
+#: has to be before the fingers close (R123). The stand-off is R120's measured one;
+#: the close distance is tight on purpose - at 0.03 m the jaw shuts before the
+#: fingers are around anything.
+FINGER_STANDOFF = 0.08
+FINGER_CLOSE = 0.016
 #: [m] How close the grasp point has to be to a handle before fingers close (R122).
 GRASP_CLOSE = 0.03
 STUCK = 1.5          # [s] place: standing this long with the object beside the target: walk off, retry
@@ -228,10 +234,55 @@ class Carrier:
         return pts[int(np.argmax(pts[:, :2] @ np.array([math.cos(yaw), math.sin(yaw)])))]
 
     # ---- sub-goals ---------------------------------------------------------------------
+    def _fingers(self) -> bool:
+        """True when this room holds objects by contact and this body has fingers (R123)."""
+        beak = self.env.parts.get("_beak")
+        return (beak is not None and getattr(beak, "hold", "weld") == "contact"
+                and self.env.body.head_lifts_load)
+
+    def _finger_grab_act(self, cube) -> np.ndarray | None:
+        """Grab with fingers: the sequence that was measured to work (R120, R123).
+
+        The shared path drives at the handle from along its normal and closes in, which was
+        never meant to put an object **between** two jaws - measured, the grasp point came
+        to 30 mm and stopped there. This one does what lifted 10-60 g in a bare scene:
+        stand off behind the object along the base's radial, hold the jaw open, advance onto
+        it, and close only when the grasp point is on the handle.
+
+        `held` comes from the contact detector in `grab.py`, so the sub-goal ends when the
+        fingers really have it; nothing is welded, and physics can drop it again.
+        """
+        env = self.env
+        # The object's **centre**, not a handle. A handle sits on a face, so putting the
+        # grasp point there drives the fingers into the object's side; what lifted 10-60 g
+        # in the bare scene aimed the middle, with the jaw straddling it (R123). The handle
+        # height still sets how high to carry it.
+        handle = np.asarray(cube.pos(env.data), dtype=float).copy()
+        handle[2] = float(cube.handle_points(env.data)[self._pick_handle(cube)][2])
+        base = np.asarray(getattr(env.body, "_base_pose", (0.0, 0.0, 0.0))[:2], dtype=float)
+        radial = handle[:2] - base
+        radial = radial / max(float(np.linalg.norm(radial)), 1e-9)
+        here = np.asarray(env.body_state.pos, dtype=float)
+        gap = float(np.linalg.norm(here - handle))
+        self._hold_tip_at(float(handle[2]), lambda: np.asarray(env.body_state.pos, float))
+        if self.phase == "approach":
+            self.grab = -1.0                                  # open
+            act = self._walk(handle[:2] - radial * FINGER_STANDOFF)
+            if act is not None:
+                return act
+            self.phase = "in"
+        if gap > FINGER_CLOSE:
+            self.grab = -1.0
+            return self.steer(handle[:2], SLOW)
+        self.grab = 1.0                                       # on it: close and hold still
+        return self._stand()
+
     def grab_act(self, cube) -> np.ndarray | None:
         env = self.env
         if self.held() is cube:
             return None
+        if self._fingers():
+            return self._finger_grab_act(cube)
         # A beak carries its grab closed and the weld decides when it catches; fingers have
         # to arrive **open** or they shut before the object is between them (R121, R122).
         # Open until the grasp point is actually at the handle, then close - keyed on
