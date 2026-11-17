@@ -1,0 +1,5 @@
+# Task for `puzzles/budget/two_openings` (M6 R94). Only `move`: the solution presses a floor
+# toggle and walks, so no beak or jaw is involved. Missing keys take task.DEFAULTS.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/budget/two_openings.yaml
+actions: [move]
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, target_pos]

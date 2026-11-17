@@ -1776,6 +1776,7 @@ Role `switch`, update stage `input`.
 - `puzzles/ball/bowling`
 - `puzzles/ball/color_sort`
 - `puzzles/ball/mini_soccer`
+- `puzzles/budget/two_openings`
 - `puzzles/circuit/clock_door`
 - `puzzles/circuit/cut_the_lock`
 - `puzzles/circuit/fuse_repair`
