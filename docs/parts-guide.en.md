@@ -630,6 +630,38 @@ These are the measurements the dimensions came from, for a body with a 0.41 m fo
 - **Keep targets out of the wall collar (0.46 m)**, random offsets included. A goal drawn inside the collar is unreachable and the solver scores 0/20.
 - **A target smaller than the turning radius cannot be caught.** The minimum turning radius is forward speed over turn rate, 2.0 m for this body at full speed. That is why it circled a 0.6 m floor button for a whole 40 s episode, passing within 0.07 m of it twice a lap (5/20). The solver corrects its heading on the move, through the middle of the command range, which for this body is a 1.0 m arc. So **the body declares `stand_to_turn_above`**, the heading error above which it should stand and turn instead; this one declares 0 and reaches 20/20. The default is never, so the other body's numbers are unchanged - four attempts to write the rule into the shared steering each broke the other side (a timed roller room loses seconds to standing, and a rope or a lure is lost by it).
 
+## Rooms only one body solves
+
+`mpg check <room> --all-bodies` runs every registered body against one room and says, per
+cell, **what decided that result**: refused by name (`capability`), cannot touch it
+(`unreachable`), a static stage (`static`), no plan (`unplannable`), missing task actions
+(`actions`), a failed solution (`solver`), or `pass`. A claim that only one body solves a room
+cannot be checked without that matrix.
+
+Measured 2026-11-17, 5 seeds, each with the room's own task file:
+
+| Room | small body | quadruped | arm | humanoid | exclusive |
+|---|---|---|---|---|---|
+| `puzzles/tabletop/weigh_it_down` | solver 0/5 | refused `['grab']` | **pass 5/5, 11.5 s** | refused `['grab']` | yes |
+| `puzzles/tabletop/pick_and_place` | solver 0/5 | refused `['grab']` | **pass 5/5, 16.3 s** | refused `['grab']` | yes |
+| `puzzles/tabletop/reach_target` | pass 5/5, 1.5 s | solver 0/5 | pass 5/5, 0.6 s | solver 0/5 | no |
+
+Two things to read off it.
+
+- **A refusal by name is not a failed solution.** The two bodies without a grab never start,
+  because they lack a capability name the room requires - an honest refusal. The small body has
+  the capability and still **cannot solve this one**, and the presets say that difference
+  rather than claiming more.
+- **`reach_target` is neither exclusive nor a benchmark.** The small body solves it in 1.5 s,
+  and a random policy solves it **one time in five** (the R72 table in the training log). Use it
+  as a wiring check that a body runs at all.
+
+**No room was written for a walking body alone.** Every walking body's interface is
+`(vx, vy, wz)`, so a puzzle only one of them solves comes down to a threshold - heavier,
+faster, taller. A threshold is entry screening rather than a puzzle, and it leaves the other
+bodies with nothing but failures. The arm gets exclusive puzzles because its interface carries
+**what it holds and where it puts it**.
+
 ## Python plugins
 
 A new part inherits `Part` and is registered with `register_part`. Write its values in `fields` as `Field`s, and range checks and the `mpg parts` table come with them. A gate function is registered with `register_logic` and called from a room as `logic: <name>`.

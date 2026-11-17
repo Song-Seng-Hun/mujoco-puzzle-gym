@@ -61,6 +61,8 @@ import numpy as np
 
 APPROACH = 0.3       # [m] approach point in front of a handle / wall plate
 AT_POINT = 0.06      # [m] approach point reached
+WAIT_MOVING = 3.0    # [s] longest a grab waits for a moving object to come to rest
+MOVING_STEP = 0.002  # [m] moved per control step: this much means it is still being carried
 PLACE_TOL = 0.03     # [m] cube centre this close to the target centre: let go
 HANG_TOL = 0.75      # hook: let go once the leading handle is this part of `tolerance` from the
                      # peg tip (or past it)
@@ -111,6 +113,8 @@ class Carrier:
         self._settle = 0
         self._stuck = 0
         self._at = None              # where `_let_go` let the object go
+        self._wait = 0               # steps spent waiting for a moving object to rest
+        self._was_at = None          # where the object was last step (is it still moving?)
         self._pick_z = None          # tip height this object was picked up at (`_let_go`)
 
     # ---- walking ---------------------------------------------------------------------
@@ -215,6 +219,24 @@ class Carrier:
         if self.held() is cube:
             return None
         self.grab = 1.0
+        here = np.asarray(cube.pos(env.data)[:2], dtype=float)
+        moved = float(np.linalg.norm(here - self._was_at)) if self._was_at is not None else 0.0
+        self._was_at = here
+        if self.phase == "approach" and self._wait < WAIT_MOVING * env.hz and moved > MOVING_STEP:
+            # Let a moving object come to rest before closing in on it. A room may hand an
+            # object over on a conveyor, and the approach aims at where the handle is now:
+            # measured on a belt that lands a block on the one spot the arm can pick from,
+            # the arm instead intercepted it at the belt's *start*, 0.2 m short, because
+            # that was the first moment the block was within reach.
+            #
+            # Measured per step rather than from `vel`: a `conveyor` carries what stands on
+            # it by setting positions, not velocities, so a block riding a belt reads almost
+            # no velocity at all - the first version of this asked `vel` against `REST_SPEED`
+            # and never once triggered. Bounded by
+            # `WAIT_MOVING`, so an object that never rests - one being carried by something
+            # else, or rolling - is still approached rather than waited on forever.
+            self._wait += 1
+            return self._stand()
         if self.phase == "approach" and self._point is None:
             self._handle = self._pick_handle(cube)
         pts = cube.handle_points(env.data)
@@ -224,7 +246,16 @@ class Carrier:
         self._pick_z = float(h[2])
         n = h[:2] - cube.pos(env.data)[:2]
         n = n / max(float(np.linalg.norm(n)), 1e-9)
-        return self._close_in(h[:2] + n * APPROACH, h)
+        return self._close_in(h[:2] + n * self._approach(), h)
+
+    def _approach(self) -> float:
+        """How far out from a handle this body stands before closing in [m].
+
+        `BodyAdapter.approach_clearance`, defaulting to the walking body's `APPROACH`: a
+        third of a metre is about a walking body's length and a third of this arm's entire
+        reach, which put its approach point inside another part and trapped the jaw there.
+        """
+        return float(getattr(self.env.body, "approach_clearance", None) or APPROACH)
 
     def _pick_handle(self, cube) -> int:
         env = self.env
@@ -238,7 +269,7 @@ class Carrier:
             n = p[:2] - centre
             if np.linalg.norm(n) < 1e-6:            # top handle: out of the body's reach
                 continue
-            a = p[:2] + n / np.linalg.norm(n) * APPROACH
+            a = p[:2] + n / np.linalg.norm(n) * self._approach()
             d = env.grid.lookup(field, a) if free[env.grid.cell(a)] else np.inf
             if d < best_d:
                 best, best_d = i, d

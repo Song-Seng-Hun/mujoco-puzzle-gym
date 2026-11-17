@@ -765,6 +765,164 @@ that hands the object over at a new spot cannot be expected to work while the gr
 rather than a region. Both move from "room unfinished" to **"held until the scripted grab works
 over a region"**.
 
+#### Correction - the blocker was not the inverse kinematics (2026-11-17, later the same day)
+
+The two sections below blame the stall on the inverse kinematics, and **that was wrong**. The
+measurement that settled it was simple: driving the tip at the same handle **directly**, with
+no carrier in between, **reaches it in 30 control steps** (0.142 -> 0.036 m). The body can get
+there.
+
+The cause was `carry.APPROACH = 0.3 m` - a **walking body's standoff** ("walk to the point
+0.3 m in front of the plate"), where this arm's whole reach is 0.48 m. The approach point for
+a handle at (-0.03, -0.098) comes out at **(-0.03, +0.202)**: past the block, on its far side,
+and **inside** the room's receptacle box (x +-0.12, y 0.02-0.26). The jaw is trapped there
+against the box and can neither descend to grab height nor travel. Inside the declared
+envelope and with no joint at a limit, which is why it read as an IK failure.
+
+The same family as `place_clearance`, so the same answer: **`BodyAdapter.approach_clearance`**,
+None by default so the walking bodies keep 0.3, declared 0.08 on the arm - just outside a
+cube's 0.04 m grab radius. Measured:
+
+| | before | after |
+|---|---|---|
+| `tools/grab_grid.py` (25 cells) | 3 | **7**, every `grab` failure gone |
+| `pick_and_place` | 20/20, 27.9 s | 20/20, **16.3 s** |
+| the same room, +-10 mm jitter | 5/10 | **8/10** |
+| `weigh_it_down` | 20/20, 16.3 s | 20/20, **11.5 s** |
+
+0.06, 0.08 and 0.12 all give 7 of 25, so the middle was taken. The walking bodies keep the
+default, and the whole slow suite is 176 passed, 0 failed.
+
+**What is left is the place, and its cause is not dragging either**: during the carry the
+command holds at 0.50 pointing at the box, the weld force is **0.20 N** (nothing tears), and
+the block moves **10 mm in 180 steps**. The arm cannot push the block's friction - the droop
+equilibrium of the section below with a load added. Every carrier-side trick sits downstream of
+that: re-measured with the grid, "stand still and lift gently" came out **0 of 25** at once,
+which is what the tool was built for. The next lead was the model's actuator strength, and that was measured too.
+
+**The shoulder pan saturates.** Reading the joint torques at the stall while the block is
+held, joint 0 (the shoulder pan) is at **-2.940 against its 2.94 N*m limit** while the other
+four have room (+0.893, -1.644, -1.535, +0.173), with the tip at radius 0.287 m. Raising the
+command from 0.5 to **1.0 stalls in the same place** (0.114 m from the box), so it is not the
+command's size.
+
+**The destination is a pocket too.** Moving the box along the same azimuth, only the shipped
+radius 0.331 works (3/3, 16.4 s); 0.18, 0.22, 0.26, 0.30 and 0.38 are all 0. So there is no
+simple "loaded working radius" to declare and design rooms inside.
+
+**Retracting, turning and extending - the way a person would - gets closer.** Since the
+saturation is in the pan while extended, a path that pulls in to radius 0.20, swings round to
+the destination's azimuth and extends again was driven directly: it reaches **0.088 m** from
+the box against 0.114 m for the straight line, and stalls in the extending phase. Held, the
+arm cannot extend to r=0.33.
+
+So success for this body is not one limit but a **path-dependent pocket**. What is left is not
+a constant but a **designed loaded carry** (retract, turn, extend, and the height for each
+phase), judged by `tools/grab_grid.py`.
+
+**What the pocket is: the arm's own links collide with the room's parts.** Counting contacts
+at the stall, there is **2.111 N** between `part/box/wall1` and one of the arm's links, and
+**4.579 N** between another of its links and the `floor`. The jaw is 8.6 mm from its aim and
+the arm's **body** is pressed against the box. The torque saturation was a consequence, not the
+cause: shrinking the aim's lead (`MAX_LEAD`) 0.03 -> 0.015 -> 0.008 takes the peak torque
+2.94 -> 1.90 -> **0.91 N*m**, removing the saturation, and the block **stalls in the same place**
+(0.119 -> 0.115 m from the box). So "which pair works" is "is there a path on which the arm's
+links clear that room's parts".
+
+Changing the receptacle moves which step fails without raising the count: a wall lowered
+0.06 -> 0.02 m gives 0 of 25, and `shape: plate` gives 3 of 25 with most cells stalling in
+`goto goal` (the place lands but the win gate never lights). So the link collision is one cause
+among several, and a room for this body has to be designed around **where the arm itself
+passes**.
+
+**The home pose moves the pocket a lot - and breaks another room** (measured 2026-11-17).
+The blocker is the arm's links fouling the floor and the box, and the IK solves locally from
+the current pose, so where the arm starts decides which paths work. Sweeping `HOME` against
+the grid (7 of 25 as shipped):
+
+| `HOME` | grid |
+|---|---|
+| (0, -1.20, 0.90, 1.20, 0) | 3 |
+| (0, -0.873, 0.563, 1.382, 0) <- shipped | 7 |
+| (0, -0.60, 0.30, 1.50, 0) | 10 |
+| (0, -0.50, 0.00, 1.35, 0) | 12 |
+| **(0, -0.55, 0.15, 1.35, 0)** | **13** |
+
+A less folded start nearly doubles it, and its neighbours all read 12, so it is not a spike.
+**And that pose takes `weigh_it_down` from 20/20 to 0/20.** So it was not shipped, and after
+the revert both rooms are back at 20/20 (11.5 s and 16.3 s). Shipping on the grid alone would
+have killed a shipped room, and `tools/grab_grid.py` now says so in its own docstring: the
+grid is one room's objective, not the project's.
+
+**A grab now waits for an object a belt is still carrying** (2026-11-17). The approach aims
+at where the handle is *now*, so an object still in transit is taken wherever it happened to
+be when it first came within reach - measured, the arm took it at the belt's **start**
+(-0.268, -0.162), 0.22 m short of where the belt lands it (-0.048, -0.160). It now stands and
+waits while the object moves more than 2 mm per control step, bounded by `WAIT_MOVING` (3 s).
+Measured as **movement per step rather than from `vel`**: a `conveyor` carries what stands on
+it by setting positions, so a block riding a belt reads almost no velocity, and the first
+version of this check never triggered once. The grid stays at 7 of 25, so nothing regressed.
+
+**The wedge room still does not work.** With the belt landing the block exactly on the pick
+spot the grid calls good - which the wait now lets it grab - and the box moved to match the
+carry vector that does work (y 0.14, 0.10, 0.06, 0.02), every one is 0/5. The block gets
+further, 0.303 -> 0.187 m, and stalls there. The conclusion holds **after** the pick spot was
+matched.
+
+**And the wedge room cannot be rescued by room design - that is measured.** In the geometry
+where the belt hands the block over at r=0.300, the spot where the grab works, the receptacle
+was moved over 25 positions (x 0.05-0.35, y -0.30 to +0.02) and every one is 0. That sweep had
+a gap - the belt puts the block down at y ~ +0.30 and the boxes were all at y <= +0.02, on the
+far side - so 20 more were run **near** the hand-over point (x -0.12 to 0.26, y 0.14 to 0.34),
+and those are **all 0 too**: 45 positions, none of them solving. Against
+that, `pick_and_place` picks at r=0.277 and only the destination 0.331 solves. So the pocket
+belongs to the **pair** (pick spot, destination), and the wedge room's hand-over point has no
+partner. R70 and R74 are therefore not "more geometry" but items to revisit once the loaded
+carry exists.
+
+#### The two sections below predate that correction
+
+#### What that "point" actually is: an equilibrium, not a joint limit (measured 2026-11-17)
+
+One failing cell (the block moved +20 mm) was followed to the end. The tip **sits frozen at
+(-0.048, +0.133, 0.064)** from k=200 to k=375, 0.231 m short of the handle, and does not move
+at all. The working cell over the same stretch descends z 0.119 -> 0.064 -> 0.020 and sweeps y
+from +0.151 to -0.060, grabbing at k=71. Measured at the frozen pose:
+
+- **no joint is anywhere near a limit** (all five mid-range: -0.588, -0.444, +1.068, +0.045, -0.579)
+- the aim's z is 0.020 against a tip at 0.0645 - **a standing 0.044 m error to descend**
+- the xy lead is exactly 0.03 m = `MAX_LEAD`, the anti-windup clamp, and it is active
+
+So it is an equilibrium with a standing command error: the IK rebuilds each substep's joint
+target as `measured qpos + dq*dt`, and the arm settles wherever the position servos'
+steady-state droop cancels that increment. Not the envelope, not a joint limit, not the room -
+which is why a centimetre away it works.
+
+The obvious remedy - integrate the joint target from **itself** rather than the measured angles -
+measured **0/20 on the shipped room** and was not shipped. It is the same ground as the warning
+already in `step`'s docstring ("the first version integrated joint targets from the measured
+angles ... which accumulated the actuators' lag"). So what is left is not a patch but an **IK
+redesign** (a solve that handles limits and singular directions, or an analytic seed), which is
+a body-side spec item.
+
+A second variant was measured too: instead of an increment, solve for the joint **positions**
+that put the jaw at the aim (Gauss-Newton, 8 iterations in a scratch `MjData`) and command
+those. It stalls in the same place in the same way (tip at (-0.050, +0.126, 0.063), 0.223 m
+from the handle) and takes the shipped room to **0/20**. So the stall is **not** the choice
+between a rate command and a position command: the present rate form is holding something up
+in the poses that do work, and both variants break it. The next design has to take the
+25-cell grid as its objective rather than being poked at one variant at a time.
+
+That grid now lives in the repository: `tools/grab_grid.py` sweeps the object a room's solution
+picks up over a grid, prints what each cell does (ok / grab / place) and reports "N of M". It
+reproduces the same 3 of 25 the hand sweep found. It is a measuring tool rather than a check -
+it fails nothing - and it is there to be the objective when changing the body or the scripted
+solution: a change that passes the room's own check while leaving 3 of 25 has changed nothing
+that matters.
+
+    python tools/grab_grid.py --room src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_and_place.yaml \
+        --task examples/task_pick_and_place.yaml --part block
+
 #### Found alongside: clearing `_pick_z` per sub-goal is a bug AND a **guard**
 
 `Carrier._pick_z` - the height an object was picked up at - is cleared in `reset()`, and the

@@ -208,6 +208,31 @@ class ScriptedSolver:
             # every shipped room before trusting them.
             if inside is not None and entry[1] not in inside:
                 return f"`{cmd} {entry[1]} {entry[2]}` ended with it not in {entry[2]!r}"
+            if inside is None and hasattr(part, "accepts"):
+                # A part that receives without being a container - `stack` reads a patch of
+                # floor, and counts what is standing on it - keeps no `inside`, so the check
+                # above passed it whatever happened. Measured on the arm's stacking room: it
+                # advanced through both `place` steps and ran the rest of the episode with
+                # the patch's count at 0 and both blocks still where they started, which is
+                # the exact shape of silent pass this check exists to stop. The object's own
+                # position against the part's footprint answers it.
+                #
+                # Only for a part that says which objects it takes (`accepts`), which is what
+                # separates receiving from sensing. The first version asked it of every part
+                # with a footprint and the whole slow suite caught that too - the same room
+                # as the first time, `puzzles/tow/overload`, whose `dump` is a `zone` reading
+                # a volume: the crate is dropped at its mouth and settles in afterwards, so
+                # at the moment the sub-goal ends it is legitimately outside, and the room
+                # still solves 5/5. A guard this check belongs to has to be run over every
+                # shipped room before it is trusted, and twice now that is what found the
+                # overreach.
+                half = np.asarray(getattr(part, "half", []), dtype=float)
+                obj = self.env.parts.get(entry[1])
+                if obj is not None and half.shape == (2,):
+                    at = np.abs(obj.pos(self.env.data)[:2] - np.asarray(part.xy, dtype=float))
+                    if not bool((at <= half).all()):
+                        return (f"`{cmd} {entry[1]} {entry[2]}` ended with it not on "
+                                f"{entry[2]!r}")
         return None
 
     def _move(self) -> np.ndarray:

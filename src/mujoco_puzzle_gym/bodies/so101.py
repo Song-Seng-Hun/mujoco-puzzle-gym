@@ -132,6 +132,9 @@ class So101Adapter(BodyAdapter):
     #: Clearing a placed object means moving the jaw its own footprint plus the object's
     #: size away, not a walking body's 0.35 m, which can be outside this body's envelope.
     place_clearance = 0.10
+    #: Standing off to approach a handle: just outside the 0.04 m grab radius, not a
+    #: walking body's 0.3 m, which is a third of this body's whole reach.
+    approach_clearance = 0.08
     #: The gripper's planar speed [m/s] and wrist rate [rad/s]. Chosen so one control step
     #: moves the gripper at most 3 mm, which the damped least-squares solve tracks without
     #: the arm snapping; `tests/test_so101.py` measures the tracking error.
