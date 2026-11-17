@@ -235,3 +235,22 @@ def test_a_place_onto_a_part_that_is_not_a_container_is_checked(tmp_path, so101_
         assert solver._unfinished(step) is None
     finally:
         env.close()
+
+
+@pytest.mark.slow
+def test_a_place_onto_a_sensing_part_is_not_checked_that_way(repo_root, asset_dir):
+    """The other side of the same line. The first version of the check above asked every part
+    with a footprint, and the whole slow suite caught it on `puzzles/tow/overload`, whose
+    `dump` is a `zone` reading a volume: the crate is dropped at its mouth and settles in
+    afterwards, so when the sub-goal ends it is legitimately outside and the room still solves.
+
+    What separates the two is whether the part says which objects it takes (`accepts`), so
+    that is what the check asks. This holds the room that found it.
+    """
+    from mujoco_puzzle_gym.check import check
+
+    res = check(repo_root / "src/mujoco_puzzle_gym/presets/puzzles/tow/overload.yaml",
+                task=repo_root / "examples/task_overload.yaml", seeds=3, need=1,
+                snap_dir=None)
+    assert res["solver"]["ok"], res["solver"]
+    assert "demo_unfinished" not in res["solver"], res["solver"]["demo_unfinished"]
