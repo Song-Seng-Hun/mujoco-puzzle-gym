@@ -653,6 +653,34 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 다른 몸들에게는 실패만 남깁니다. 팔에만 전용 퍼즐이 생기는 이유는 팔의 인터페이스에 **무엇을 잡고
 어디에 놓는가**가 들어 있기 때문입니다.
 
+## 새 부품을 만들기 전에
+
+**있는 부품으로 되는지 먼저 해 보세요.** 탐침 방 하나를 짜서 `mpg check`를 돌리는 데 15분이면 됩니다.
+
+2026-11-17에 이 단계를 건너뛰어, 질량을 비교하는 부품을 설계하고 승인까지 받은 뒤에 철회했습니다.
+이미 되는 것이었습니다.
+
+```yaml
+parts:
+  - {name: pan_a, preset: input/pressure_plate, pos: [-0.2, 0.0], min_mass: 0.001}
+  - {name: pan_b, preset: input/pressure_plate, pos: [0.2, 0.0], min_mass: 0.001}
+  - {name: b_heavier, type: gate, expr: "pan_b.mass > pan_a.mass"}        # 상대 비교
+  - {name: in_band, type: gate, expr: "pan_b.mass >= 0.04 and pan_b.mass <= 0.06"}   # 무게 구간
+```
+
+둘 다 값이 맞게 나옵니다(`tests/test_signals.py`가 고정합니다). 식 게이트는 **채널 이름과 숫자, 비교**를
+받으므로, 어떤 부품이 내는 숫자든 문턱·구간·대소로 묻는 것은 부품 없이 됩니다.
+
+되지 않는 것은 **채널 사이의 산술**입니다. `pan_a.mass - pan_b.mass < 0.01`은 거절됩니다
+("BinOp is not allowed"). 그래서 차이에 공차를 두거나, 두 타이머를 더하거나, 질량에 거리를 곱하는 것은
+부품이 필요합니다 — `beam`(R90)과 `budget`(R91)이 정확히 그 자리에 있습니다.
+
+확인할 것 세 가지:
+
+1. 제안한 부품이 내려는 숫자를 **이미 내는 부품**이 있는지(`<이름>.mass`, `<이름>.count`, `<이름>.angle` …).
+2. 그 숫자로 묻고 싶은 것이 **비교·구간·논리**로 되는지. 되면 부품이 아니라 방입니다.
+3. 안 되면 **왜 안 되는지**를 한 줄로 적을 수 있는지. 적을 수 없으면 아직 측정이 덜 된 것입니다.
+
 ## 파이썬 플러그인
 
 새 부품은 `Part`를 상속해 `register_part`로 등록합니다. 값은 `fields`에 `Field`로 적으면 범위 검사와 `mpg parts` 표가 저절로 따라옵니다. 게이트 함수는 `register_logic`으로 등록하고 방에서는 `logic: <이름>`으로 부릅니다.

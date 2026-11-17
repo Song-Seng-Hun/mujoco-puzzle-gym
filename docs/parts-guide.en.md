@@ -666,6 +666,40 @@ faster, taller. A threshold is entry screening rather than a puzzle, and it leav
 bodies with nothing but failures. The arm gets exclusive puzzles because its interface carries
 **what it holds and where it puts it**.
 
+## Before you write a new part
+
+**Try it with the parts that exist first.** One probe room and one `mpg check` takes fifteen
+minutes.
+
+Skipping this on 2026-11-17 cost a part for comparing masses: designed, approved, then
+withdrawn, because it already worked.
+
+```yaml
+parts:
+  - {name: pan_a, preset: input/pressure_plate, pos: [-0.2, 0.0], min_mass: 0.001}
+  - {name: pan_b, preset: input/pressure_plate, pos: [0.2, 0.0], min_mass: 0.001}
+  - {name: b_heavier, type: gate, expr: "pan_b.mass > pan_a.mass"}        # comparison
+  - {name: in_band, type: gate, expr: "pan_b.mass >= 0.04 and pan_b.mass <= 0.06"}   # a window
+```
+
+Both read correctly, and `tests/test_signals.py` holds them down. An expression gate takes
+**channel names, numbers and comparisons**, so any number a part emits can be asked about
+with a threshold, a window or an ordering, without a part.
+
+What it cannot do is **arithmetic between channels**: `pan_a.mass - pan_b.mass < 0.01` is
+refused ("BinOp is not allowed"). So a tolerance on a difference, a sum of two timers, or a
+mass times a distance does need a part - which is exactly where `beam` (R90) and `budget`
+(R91) sit.
+
+Three things to check:
+
+1. Does a part **already emit** the number yours would (`<name>.mass`, `<name>.count`,
+   `<name>.angle`, ...)?
+2. Can what you want to ask of that number be said with **comparisons, windows and logic**?
+   If so, you want a room, not a part.
+3. If not, can you write **one line saying why not**? If you cannot, you have not measured
+   enough yet.
+
 ## Python plugins
 
 A new part inherits `Part` and is registered with `register_part`. Write its values in `fields` as `Field`s, and range checks and the `mpg parts` table come with them. A gate function is registered with `register_logic` and called from a room as `logic: <name>`.
