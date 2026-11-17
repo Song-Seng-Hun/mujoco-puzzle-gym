@@ -630,6 +630,7 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/dead_wedge` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 11.2 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/conveyor_triage` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 17.0 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/build_a_tower` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 9.8 s** | 名前拒否 `['grab']` | はい |
+| `puzzles/tabletop/lever_arm` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 7.4 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/pick_and_place` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 16.3 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/reach_target` | 通過 5/5, 1.5 s | 解法 0/5 | 通過 5/5, 0.6 s | 解法 0/5 | いいえ |
 
@@ -645,6 +646,35 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 その体だけが解くパズルは結局しきい値（重い・速い・高い）になります。しきい値は入場審査であって
 パズルではなく、他の体には失敗だけが残ります。腕に専用パズルが生まれるのは、そのインターフェースに
 **何を掴みどこに置くか**が入っているからです。
+
+## 新しい部品を作る前に
+
+**まず既存の部品で試してください。** 探針用の部屋を一つ書いて`mpg check`を回すだけで、15分で済みます。
+
+2026-11-17にこの手順を飛ばし、質量を比べる部品を設計して承認まで得たあとに撤回しました。すでに
+できることでした。
+
+```yaml
+parts:
+  - {name: pan_a, preset: input/pressure_plate, pos: [-0.2, 0.0], min_mass: 0.001}
+  - {name: pan_b, preset: input/pressure_plate, pos: [0.2, 0.0], min_mass: 0.001}
+  - {name: b_heavier, type: gate, expr: "pan_b.mass > pan_a.mass"}        # 相対比較
+  - {name: in_band, type: gate, expr: "pan_b.mass >= 0.04 and pan_b.mass <= 0.06"}   # 重さの帯
+```
+
+どちらも正しい値になります(`tests/test_signals.py`が固定しています)。式ゲートは**チャンネル名、数値、
+比較**を受け取るので、部品が出す数値について閾値・帯・大小を問うことは部品なしでできます。
+
+できないのは**チャンネル同士の算術**です。`pan_a.mass - pan_b.mass < 0.01`は拒否されます
+(「BinOp is not allowed」)。だから差に公差を置く、二つのタイマーを足す、質量に距離を掛ける、これらには
+部品が必要です — `beam`(R90)と`budget`(R91)がまさにその位置にあります。
+
+確認すること三つ:
+
+1. 作ろうとしている数値を**すでに出している部品**はないか(`<名前>.mass`、`<名前>.count`、
+   `<名前>.angle`など)。
+2. その数値について問いたいことが**比較・帯・論理**で言えるか。言えるなら必要なのは部品ではなく部屋です。
+3. 言えないなら、**なぜ言えないかを一行で**書けるか。書けないなら、まだ測定が足りていません。
 
 ## Pythonプラグイン
 
@@ -726,6 +756,24 @@ def majority(inputs, state, dt):
 | `roll_damping` | float | N m s/rad | `0.0` | [0, 1] |  | damping on the rotational dofs |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
 
+### `beam`
+
+役割`sensor`、更新段階`input`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `span` | float | m | `0.24` | [0.08, 1.5] |  | plank length end to end |
+| `width` | float | m | `0.05` | [0.02, 0.5] |  |  |
+| `pivot_height` | float | m | `0.035` | [0.01, 0.4] |  | hinge height above the floor |
+| `tilt_limit` | float | deg | `18.0` | [3, 60] |  | how far each end can drop before the hinge stops |
+| `balance_band` | float | deg | `3.0` | [0.2, 30] | 可 | level within this reads on |
+| `settle` | float | s | `0.4` | [0, 5] |  | the hinge must be this quiet before it reads on |
+| `ballast` | float | kg | `0.0` | [0, 10] |  | a fixed weight built into the plank: what the room's load has to balance |
+| `ballast_at` | float | m | `-0.08` | [-1.5, 1.5] |  | where the ballast sits along the plank (0 is the pivot) |
+| `lip` | float | m | `0.005` | [0, 0.03] |  | rim around the plank so a tilted load stays on it |
+| `stiffness` | float | N m/rad | `0.09` | [0.005, 5] |  | the spring that pulls the plank back to level; the angle measures torque |
+| `damping` | float | N m s/rad | `0.02` | [0, 1] |  | hinge damping: too little and a light load never settles |
+
 ### `brake_strip`
 
 役割`prop`、更新段階`device`。
@@ -736,6 +784,33 @@ def majority(inputs, state, dt):
 | `size` | vec | m | `[0.3, 0.6]` | [0.05, 5] |  | strip size [x, y] |
 | `frictionloss` | float | N m | `0.01` | [0, 1] | 可 | wheel joint friction while the body is on the strip |
 | `damping` | float | N m s/rad | `0.0` | [0, 1] | 可 | wheel joint damping while the body is on the strip |
+
+### `budget`
+
+役割`prop`、更新段階`logic`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | where the budget stands (`body: true`) or where guides draw it |
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 可 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 可 | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
+| `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
+| `amount` | float |  | `10.0` | [0, 1e+06] | 可 | what the pool starts an episode with |
+| `spend` | enum |  | `time` | `time`, `flow` |  | time: `rate`/s per load that is on; flow: `rate`/s while any load is on |
+| `rate` | float |  | `1.0` | [0.0001, 10000] |  | units spent per second (see `spend`) |
+| `loads` | list |  | — |  |  | channels that draw from the pool |
+| `refill` | str |  | — |  |  | channel whose turn-on puts `amount` back |
 
 ### `button`
 
@@ -866,7 +941,7 @@ def majority(inputs, state, dt):
 | `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
 | `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
 | `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
-| `up` | str |  | 필수 |  |  | channel whose turn-ons add 1 |
+| `up` | str |  | 必須 |  |  | channel whose turn-ons add 1 |
 | `down` | str |  | — |  |  | channel whose turn-ons subtract 1 |
 | `reset` | str |  | — |  |  | channel whose turn-on sets the count to start |
 | `start` | int |  | `0` | [-1e+06, 1e+06] |  |  |
@@ -902,7 +977,6 @@ def majority(inputs, state, dt):
 | `targets` | list |  | `[]` |  |  | parts it strikes (default: whatever is in its area) |
 | `height` | float | m | `0.3` | [0.1, 1] |  | how high the frame stands |
 | `cooldown` | float | s | `0.5` | [0, 60] | 可 | shortest time between two strikes |
-| `cooldown` | float | s | `0.5` | [0, 60] | 可 | shortest time between two strikes |
 | `charges` | int |  | — | [1, 100] |  | strikes it has (none: unlimited) |
 
 ### `dial`
@@ -919,7 +993,6 @@ def majority(inputs, state, dt):
 | `start` | int |  | `0` | [0, 7] |  | cell on reset |
 | `target` | vec |  | `[1, 1]` |  |  | cells [from, to] that turn `<name>` on |
 | `detent` | float | N m | `0.03` | [0, 1] |  | torque pulling to the nearest cell at its edge |
-
 
 ### `dispenser`
 
@@ -969,7 +1042,6 @@ def majority(inputs, state, dt):
 | `travel` | float | m | `0.15` | [0.08, 0.2] |  | how far the tray slides out |
 | `strap` | float | m | `0.1` | [0.04, 0.15] |  | strap length to the knob (measured: 0.1 m 10/10 opened, 0.06 m 6/10) |
 | `friction` | float | N | `0.05` | [0, 0.3] |  | slide friction (measured up to 0.3 N; 0.6 N stops the turn short) |
-
 
 ### `egg`
 
@@ -1422,6 +1494,7 @@ def majority(inputs, state, dt):
 | `high` | float |  | `1.0` | [-1000, 1000] |  | `random`: highest value |
 | `off_value` | float |  | `0.0` | [-1000, 1000] |  | what it writes while `enable` is off |
 | `seed` | int |  | `0` | [0, 2.14748e+09] |  | `random`: seed beside the part name |
+
 ### `spinner`
 
 役割`prop`、更新段階`device`。
@@ -1445,6 +1518,18 @@ def majority(inputs, state, dt):
 | `trigger` | enum |  | `any` | `body`, `object`, `npc`, `any` |  | what it launches |
 | `cooldown` | float | s | `1.0` | [0.1, 60] |  | time a launched body or object ignores this spring |
 | `max_height` | float | m | `0.2` | [0.01, 1] |  | objects count when their centre is lower than this |
+
+### `stack`
+
+役割`sensor`、更新段階`input`。
+
+| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |
+|---|---|---|---|---|---|---|
+| `size` | vec | m | `[0.2, 0.2]` | [0.05, 2] |  | floor rectangle the stack is counted on |
+| `need` | int |  | `3` | [2, 10] | 可 | accepted objects that must be stacked |
+| `height` | float | m | `0.09` | [0.02, 1] | 可 | the topmost object's centre must be at least this high: a row is not a stack |
+| `accept` | list |  | — |  |  | object part names, kinds or marker ids that count (empty: every object) |
+| `settle` | float | s | `0.3` | [0, 5] |  | everything counted must rest this long before it reads on |
 
 ### `stick`
 
@@ -1611,8 +1696,6 @@ def majority(inputs, state, dt):
 | `beak/basket` | `receptacle` | `shape: box`, `size: [0.3, 0.3]`, `wall_height: 0.1`, `require: count`, `count: 1` |
 | `beak/cube_weight` | `cube` | `size: 0.04`, `mass: 0.04` |
 | `beak/dial` | `dial` | `spokes: 4`, `target: [1, 1]` |
-| `beak/dispenser` | `dispenser` `button: floor` | `beak/cube_weight` 5개, `max_active` 1, `cooldown` 1 s, 앞 0.35 m에 20 × 20 cm 발판 | 발판을 밟으면 윗면 앞 모서리에 추가 하나 나옵니다 |
-| `beak/dispenser_wall` | `dispenser` `button: wall_beak` | 같은 물체·재고, 앞면 0.14 m 높이에 10 × 5 cm 판 | 머리를 숙여(`head` 행동) 부리로 판을 누릅니다 |
 | `beak/dispenser` | `dispenser` | `button: floor`, `item: beak/cube_weight`, `stock: 5`, `max_active: 1`, `cooldown: 1.0` |
 | `beak/dispenser_wall` | `dispenser` | `button: wall_beak`, `item: beak/cube_weight`, `stock: 5`, `max_active: 1`, `cooldown: 1.0` |
 | `beak/drawer` | `drawer` | `travel: 0.15`, `strap: 0.1` |
@@ -1674,7 +1757,6 @@ def majority(inputs, state, dt):
 | `logic/transmitter` | `transmitter` | `band: radio`, `delay: 0.0` |
 | `logic/wire` | `wire` | `thickness: 0.012` |
 | `logic/wire_cut` | `wire` | `breakable: True`, `by: ['peck']`, `hp: 2`, `mount: wall`, `depth: 0.04`, `height: 0.18`, `peck_dist: 0.04` |
-| `logic/wire_cut` | `wire` | `breakable: True`, `by: ['peck']`, `hp: 2`, `mount: wall`, `depth: 0.04`, `height: 0.18` |
 | `logic/xor` | `gate` | `op: xor` |
 | `npc/flee` | `npc` | `behavior: flee`, `speed: 0.08`, `sense: 0.4` |
 | `npc/follow` | `npc` | `behavior: follow`, `sense: 0.8`, `keep: 0.3` |
@@ -1704,6 +1786,15 @@ def majority(inputs, state, dt):
 - `puzzles/ball/bowling`
 - `puzzles/ball/color_sort`
 - `puzzles/ball/mini_soccer`
+- `puzzles/budget/two_openings`
+- `puzzles/circuit/clock_door`
+- `puzzles/circuit/cut_the_lock`
+- `puzzles/circuit/fuse_repair`
+- `puzzles/circuit/jam_the_turret`
+- `puzzles/circuit/peck_cable`
+- `puzzles/circuit/press_relay`
+- `puzzles/circuit/sabotage_order`
+- `puzzles/circuit/wrong_wire`
 - `puzzles/coins/coin_lock`
 - `puzzles/roller/brake_strip`
 - `puzzles/roller/crosswind`
@@ -1713,8 +1804,13 @@ def majority(inputs, state, dt):
 - `puzzles/roller/roll_delivery`
 - `puzzles/roller/speed_gate`
 - `puzzles/roller/timed_corridor`
+- `puzzles/tabletop/build_a_tower`
+- `puzzles/tabletop/conveyor_triage`
+- `puzzles/tabletop/dead_wedge`
+- `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
+- `puzzles/tabletop/weigh_it_down`
 - `puzzles/tow/chain_dropoff`
 - `puzzles/tow/cleat_hold`
 - `puzzles/tow/drop_and_go`

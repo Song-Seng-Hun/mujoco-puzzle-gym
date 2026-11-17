@@ -58,7 +58,9 @@
 | `addon_station` | `walk`, `roller` | o | x | 애드온을 몸에 붙이는 장치 |
 | `anchor` | - | o | o | 바닥에 선 기둥, 몸과 무관 |
 | `ball` | `walk` | o | o | 몸이 걸어가 밀어 굴림 |
+| `beam` | - | o | o | 힌지 판을 읽기만 함. 하중을 올리는 것은 방의 일 |
 | `brake_strip` | `walk`, `roller` | o | x | 바퀴를 세우는 띠 |
+| `budget` | - | o | o | 신호만 |
 | `button` | `walk` | o | o | 밟기. 몸 중심 좌표로 판정 |
 | `cannon` | - | o | o | 신호로 쏨, 몸과 무관 |
 | `checkpoint` | `walk` | o | o | 밟기 |

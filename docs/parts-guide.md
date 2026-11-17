@@ -636,6 +636,7 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/dead_wedge` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 11.2초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/conveyor_triage` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 17.0초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/build_a_tower` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 9.8초** | 이름 거부 `['grab']` | 예 |
+| `puzzles/tabletop/lever_arm` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 7.4초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/pick_and_place` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 16.3초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/reach_target` | 통과 5/5, 1.5초 | 해답 0/5 | 통과 5/5, 0.6초 | 해답 0/5 | 아니오 |
 
@@ -651,6 +652,34 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 푸는 퍼즐은 결국 문턱(더 무겁다/더 빠르다/더 높다)이 됩니다. 문턱은 입장 심사이지 퍼즐이 아니고,
 다른 몸들에게는 실패만 남깁니다. 팔에만 전용 퍼즐이 생기는 이유는 팔의 인터페이스에 **무엇을 잡고
 어디에 놓는가**가 들어 있기 때문입니다.
+
+## 새 부품을 만들기 전에
+
+**있는 부품으로 되는지 먼저 해 보세요.** 탐침 방 하나를 짜서 `mpg check`를 돌리는 데 15분이면 됩니다.
+
+2026-11-17에 이 단계를 건너뛰어, 질량을 비교하는 부품을 설계하고 승인까지 받은 뒤에 철회했습니다.
+이미 되는 것이었습니다.
+
+```yaml
+parts:
+  - {name: pan_a, preset: input/pressure_plate, pos: [-0.2, 0.0], min_mass: 0.001}
+  - {name: pan_b, preset: input/pressure_plate, pos: [0.2, 0.0], min_mass: 0.001}
+  - {name: b_heavier, type: gate, expr: "pan_b.mass > pan_a.mass"}        # 상대 비교
+  - {name: in_band, type: gate, expr: "pan_b.mass >= 0.04 and pan_b.mass <= 0.06"}   # 무게 구간
+```
+
+둘 다 값이 맞게 나옵니다(`tests/test_signals.py`가 고정합니다). 식 게이트는 **채널 이름과 숫자, 비교**를
+받으므로, 어떤 부품이 내는 숫자든 문턱·구간·대소로 묻는 것은 부품 없이 됩니다.
+
+되지 않는 것은 **채널 사이의 산술**입니다. `pan_a.mass - pan_b.mass < 0.01`은 거절됩니다
+("BinOp is not allowed"). 그래서 차이에 공차를 두거나, 두 타이머를 더하거나, 질량에 거리를 곱하는 것은
+부품이 필요합니다 — `beam`(R90)과 `budget`(R91)이 정확히 그 자리에 있습니다.
+
+확인할 것 세 가지:
+
+1. 제안한 부품이 내려는 숫자를 **이미 내는 부품**이 있는지(`<이름>.mass`, `<이름>.count`, `<이름>.angle` …).
+2. 그 숫자로 묻고 싶은 것이 **비교·구간·논리**로 되는지. 되면 부품이 아니라 방입니다.
+3. 안 되면 **왜 안 되는지**를 한 줄로 적을 수 있는지. 적을 수 없으면 아직 측정이 덜 된 것입니다.
 
 ## 파이썬 플러그인
 
@@ -732,6 +761,24 @@ def majority(inputs, state, dt):
 | `roll_damping` | float | N m s/rad | `0.0` | [0, 1] |  | damping on the rotational dofs |
 | `color` | enum |  | `white` | `white`, `red`, `blue`, `green`, `yellow`, `orange`, `purple`, `black` |  |  |
 
+### `beam`
+
+역할 `sensor`, 갱신 단계 `input`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `span` | float | m | `0.24` | [0.08, 1.5] |  | plank length end to end |
+| `width` | float | m | `0.05` | [0.02, 0.5] |  |  |
+| `pivot_height` | float | m | `0.035` | [0.01, 0.4] |  | hinge height above the floor |
+| `tilt_limit` | float | deg | `18.0` | [3, 60] |  | how far each end can drop before the hinge stops |
+| `balance_band` | float | deg | `3.0` | [0.2, 30] | 예 | level within this reads on |
+| `settle` | float | s | `0.4` | [0, 5] |  | the hinge must be this quiet before it reads on |
+| `ballast` | float | kg | `0.0` | [0, 10] |  | a fixed weight built into the plank: what the room's load has to balance |
+| `ballast_at` | float | m | `-0.08` | [-1.5, 1.5] |  | where the ballast sits along the plank (0 is the pivot) |
+| `lip` | float | m | `0.005` | [0, 0.03] |  | rim around the plank so a tilted load stays on it |
+| `stiffness` | float | N m/rad | `0.09` | [0.005, 5] |  | the spring that pulls the plank back to level; the angle measures torque |
+| `damping` | float | N m s/rad | `0.02` | [0, 1] |  | hinge damping: too little and a light load never settles |
+
 ### `brake_strip`
 
 역할 `prop`, 갱신 단계 `device`.
@@ -742,6 +789,33 @@ def majority(inputs, state, dt):
 | `size` | vec | m | `[0.3, 0.6]` | [0.05, 5] |  | strip size [x, y] |
 | `frictionloss` | float | N m | `0.01` | [0, 1] | 예 | wheel joint friction while the body is on the strip |
 | `damping` | float | N m s/rad | `0.0` | [0, 1] | 예 | wheel joint damping while the body is on the strip |
+
+### `budget`
+
+역할 `prop`, 갱신 단계 `logic`.
+
+| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |
+|---|---|---|---|---|---|---|
+| `pos` | vec | m | `[0.0, 0.0]` |  |  | where the budget stands (`body: true`) or where guides draw it |
+| `breakable` | bool |  | `False` |  |  | R34: this part can be broken (it needs a body) |
+| `by` | list |  | `['shell']` |  |  | causes that count: shell, crush, peck, destroyer |
+| `hp` | int |  | `1` | [1, 20] |  | hits it takes to break |
+| `broken_value` | float |  | `0.0` | [-1000, 1000] |  | what its outputs read once broken |
+| `on_break` | enum |  | `none` | `none`, `fail` |  | fail: breaking it ends the episode as a failure |
+| `repair` | str |  | — |  |  | channel: while on, the part is whole again |
+| `repair_with` | int |  | — | [0, 49] |  | marker id of the fuse object that repairs it in its socket (R34) |
+| `socket_dist` | float | m | `0.06` | [0.02, 0.3] |  | `repair_with`: how close to the socket the fuse counts |
+| `crush_force` | float | N | `0.5` | [0.05, 200] | 예 | `crush`: contact force of an object that counts (measured, R34) |
+| `min_speed` | float | m/s | `1.0` | [0, 30] | 예 | `shell`: slowest hit that counts |
+| `peck_dist` | float | m | `0.02` | [0.005, 0.1] |  | `peck`: beak tip this close to the part counts (measured, R34) |
+| `body` | bool |  | `False` |  |  | put the part in the room as a small box (R33); needed to be breakable (R34) |
+| `size` | vec | m | `[0.08, 0.08]` | [0.04, 0.4] |  | `body: true`: footprint [x, y] |
+| `height` | float | m | `0.12` | [0.04, 0.6] |  | `body: true`: box height |
+| `amount` | float |  | `10.0` | [0, 1e+06] | 예 | what the pool starts an episode with |
+| `spend` | enum |  | `time` | `time`, `flow` |  | time: `rate`/s per load that is on; flow: `rate`/s while any load is on |
+| `rate` | float |  | `1.0` | [0.0001, 10000] |  | units spent per second (see `spend`) |
+| `loads` | list |  | — |  |  | channels that draw from the pool |
+| `refill` | str |  | — |  |  | channel whose turn-on puts `amount` back |
 
 ### `button`
 
@@ -1717,6 +1791,7 @@ def majority(inputs, state, dt):
 - `puzzles/ball/bowling`
 - `puzzles/ball/color_sort`
 - `puzzles/ball/mini_soccer`
+- `puzzles/budget/two_openings`
 - `puzzles/circuit/clock_door`
 - `puzzles/circuit/cut_the_lock`
 - `puzzles/circuit/fuse_repair`
@@ -1737,6 +1812,7 @@ def majority(inputs, state, dt):
 - `puzzles/tabletop/build_a_tower`
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
+- `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/reach_target`
 - `puzzles/tabletop/weigh_it_down`

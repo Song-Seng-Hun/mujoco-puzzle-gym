@@ -60,7 +60,9 @@
 | `addon_station` | `walk`, `roller` | o | x | アドオンを体に取り付ける装置 |
 | `anchor` | - | o | o | 床に立つ柱、体とは無関係 |
 | `ball` | `walk` | o | o | 体が歩いていって押して転がす |
+| `beam` | - | o | o | ヒンジの板を読むだけ。荷を載せるのは部屋の仕事 |
 | `brake_strip` | `walk`, `roller` | o | x | 車輪を止める帯 |
+| `budget` | - | o | o | 信号だけ |
 | `button` | `walk` | o | o | 踏む。体の中心座標で判定 |
 | `cannon` | - | o | o | 信号で撃つ、体とは無関係 |
 | `checkpoint` | `walk` | o | o | 踏む |

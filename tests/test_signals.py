@@ -226,3 +226,58 @@ def test_room_error_names_loop(repo_root, tmp_path):
     ])
     with pytest.raises(RoomError, match="n1 -> n1"):
         Room.load(path)
+
+
+# ---- what two plates and one expression already do (R97) ---------------------------------
+# These three lock in a capability that was nearly re-implemented as a part. On 2026-11-17
+# three models independently proposed a "balance" part for comparing two masses (7 proposals
+# between them), and the spec for it was written and approved before anyone tried the
+# combination that already exists. `pressure` emits `<name>.mass` and a gate expression
+# takes comparisons, so a comparator and a weight window are both one line of room file.
+# The third test records the edge of what is possible: no arithmetic, so a tolerance band
+# on a *difference* is the one thing still missing - and it is not worth a part, because
+# `pressure` rounds its mass to 1 g and exact equality reads as `not (a > b) and not (b > a)`.
+PANS = [{"name": "pan_a", "type": "pressure", "pos": [-0.2, 0.0], "size": [0.2, 0.2],
+         "min_mass": 0.001},
+        {"name": "pan_b", "type": "pressure", "pos": [0.2, 0.0], "size": [0.2, 0.2],
+         "min_mass": 0.001},
+        {"name": "light", "type": "t_box", "pos": [-0.2, 0.0], "half": 0.015, "mass": 0.02},
+        {"name": "heavy", "type": "t_box", "pos": [0.2, 0.0], "half": 0.015, "mass": 0.05}]
+
+
+def _pan_env(tmp_path, *gates):
+    from rooms import open_room
+    env = open_room(tmp_path, [*PANS, *gates], name="pans")
+    for _ in range(int(0.6 * env.hz)):
+        env.advance(np.zeros(3))
+    return env
+
+
+def test_a_gate_compares_two_plate_masses(asset_dir, tmp_path):
+    env = _pan_env(tmp_path, {"name": "b_heavier", "type": "gate",
+                              "expr": "pan_b.mass > pan_a.mass"})
+    try:
+        assert env.signals.get("pan_a.mass") == pytest.approx(0.02, abs=0.004)
+        assert env.signals.get("pan_b.mass") == pytest.approx(0.05, abs=0.004)
+        assert env.signals.get("b_heavier") == 1
+    finally:
+        env.close()
+
+
+def test_a_gate_reads_a_mass_window(asset_dir, tmp_path):
+    env = _pan_env(tmp_path, {"name": "in_band", "type": "gate",
+                              "expr": "pan_b.mass >= 0.04 and pan_b.mass <= 0.06"},
+                   {"name": "out_of_band", "type": "gate",
+                    "expr": "pan_a.mass >= 0.04 and pan_a.mass <= 0.06"})
+    try:
+        assert env.signals.get("in_band") == 1
+        assert env.signals.get("out_of_band") == 0
+    finally:
+        env.close()
+
+
+def test_a_gate_refuses_arithmetic_between_channels(asset_dir, tmp_path):
+    from rooms import open_room
+    with pytest.raises(RoomError, match="BinOp is not allowed"):
+        open_room(tmp_path, [*PANS, {"name": "band", "type": "gate",
+                                     "expr": "pan_a.mass - pan_b.mass < 0.01"}], name="arith")

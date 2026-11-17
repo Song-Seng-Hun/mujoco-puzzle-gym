@@ -185,9 +185,36 @@ def _cell(v: Any) -> str:
     return str(v).replace("|", "\\|").replace("\n", " ")
 
 
-def _default(f: Field) -> str:
+#: Wording of the generated tables per language. Only these strings differ: every `doc`
+#: comes from the schema and is English in all three. Added 2026-11-17 after the Japanese
+#: table was overwritten with Korean headers by hand; `tools/refresh_parts_tables.py` writes
+#: all three from here so they cannot drift apart again.
+LANGS = {
+    "ko": {"head": "| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |",
+           "role": "역할 `{role}`, 갱신 단계 `{stage}`.", "required": "필수",
+           "runtime": "예", "episode": "에피소드 시작", "common_only": "공통 값만 받습니다.",
+           "common": "### 모든 부품의 공통 값", "part_presets": "### 부품 프리셋",
+           "preset_head": "| 프리셋 | 부품 종류 | 값 |", "puzzle_presets": "### 조립 프리셋"},
+    "en": {"head": "| Value | Kind | Unit | Default | Range | Runtime change | Description |",
+           "role": "Role `{role}`, update stage `{stage}`.", "required": "required",
+           "runtime": "yes", "episode": "at the episode start",
+           "common_only": "It takes only the common values.",
+           "common": "### Values every part has", "part_presets": "### Part presets",
+           "preset_head": "| Preset | Part type | Values |",
+           "puzzle_presets": "### Assembly presets"},
+    "ja": {"head": "| 値 | 種類 | 単位 | 既定値 | 範囲 | 実行中の変更 | 説明 |",
+           "role": "役割`{role}`、更新段階`{stage}`。", "required": "必須",
+           "runtime": "可", "episode": "エピソード開始時",
+           "common_only": "共通の値だけを受け取ります。",
+           "common": "### すべての部品に共通の値", "part_presets": "### 部品プリセット",
+           "preset_head": "| プリセット | 部品の種類 | 値 |",
+           "puzzle_presets": "### 組み立てプリセット"},
+}
+
+
+def _default(f: Field, L: dict) -> str:
     if f.required:
-        return "필수"
+        return L["required"]
     if f.default is None:
         return "—"
     return f"`{_cell(f.default)}`"
@@ -201,29 +228,34 @@ def _range(f: Field) -> str:
     return ""
 
 
-def _field_rows(fields) -> list[str]:
-    rows = ["| 값 | 종류 | 단위 | 기본값 | 범위 | 실행 중 변경 | 설명 |", "|---|---|---|---|---|---|---|"]
+def _field_rows(fields, L: dict) -> list[str]:
+    rows = [L["head"], "|---|---|---|---|---|---|---|"]
     for f in fields:
-        rows.append(f"| `{f.name}` | {f.kind} | {_cell(f.unit)} | {_default(f)} | {_range(f)} | "
-                    f"{'예' if f.runtime else '에피소드 시작' if f.episode else ''} | {_cell(f.doc)} |")
+        when = L["runtime"] if f.runtime else L["episode"] if f.episode else ""
+        rows.append(f"| `{f.name}` | {f.kind} | {_cell(f.unit)} | {_default(f, L)} | {_range(f)} | "
+                    f"{when} | {_cell(f.doc)} |")
     return rows
 
 
-def markdown() -> str:
-    """Value tables of every built-in part and the preset list (docs/parts-guide.md)."""
+def markdown(lang: str = "ko") -> str:
+    """Value tables of every built-in part and the preset list (docs/parts-guide*.md).
+
+    `lang` picks the wording from `LANGS`; the field documentation itself is English in
+    every language, because it comes from the parts' own schemas."""
     from .parts.base import Part
 
+    L = LANGS[lang]
     common = Part.full_schema()
-    out = ["### 모든 부품의 공통 값", "", *_field_rows(common.values()), ""]
+    out = [L["common"], "", *_field_rows(common.values(), L), ""]
     for name, cls in builtin_parts().items():
         own = [f for f in cls.full_schema().values() if common.get(f.name) != f]
-        out += [f"### `{name}`", "", f"역할 `{cls.role}`, 갱신 단계 `{cls.stage}`.", ""]
-        out += (_field_rows(own) if own else ["공통 값만 받습니다."]) + [""]
-    out += ["### 부품 프리셋", "", "| 프리셋 | 부품 종류 | 값 |", "|---|---|---|"]
+        out += [f"### `{name}`", "", L["role"].format(role=cls.role, stage=cls.stage), ""]
+        out += (_field_rows(own, L) if own else [L["common_only"]]) + [""]
+    out += [L["part_presets"], "", L["preset_head"], "|---|---|---|"]
     for n in part_preset_names():
         p = load_part_preset(n)
         vals = ", ".join(f"`{k}: {_cell(v)}`" for k, v in p.items() if k != "type")
         out.append(f"| `{n}` | `{p['type']}` | {vals} |")
-    out += ["", "### 조립 프리셋", ""]
+    out += ["", L["puzzle_presets"], ""]
     out += [f"- `{n}`" for n in puzzle_preset_names()]
     return "\n".join(out) + "\n"
