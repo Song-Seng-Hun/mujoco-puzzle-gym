@@ -1,0 +1,31 @@
+# The room `puzzles/tabletop/reach_the_marker` (M7 R130), observed the way the arm itself
+# could observe it: `obs.obs_kind` calls this task **`sensors_only`** - proprioception plus
+# the gaze on the goal's ArUco marker, which the arm's own wrist camera makes possible
+# (R115, R27). No `part_pos`, no `part_state`, no `target_pos`, no `beak`.
+#
+# This is the task R113 item 3 asks for - "does it learn **on the arm**, with `sensors_only`
+# observation" - and the answer is yes, measured:
+#
+#   PPO, 15 minutes, 4,079,628 steps (4,524/s), 227,663 episodes, `obs_kind` sensors_only:
+#   training success rate 0.084 -> 0.948.
+#   `mpg eval` on 100 **held-out** eval seeds: **0.93** (mean 1.29 s).
+#   The same seeds, uniform random: **0.01**.
+#   The same checkpoint with the five `markers_seen` values zeroed: **6/50 against 48/50**,
+#   so the policy is steering on the marker and not replaying a fixed motion.
+#
+# Read the claim narrowly, because the neighbouring tasks are the ones that are still open.
+# This is a **reach**: one stage, no grasp, no carry. The two `*_onboard` tasks are the same
+# observation over a pick-and-place, and no policy solves either (their headers carry the
+# numbers; `docs/training-log.md` carries the six reward designs and the curriculum that did
+# not move them). What this task settles is that the observation and the body are learnable -
+# what is left open is the manipulation.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/tabletop/reach_the_marker.yaml
+body: so101
+env: {hz: 10, episode_seconds: 8}
+obs: [gravity, ang_vel, lin_vel, markers_seen]
+reward: {progress: 10.0, stage: 2.0, success: 10.0}
+termination: {success: true, fall: false}
+randomize: {layout: 1.0}
+algo: ppo
+net: [128, 128]
+n_envs: 12

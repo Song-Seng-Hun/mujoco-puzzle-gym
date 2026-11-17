@@ -1,0 +1,34 @@
+# Reach the marker (M7 R130): `reach_target` with the goal **drawn every episode** and an
+# ArUco marker on it, so that a policy which cannot see cannot win.
+#
+# Why this room exists. `reach_target` has a fixed goal, so a body that knows nothing about
+# the room solves it with one constant command - which makes it useless as evidence that an
+# observation carries information. Here the goal is drawn over 200 x 560 mm of the arm's
+# sector, and the only sensor that says where it went is the gaze on its marker
+# (`markers_seen`, R27, through the wrist camera wired in R115).
+#
+# Measured (M7 R130, 2026-11-18). 20 train seeds through `mpg check`: **20/20, mean 1.44 s**.
+# 50 eval seeds: the scripted solution **48/50**, a uniform random policy **1/100**
+# (`mpg eval --policy random`), so 0.01 is what "no information" scores here. The marker is
+# in view for 0.65 of the scripted steps - a policy has to look first, then go.
+#
+# The draw region is the arm's envelope seen honestly. The goal lands 0.311-0.559 m from the
+# base (mean 0.430) over these seeds, and the declared reach is 0.48 m (docs/bodies.md
+# section 9), so the far corners are **outside it**: the scripted solution's two failures are
+# the two farthest draws of the fifty (0.527 m and 0.559 m) and nothing else. `mpg check`'s
+# reach stage passes because it checks the nominal layout, where the goal is 0.4 m out. The
+# region stops at x = 0.2 for that reason - widening it would measure the envelope instead of
+# the perception, which is what this room is for.
+name: table_reach_marker
+size: [1.0, 0.8]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [-0.3, 0.0], yaw: 0.0}
+parts:
+  - name: goal
+    type: goal
+    pos: [0.1, 0.0]
+    radius: 0.05
+    marker: {}
+    randomize: {pos: {region: [[0.0, 0.2, -0.28, 0.28]]}}
+demo:
+  - goto goal

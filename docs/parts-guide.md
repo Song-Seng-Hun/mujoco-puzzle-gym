@@ -1926,6 +1926,7 @@ def majority(inputs, state, dt):
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/pick_by_hand`
 - `puzzles/tabletop/reach_target`
+- `puzzles/tabletop/reach_the_marker`
 - `puzzles/tabletop/weigh_it_down`
 - `puzzles/tow/chain_dropoff`
 - `puzzles/tow/cleat_hold`

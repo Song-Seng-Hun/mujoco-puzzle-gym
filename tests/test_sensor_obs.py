@@ -281,7 +281,9 @@ def test_the_tasks_a_robot_could_observe_are_named(repo_root):
     exteroception to be clean with. R115 wired its wrist camera, which made one possible,
     and R126 added the second - the same observation over the room that is held by two
     fingers instead of a weld. Read their headers for how narrow the claim is: no policy
-    solves either.
+    solves either. R130 added the third, and that one **is** solved by a trained policy
+    (0.93 over 100 held-out seeds against 0.01 random, and 6/50 against 48/50 with its
+    marker gaze zeroed) - it is a reach, not a manipulation.
 
     If the list changes, change it here and say so in the docs; the names are the point.
     """
@@ -298,7 +300,8 @@ def test_the_tasks_a_robot_could_observe_are_named(repo_root):
             clean.append(path.name)
         if obs_kind(spec) == "sensors_only":
             sensors_only.append(path.name)
-    want = ["task_pick_and_place_onboard.yaml", "task_pick_by_hand_onboard.yaml"]
+    want = ["task_pick_and_place_onboard.yaml", "task_pick_by_hand_onboard.yaml",
+            "task_reach_the_marker.yaml"]
     assert sensors_only == want, sensors_only
     assert clean == want, clean
     assert len(tasks) > 10, "the audit has to be running on the real set"
