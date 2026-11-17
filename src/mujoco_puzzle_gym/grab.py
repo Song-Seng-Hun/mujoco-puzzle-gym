@@ -137,7 +137,12 @@ class Beak(Part):
         for i in range(data.ncon):
             c = data.contact[i]
             for g_a, g_b in ((int(c.geom1), int(c.geom2)), (int(c.geom2), int(c.geom1))):
-                if int(model.geom_bodyid[g_b]) not in roots:
+                # The object's whole subtree, not just its root: a cube's handles are child
+                # bodies, so that is what the fingers actually touch. Measured, matching the
+                # root alone reported no pinch while both jaw sides had 8 and 7 contacts on
+                # it (R124).
+                body = int(model.geom_bodyid[g_b])
+                if body not in roots and int(model.body_rootid[body]) not in roots:
                     continue
                 for k, side in enumerate(sides):
                     if g_a in side:
@@ -255,10 +260,27 @@ class Beak(Part):
 
     def update(self, model, data, body):
         w = self.world
-        if w is None or not self._eq:
+        if w is None:
+            return
+        if not self._eq and self.hold != "contact":
+            # No welds built (a body with no grab site) and no contact hold to run: there is
+            # nothing for this part to do. A contact hold has an empty `_eq` by design, so
+            # the old `not self._eq` test alone skipped its whole update - measured, both jaw
+            # sides had 8 contacts each and `_pinched` returned True while `held` stayed None,
+            # because this method never ran (R124).
             return
         cmd = float(w.grab)
         dropped = [False] * len(self.objects)
+        if self._contact_mode(w):
+            # Before the weld bookkeeping, not after: a contact hold has no welds, so
+            # `weld_force` on an empty `_eq` raised straight past it (R124).
+            self.too_heavy = False
+            self._update_contact(model, data, w, cmd, dropped)
+            got = self.objects[self.held] if self.held is not None else None
+            w.tool_tip = (got.tip_point(data) if got is not None
+                          and hasattr(got, "tip_point") else None)
+            self._write(dropped)
+            return
         if self.held is not None:
             i = self.held
             if self.weld_force(data, i) > self.objects[i].max_hold_force:
@@ -268,13 +290,6 @@ class Beak(Part):
             elif cmd <= GRAB_ON or not getattr(self.objects[i], "grabbable_now", True):
                 self._release(data)
         self.too_heavy = False
-        if self._contact_mode(w):
-            self._update_contact(model, data, w, cmd, dropped)
-            held = self.objects[self.held] if self.held is not None else None
-            w.tool_tip = (held.tip_point(data) if held is not None
-                          and hasattr(held, "tip_point") else None)
-            self._write(dropped)
-            return
         if cmd <= GRAB_ON:
             self.armed = True
         elif self.held is None and self.armed:

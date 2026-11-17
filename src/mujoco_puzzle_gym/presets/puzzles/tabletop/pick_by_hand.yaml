@@ -1,0 +1,77 @@
+# Pick it up with the fingers (R124): the same room as `pick_and_place`, with the block
+# asking to be held by **contact** instead of by the weld grab. So nothing attaches: the
+# block stays in the jaw because two fingers are pressing it, and it can be dropped by
+# physics.
+#
+# Measured (M7 R124, 2026-11-18): **9 of 10 seeds, mean 9.0 s**, against 20/20 at 7.7 s for
+# the welded version. The one failure is at `goto goal`, not at the grasp. The scene holds
+# no weld at all - `hold: contact` builds neither the equality constraint nor the
+# gripper-to-object contact exclusion the weld needs.
+#
+# It needs the body's orientation task switched on by the caller (`align_axis` with
+# `align_rows = 1`), which is why this is not in `PRESET_TASKS` yet: the room is the proof
+# that a physical pinch carries a room, not a finished preset.
+#
+# Seven measurements had to come first, and every one of them was a mistake of ours rather
+# than a limit of the arm (specs/2026-11-17-arm-steady-state R120-R124):
+#   - the controlled point was read live, and travels 4 cm with the jaw;
+#   - the orientation task used three rows, six constraints on five joints;
+#   - the lead clamp re-anchored itself and the arm crept with a zero command;
+#   - **the jaw was never connected to the grab action at all**;
+#   - a room excluded gripper-to-object contacts, so no pinch was detectable;
+#   - the carry drove the wrist, aimed a handle (which sits on a face) and shut the jaw
+#     90 mm early;
+#   - the beak's `update` returned early when it had no welds, so the contact detector
+#     never ran while both jaws had eight contacts each.
+name: table_pick
+size:
+- 1.2
+- 1.0
+wall:
+  thickness: 0.02
+  height: 0.1
+spawn:
+  pos:
+  - -0.3
+  - 0.0
+  yaw: 0.0
+parts:
+- name: block
+  type: cube
+  pos:
+  - -0.05
+  - -0.12
+  size: 0.03
+  mass: 0.02
+  hold: contact
+- name: box
+  type: receptacle
+  pos:
+  - 0.0
+  - 0.14
+  size:
+  - 0.12
+  - 0.12
+  accept:
+  - block
+- name: door
+  type: door
+  mode: oneshot
+  pos:
+  - 0.42
+  - 0.0
+  width: 0.2
+  axis: y
+  in:
+  - box.ok
+- name: goal
+  type: goal
+  pos:
+  - 0.05
+  - -0.25
+  radius: 0.05
+  enable: box.ok
+demo:
+- grab block
+- place block box
+- goto goal

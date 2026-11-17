@@ -78,6 +78,8 @@ AWAY = 0.35          # [m] walk off this far from a placed cube
 #: fingers are around anything.
 FINGER_STANDOFF = 0.08
 FINGER_CLOSE = 0.016
+#: [m] Inside this the height is left alone and only the advance runs (R123).
+FINGER_SETTLE = 0.04
 #: [m] How close the grasp point has to be to a handle before fingers close (R122).
 GRASP_CLOSE = 0.03
 STUCK = 1.5          # [s] place: standing this long with the object beside the target: walk off, retry
@@ -264,13 +266,27 @@ class Carrier:
         radial = radial / max(float(np.linalg.norm(radial)), 1e-9)
         here = np.asarray(env.body_state.pos, dtype=float)
         gap = float(np.linalg.norm(here - handle))
-        self._hold_tip_at(float(handle[2]), lambda: np.asarray(env.body_state.pos, float))
+        # Height while approaching, not every step on the way in (R123). `_hold_tip_at` is a
+        # closed loop on the controlled point's height, and that point moves with the wrist
+        # the orientation task is holding - re-running it on every step of the advance had
+        # the two trading against each other and the advance stopped 15 mm out. The bare
+        # scene that lifted 10-60 g set the height once and let it settle.
+        if self.phase == "approach" or gap > FINGER_SETTLE:
+            self._hold_tip_at(float(handle[2]), lambda: np.asarray(env.body_state.pos, float))
         if self.phase == "approach":
             self.grab = -1.0                                  # open
             act = self._walk(handle[:2] - radial * FINGER_STANDOFF)
             if act is not None:
                 return act
             self.phase = "in"
+        if gap <= FINGER_SETTLE and env.body.align_axis is not None:
+            # Let the orientation go for the last stretch (R124). Position takes three rows
+            # of a five-joint solve and the orientation task one more, and the last 2 cm
+            # needs a degree of freedom that row is holding: measured, the advance stopped
+            # 17.7 mm out with nothing touching, and releasing the row there carried it in
+            # to a two-sided pinch (8 and 7 contacts). The axis has done its work by then -
+            # the fingers are already straddling the object.
+            env.body.align_axis = None
         if gap > FINGER_CLOSE:
             self.grab = -1.0
             return self.steer(handle[:2], SLOW)
