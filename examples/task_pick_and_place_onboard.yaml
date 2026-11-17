@@ -1,29 +1,35 @@
 # The same room as `task_pick_and_place.yaml`, observed the way a real arm could observe it
-# (R115). It exists to make one thing checkable rather than arguable: this is the first task
-# in the repository whose `obs:` holds **no privileged term** (`obs.PRIVILEGED_OBS`:
-# part_pos, part_state, target_pos - the simulator's own state, which no sensor produces).
+# (R115). It exists to make one thing checkable rather than arguable: `mpg`'s own
+# `obs.obs_kind` calls this task **`sensors_only`**, and it is the first task in the
+# repository that it calls that. Every other one is `privileged`.
 #
-# What it uses instead: the body's proprioception (gravity, ang_vel, lin_vel), its grab
-# channel, and the arm's own wrist camera, which had to be wired up for this - the adapter
-# answered `None` for `view_camera` until R115, so no task for this body could have been
-# clean. The arm has no rangefinder mount, so the camera is its whole exteroception.
+# `sensors_only` is the package's own standard and it is stricter than "no `part_pos`":
+# every term has to be in `obs.SENSOR_TERMS` (gravity, ang_vel, lin_vel, rangefinder,
+# camera, markers_seen). So this task carries proprioception and the arm's own wrist camera
+# and nothing else. The camera had to be wired up for it - the adapter answered `None` for
+# `view_camera` until R115, so no task for this body could have qualified - and the arm has
+# no rangefinder mount, so that camera is its whole exteroception.
 #
-# Read the claim narrowly. Clean means "no privileged term", not "ready for hardware":
+# `beak` is deliberately **not** here, though it holds no privileged term either. Its last
+# three values are the nearest handle relative to the jaw, which is a perfect-perception
+# stand-in for a detector rather than a sensor reading; with it the task reads `privileged`,
+# which is the right answer. The policy has to find the block in the image.
 #
-#   - `beak`'s last three values are the nearest handle relative to the jaw. That is a
-#     perfect-perception stand-in for a detector, not a sensor reading. Dropping it leaves
-#     the camera alone, which is the stricter contract and the harder learning problem.
+# Read the rest of the claim narrowly. `sensors_only` is about the observation, not about
+# hardware readiness:
+#
 #   - nothing here models actuator latency, backlash, servo-to-servo spread or sensor
-#     noise, and the grab is still a weld, not contact (specs/2026-11-17-arm-steady-state
-#     R113 items 1, 4, 5).
-#   - **no policy has been trained on this task.** It is checked to build, to declare an
-#     observation space with an image in it, and to run an episode. Whether PPO can learn
-#     the room from this observation is unmeasured, and saying otherwise would be a guess.
+#     noise (the camera accepts `noise:` and this task does not use it), and the grab is
+#     still a weld, not contact (specs/2026-11-17-arm-steady-state R113 items 1, 4, 5).
+#   - **no policy solves this task.** Measured on the version that still carried `beak`, a
+#     3-minute PPO run goes end to end - 49,156 steps, 120 episodes, **success rate 0.0** -
+#     with the mean return rising from -1.04 to +2.18, which is the progress term improving
+#     and not a solve. Whether it is learnable from the camera alone is unmeasured.
 room: ../src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_and_place.yaml
 body: so101
 actions: [move, head, grab]
 env: {hz: 10, episode_seconds: 40}
-obs: [gravity, ang_vel, lin_vel, beak, {item: camera, size: [48, 64]}]
+obs: [gravity, ang_vel, lin_vel, {item: camera, size: [48, 64]}]
 reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
 termination: {success: true, fall: false}
 algo: ppo

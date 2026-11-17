@@ -266,28 +266,40 @@ def test_the_privileged_terms_are_declared_where_a_program_can_read_them():
 
 
 def test_exactly_one_shipped_task_could_be_observed_by_the_robot(repo_root):
-    """The audit run on the real files, and the count it returns.
+    """The audit run on the real files, by the package's own standard.
 
-    Most shipped tasks train with privileged observations on purpose, and that is fine.
-    What was not fine was that **every** one of them did: when this test was first written
-    it asserted zero clean tasks, because the arm answered `None` for `view_camera` and had
-    no rangefinder mount, so it had no exteroception to be clean with. R115 wires its own
-    wrist camera and `task_pick_and_place_onboard.yaml` is the first task with no privileged
-    term in `obs:`. Read its header for how narrow that claim is - no policy has been
-    trained on it.
+    Two declarations say what a policy may see, and they are not the same test.
+    `PRIVILEGED_OBS` names the three terms that read the simulator's own state. `obs_kind`
+    is stricter and older: it answers `sensors_only` only when **every** term is in
+    `SENSOR_TERMS` (gravity, ang_vel, lin_vel, rangefinder, camera, markers_seen), so a
+    room-signal channel or `beak` makes it `privileged` too. For the hardware question the
+    strict one is the right one - `beak`'s handle vector is a perfect-perception stand-in,
+    not a sensor - so that is what this asserts.
 
-    If this count changes, change it here and say so in the docs; the number is the point.
+    When this test was first written the answer was zero, and it had to be: the arm
+    answered `None` for `view_camera` and has no rangefinder mount, so it had no
+    exteroception to be clean with. R115 wires its wrist camera, and
+    `task_pick_and_place_onboard.yaml` is the first task `obs_kind` calls `sensors_only`.
+    Read its header for how narrow that is - no policy solves it.
+
+    If the count changes, change it here and say so in the docs; the number is the point.
     """
     tasks = sorted((repo_root / "examples").glob("task_*.yaml"))
     assert tasks, "no example tasks found"
-    from mujoco_puzzle_gym.obs import privileged_terms
+    from mujoco_puzzle_gym.obs import obs_kind, privileged_terms
 
-    clean, dirty = [], []
+    clean, sensors_only = [], []
     for path in tasks:
         spec = yaml.safe_load(path.read_text()) or {}
-        (dirty if privileged_terms(spec.get("obs")) else clean).append(path.name)
-    assert dirty, "the audit found nothing privileged in any task, which cannot be right"
+        if not spec.get("obs"):
+            continue
+        if not privileged_terms(spec["obs"]):
+            clean.append(path.name)
+        if obs_kind(spec) == "sensors_only":
+            sensors_only.append(path.name)
+    assert sensors_only == ["task_pick_and_place_onboard.yaml"], sensors_only
     assert clean == ["task_pick_and_place_onboard.yaml"], clean
+    assert len(tasks) > 10, "the audit has to be running on the real set"
 
 
 def test_the_clean_task_builds_and_runs(so101_asset_dir, repo_root):
@@ -305,6 +317,7 @@ def test_the_clean_task_builds_and_runs(so101_asset_dir, repo_root):
         obs, _ = env.reset(seed=0)
         assert set(obs) == {"image", "vector"}, sorted(obs)
         assert obs["image"].shape == (3, 48, 64) and obs["image"].dtype == np.uint8
+        assert obs["vector"].shape == (9,), "proprioception only: 3 + 3 + 3"
         assert float(obs["image"].std()) > 5.0, "the eye sees nothing"
         for _ in range(30):
             env.step(env.action_space.sample())
