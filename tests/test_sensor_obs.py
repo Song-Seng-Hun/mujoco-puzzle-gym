@@ -265,11 +265,18 @@ def test_the_privileged_terms_are_declared_where_a_program_can_read_them():
     assert privileged_terms(None) == [] and privileged_terms([]) == []
 
 
-def test_every_shipped_task_says_whether_its_policy_could_leave_the_simulator(repo_root):
-    """Not a judgement on the tasks - the shipped ones train with privileged observations on
-    purpose - but the audit has to work on the real files, and it has to find both answers.
-    Measured over `examples/*.yaml`: every one of them uses at least one privileged term,
-    so today **no** shipped task is observation-clean, and that is the honest state of this.
+def test_exactly_one_shipped_task_could_be_observed_by_the_robot(repo_root):
+    """The audit run on the real files, and the count it returns.
+
+    Most shipped tasks train with privileged observations on purpose, and that is fine.
+    What was not fine was that **every** one of them did: when this test was first written
+    it asserted zero clean tasks, because the arm answered `None` for `view_camera` and had
+    no rangefinder mount, so it had no exteroception to be clean with. R115 wires its own
+    wrist camera and `task_pick_and_place_onboard.yaml` is the first task with no privileged
+    term in `obs:`. Read its header for how narrow that claim is - no policy has been
+    trained on it.
+
+    If this count changes, change it here and say so in the docs; the number is the point.
     """
     tasks = sorted((repo_root / "examples").glob("task_*.yaml"))
     assert tasks, "no example tasks found"
@@ -280,5 +287,46 @@ def test_every_shipped_task_says_whether_its_policy_could_leave_the_simulator(re
         spec = yaml.safe_load(path.read_text()) or {}
         (dirty if privileged_terms(spec.get("obs")) else clean).append(path.name)
     assert dirty, "the audit found nothing privileged in any task, which cannot be right"
-    assert not clean, ("a task is observation-clean now; say so in the docs rather than "
-                       "leaving this test asserting the old state", clean)
+    assert clean == ["task_pick_and_place_onboard.yaml"], clean
+
+
+def test_the_clean_task_builds_and_runs(so101_asset_dir, repo_root):
+    """What "clean" is actually checked to mean: the task loads, the observation space holds
+    an image beside the vector, the image is not blank, and an episode steps. Measured:
+    Dict(image (3, 48, 64) uint8, vector (14,)), image std 31.2, 30 random steps.
+
+    It does **not** check that a policy can learn the room from it. Nothing here does, and
+    the task's own header says so.
+    """
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place_onboard.yaml"))
+    try:
+        obs, _ = env.reset(seed=0)
+        assert set(obs) == {"image", "vector"}, sorted(obs)
+        assert obs["image"].shape == (3, 48, 64) and obs["image"].dtype == np.uint8
+        assert float(obs["image"].std()) > 5.0, "the eye sees nothing"
+        for _ in range(30):
+            env.step(env.action_space.sample())
+    finally:
+        env.close()
+
+
+def test_the_arm_has_an_eye_at_all(so101_asset_dir):
+    """R115, the reason the count above could not have been 1 before: a body with no camera
+    and no rangefinder cannot be observed without privileged terms. Measured at the home
+    pose, the wrist camera sits 0.04 m behind and above the jaw and looks down across the
+    working area."""
+    import mujoco
+
+    from mujoco_puzzle_gym.bodies import flat_floor_spec, make_body
+
+    body = make_body("so101")
+    model = body.spawn(flat_floor_spec(), (0.0, 0.0, 0.0)).compile()
+    cam = body.view_camera(model)
+    assert cam is not None and model.camera(cam).name.endswith("wrist_cam")
+    data = mujoco.MjData(model)
+    body.reset(data)
+    mujoco.mj_forward(model, data)
+    view = -np.asarray(data.cam_xmat[cam], float).reshape(3, 3)[:, 2]
+    assert view[2] < -0.3, ("the eye should look down over the table", view)

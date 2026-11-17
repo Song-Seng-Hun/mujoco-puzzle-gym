@@ -449,6 +449,20 @@ class So101Adapter(BodyAdapter):
             self._z_i = 0.0
         self.work_z = want
 
+    def view_camera(self, model: mujoco.MjModel) -> int:
+        """The arm's own wrist camera, which is the only exteroception this body has (R115).
+
+        The vendor asset ships `wrist_cam` on `camera_mount`, and until this was wired the
+        adapter answered `None`, so the `camera` observation term could not be used with
+        this body at all - and it has no rangefinder mount either. That left proprioception
+        as the whole of its non-privileged observation, which means **no** task for this
+        body could be observation-clean: a policy with no exteroception cannot find the
+        block. Measured at the home pose: the camera sits at (0.182, 0.054, 0.156), 0.04 m
+        behind and above the jaw, with fovy 61 deg, looking along (0.382, -0.547, -0.745) -
+        down and across the working area in front of the gripper.
+        """
+        return int(model.camera(PREFIX + "wrist_cam").id)
+
     def grab_site(self) -> str:
         """The jaw's own site: what the weld grab (R18) attaches an object to.
 
