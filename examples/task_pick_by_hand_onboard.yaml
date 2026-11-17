@@ -11,9 +11,20 @@
 #     at zero here so this task measures the observation and the grasp, not those.
 #
 # What this is and is not. The **environment** composes: it builds, it is `sensors_only`,
-# and the scripted solution still carries it (the solver reads privileged state by design -
-# it is the room's check, not a controller). What does **not** exist is a trained policy
-# that solves it. Measured below in its own line, honestly, whatever it says.
+# the scripted solution carries it 3 of 3 at 11.3 s (the solver reads privileged state by
+# design - it is the room's check, not a controller). What does **not** exist is a trained
+# policy that solves it, and that is measured rather than assumed:
+#
+#   PPO, 20 minutes, **4,361,688 steps** (3,635/s), 10,896 episodes:
+#   success rate **0.0**, mean return -0.03 -> 2.02, `stage` 0.0 throughout.
+#
+# Read the `stage` 0.0: the policy never picks the block up at all, so the rising return is
+# the distance term and nothing else. And read the step count: 4.36 M is **more** than the
+# 2.96 M that took the walking body's `switch_door` to 0.99 with privileged observation
+# (docs/training-log.md), so this is not a few more minutes away. An arm manipulation task
+# observed through marker gaze needs reward design, a curriculum (`--curriculum forward`,
+# which this room declares no checkpoints for yet), or a much longer run. That is research,
+# not a missing capability - every piece it needs is in the repository and measured.
 room: ../src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_by_hand.yaml
 body: so101
 actions: [move, head, grab]
