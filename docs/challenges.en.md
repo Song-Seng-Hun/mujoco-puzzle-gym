@@ -124,7 +124,7 @@ The stars are measured, not opinions: **a room a random policy solves three time
 | What | The measured state |
 |---|---|
 | **Carry something held by two fingers** (`tabletop/pick_by_hand`) | A policy that finishes it **exists** - 0.52 over 50 seeds. The recipe lands one such policy in **three runs**, and nine more fits on a third seed changed nothing, so the variance is in the data a seed draws |
-| **40 ms of actuator latency** | **Five** of the ten arm rooms collapse there. The jaw-height hypothesis is ruled out by five measurements, and the cause is not identified |
+| **40 ms of actuator latency** | **Five** of the ten arm rooms collapse there, and not for one reason but **four**: three never finish their `grab` (the weld tears at 3.04-11.39 N, or the fingers never close at all), and only two reach the `goto goal` the fixes were written for. Seven attempted fixes each broke another room or opened none. Which room stops at which sub-goal is printed by `python tools/latency_stall.py` |
 | **Order reasoning with the cue off** (`order_blind`) | **0.29, exactly against the 1/3 ceiling** a policy that cannot read the cue is limited to. Nothing has gone above it |
 
 ## Known records
