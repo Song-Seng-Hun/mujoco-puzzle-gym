@@ -406,11 +406,19 @@ class BodyAdapter(ABC):
 
 
 def flat_floor_spec() -> mujoco.MjSpec:
-    """An empty world with a flat floor (plane, MuJoCo default friction) and a light."""
+    """An empty world with a flat floor (plane, MuJoCo default friction), lit and dressed.
+
+    The floor's physics is what it always was - a plane with MuJoCo's default friction, which
+    `Room.build_spec` may still override. What `visuals` adds is the sky, the floor's material
+    and the lights, none of which exist as far as the solver is concerned (R135).
+    """
+    from .. import visuals
+
     spec = mujoco.MjSpec()
-    spec.worldbody.add_geom(name="floor", type=mujoco.mjtGeom.mjGEOM_PLANE, size=[0, 0, 0.05])
-    spec.worldbody.add_light(pos=[0, 0, 3.5], dir=[0, 0, -1],
-                             type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL)
+    visuals.dress(spec)
+    spec.worldbody.add_geom(name="floor", type=mujoco.mjtGeom.mjGEOM_PLANE, size=[0, 0, 0.05],
+                            material=visuals.FLOOR_MAT)
+    visuals.add_lights(spec)
     return spec
 
 

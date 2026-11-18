@@ -1,0 +1,12 @@
+# The room `puzzles/coins/beat_the_hammer` (M8 R134). `body:` is the point of this file: the
+# race only closes for a body that moves - a quadruped at 0.455 m/s makes the sweep in about
+# 11 s of the hammer's 18.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/coins/beat_the_hammer.yaml
+body: go2
+env: {hz: 10, episode_seconds: 55}
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state, coins]
+reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+termination: {success: true, fall: true}
+algo: ppo
+net: [128, 128]
+n_envs: 12

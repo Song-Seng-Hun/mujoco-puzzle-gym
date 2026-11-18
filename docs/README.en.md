@@ -49,6 +49,20 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 | Traps | `pit`, `pusher`, `spinner`, `pendulum`, `cannon`, `wind`, `brake_strip` |
 | Robots that move on their own | `npc` |
 
+## Take the challenge
+
+Of the **44 room presets**, **three** have a trained policy's number. The other 41 cells are empty.
+
+<p align="center"><img src="../assets/challenge-hammer-lose.gif" width="380" alt="The press comes down on the lock, the lock turns red, and the quadruped is left in front of a door that never opens."></p>
+
+`puzzles/tabletop/pick_and_place` is **0.00 after 25 M PPO steps**, and **1.00 in 1.7 M** when
+the room's own scripted solution is cloned instead. The room above
+(`coins/beat_the_hammer`) carries a deadline: fail to open the door inside 40 seconds and the
+episode is **over for good** - scripted 20/20, random 0/20, trained policy **no record**.
+
+The ladder, the protocol (fixed seeds, a declared budget, one number) and the known records
+are in [the challenge document](challenges.en.md).
+
 ## Install
 
 On macOS or Linux, one line does it. It installs everything needed (uv, Python 3.12, dependencies, the robot model and walking policy, about 22 MB) and checks the example room to confirm the setup.

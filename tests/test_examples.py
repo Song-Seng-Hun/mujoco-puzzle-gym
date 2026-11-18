@@ -61,6 +61,9 @@ PRESET_TASKS["puzzles/tabletop/build_a_tower"] = ROOT / "examples/task_build_a_t
 PRESET_TASKS["puzzles/tabletop/lever_arm"] = ROOT / "examples/task_lever_arm.yaml"
 #: M6 R94: two doors on one pool - the first room where something runs out.
 PRESET_TASKS["puzzles/budget/two_openings"] = ROOT / "examples/task_two_openings.yaml"
+#: M8 R134: a deadline room - the hammer smashes the coin lock at 40 s, and the task says
+#: which body is racing (the room is sized for a large one).
+PRESET_TASKS["puzzles/coins/beat_the_hammer"] = ROOT / "examples/task_beat_the_hammer.yaml"
 #: M7 R98: the magnet brings the cube the arm cannot reach, and only the one it accepts.
 PRESET_TASKS["puzzles/tabletop/fetch_the_steel"] = ROOT / "examples/task_fetch_the_steel.yaml"
 #: M7 R99: the first room whose answer is a direction - where the light goes.

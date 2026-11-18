@@ -1,0 +1,60 @@
+# Beat the hammer (M8 R134): three coins, a lock that counts them, and a hammer on a fuse.
+# The lock opens the door at three coins. The hammer wakes up after 40 seconds and smashes
+# the lock in one strike, and a broken lock reads zero for the rest of the episode - the door
+# never opens again.
+#
+# So the room is a race you can watch: the body has to sweep the coins and be through the
+# door before the hammer falls. It is the first room to use `destroyer` (R33/R34 gave it a
+# breakable part to strike and nothing in `puzzles/` ever aimed it at one), and the first to
+# put a deadline on a coin room.
+#
+# The lock stands in the room as a box (`body: true`), which is what makes it both visible
+# and breakable - a hammer cannot strike a part that is only a signal. R135 made three things
+# about this room readable, because the first version could not be understood from a video of
+# it: the press is 0.8 m tall with posts you can see and a head that **comes down** when it
+# strikes (it used to flash red for a quarter second and nothing else), the lock is a
+# 0.18 x 0.35 m box instead of an 8 cm chip, and a **cable runs from the lock to the door**
+# carrying the one channel that opens it. The wiring was only in this file before; now it is
+# on the floor of the room.
+#
+# Measured (M8 R134). The lock is `oneshot` through its door, so the race is exactly this:
+# collect every coin before the hammer falls, and once the door has opened it stays open.
+#
+#   quadruped (the task next to this file): **20/20, mean 44.2 s** - coins by about 35 s of
+#       the 40, then through the door
+#   the same room with the fuse at 15 s: **0/5** - the hammer decides the room, which is what
+#       makes the deadline real rather than decorative
+#   the same room with no hammer at all (fuse 600 s): 5/5, identical time
+#   the duck: 5/5 at **27.6 s** - faster than the quadruped here, and that was not what I
+#       expected. The room is sized for a 0.41 m footprint, so the planner's wall collar
+#       costs the large body detours the small one never takes. The deadline is a deadline
+#       for both; it is not a speed gate.
+name: coin_race
+size: [5.0, 4.0]
+wall: {thickness: 0.08, height: 0.5}
+walls:                            # divider at x = 1.2 with a 1.4 m opening at y = 0
+  - {from: [1.2, -2.0], to: [1.2, -0.7]}
+  - {from: [1.2, 0.7], to: [1.2, 2.0]}
+spawn: {pos: [-1.8, 0.0], yaw: 0.0}
+parts:
+  - {name: coin_a, type: coin, pos: [-1.0, 0.65], radius: 0.2}
+  - {name: coin_b, type: coin, pos: [-0.3, -0.65], radius: 0.2}
+  - {name: coin_c, type: coin, pos: [0.5, 0.55], radius: 0.2}
+  - {name: lock, type: coin_lock, pos: [0.5, -1.1], need: all, body: true,
+     size: [0.18, 0.18], height: 0.35, breakable: true, by: [destroyer], hp: 1}
+  - {name: fuse, preset: logic/source_const, pos: [-2.2, 1.6]}
+  - {name: timer, type: gate, op: delay, seconds: 40.0, pos: [-1.8, 1.6], in: [fuse]}
+  - {name: hammer, preset: device/destroyer, pos: [0.5, -1.1], in: [timer],
+     targets: [lock], charges: 1, size: [0.26, 0.26], height: 0.8}
+  # The cable is why the room can be read at all: it runs from the lock to the door and
+  # carries the one channel that opens it, so "the lock opens that door" is on the floor
+  # instead of in the YAML. R135 - a visible mechanism, not a visible decoration.
+  - {name: cable, type: wire, pos: [0.5, -0.95], path: [[1.05, -0.95], [1.05, -0.3]],
+     carries: lock.reached, to: [door]}
+  - {name: door, preset: device/oneshot_door, pos: [1.2, 0.0], width: 1.4, speed: 1.0,
+     in: [lock.reached]}
+  - {name: goal, type: goal, pos: [2.0, 0.0], radius: 0.35}
+# No `demo:` on purpose, and the first draft taught me why: `goto <coin>` is not a sub-goal
+# this repository uses anywhere - a coin has no target area to stand in - and the scripted
+# solution timed out at the first step. Coin rooms let the solver's own planner sweep the
+# group, which is what `puzzles/coins/coin_lock` does too.
