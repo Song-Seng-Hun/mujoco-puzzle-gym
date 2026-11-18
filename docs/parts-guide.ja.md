@@ -200,7 +200,7 @@ parts:
 - `yaw`・`split`・`transmission`は実行中に変えられるので、設定変更器(`setter`)や`bind`で狙いを体に
   選ばせられます。解法順の判定は光線を追えないため、発光器は「部屋が宣言した調節器が入れば光は
   届く」とだけ主張します(どの値が正解かは解法スクリプトが測ります)。
-- 部屋は二つ: `puzzles/light/aim_the_mirror`(20/20、11.0秒 — 答えが**向き**である最初の部屋)と
+- 部屋は二つ: `puzzles/light/aim_the_mirror`(20/20、33.4秒 — 答えが**向き**である最初の部屋)と
   `puzzles/light/split_the_beam`(20/20、11.1秒 — 一本の光を扉二つが分け合い、0.5では両方閉じたまま)。
 
 ## 罠
@@ -664,7 +664,7 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/build_a_tower` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 9.8 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/lever_arm` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 7.4 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/fetch_the_steel` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 8.1 s** | 名前拒否 `['grab']` | はい |
-| `puzzles/light/aim_the_mirror` | **通過 5/5, 11.0 s** | 解法 0/5 | 名前拒否 `['walk']` | 解法 0/5 | はい |
+| `puzzles/light/aim_the_mirror` | **通過 5/5, 33.4 s** | 解法 0/5 | 名前拒否 `['walk']` | 解法 0/5 | はい |
 | `puzzles/light/split_the_beam` | **通過 5/5, 11.1 s** | 解法 0/5 | 名前拒否 `['walk']` | 解法 0/5 | はい |
 | `puzzles/tabletop/pick_and_place` | 解法 0/5 | 名前拒否 `['grab']` | **通過 5/5, 16.3 s** | 名前拒否 `['grab']` | はい |
 | `puzzles/tabletop/reach_target` | 通過 5/5, 1.5 s | 解法 0/5 | 通過 5/5, 0.6 s | 解法 0/5 | いいえ |

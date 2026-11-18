@@ -69,7 +69,7 @@ mpg eval runs/mine --episodes 100 --policy random   # 同じシードの基準�
 
 | | 部屋 | 台本の解法 | ランダム | 学習した方策 |
 |---|---|---:|---:|---|
-| ★ | `light/aim_the_mirror` | 11.0s | 11/20 | **空** |
+| ★★★ | `light/aim_the_mirror` | 33.4s | 1/20 | **空** |
 | ★ | `roller/brake_strip` | 15.82s | 4/20 | **空** |
 | ★ | `roller/mode_switch_route` | 16.0s | 3/20 | **空** |
 | ★★ | `roller/speed_gate` | 10.4s | 1/20 | **空** |
