@@ -3,7 +3,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../assets/banner-dark.svg">
-    <img src="../assets/banner-light.svg" width="640" alt="Pixel-art banner. As Claude types room.yaml line by line at a terminal, pieces sparkle into a top-view room on the right: walls with an opening in the divider, a yellow floor switch, a brown door, a blue goal circle and the signal link from the switch to the door. After a green check, a small duck robot walks onto the switch; the switch turns green and the door slides open. The duck walks through to the goal, sparkles pop, the terminal prints success 0.99 and Claude nods. The duck is driven by the trained policy, not by Claude.">
+    <img src="../assets/banner-light.svg" width="640" alt="Pixel-art banner. As Claude types room.yaml at a terminal, a top-view room appears on the right with walls, a floor switch, a door, a goal and the signal link between them, and a duck robot steps on the switch, opens the door and reaches the goal as the terminal prints success 0.99. The duck is driven by the trained policy, not by Claude.">
   </picture>
 </p>
 
@@ -23,7 +23,7 @@ A framework in which AI coding agents build puzzle rooms inside a MuJoCo physics
 
 The agent is not included: you have the AI coding agent you already use (Claude Code, for example) edit the YAML and Python files and run the `mpg` commands. A person can use the same commands directly.
 
-The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) by Pollen Robotics. Its published walking policy is used as is, and only "where to walk and how fast" is learned on top.
+The default body is [Microduck](https://github.com/pollen-robotics/microduck_rl) by Pollen Robotics, and a quadruped, a humanoid and a fixed-base arm are included as well. The Microduck's published walking policy is used as is, and only "where to walk and how fast" is learned on top.
 
 ## Features
 
@@ -38,38 +38,6 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 **68 built-in part types**, **87 presets** (the same parts with their values already set) and **44 room presets** (a whole room each). From switches, doors and goals to logic gates and counters, moving platforms and conveyors, traps, magnets and light (mirrors, splitters, photocells), and objects a gripper handles including levers and dials.
 
 Every type, its fields and the presets are in the [parts and presets guide](parts-guide.en.md), and a part that is missing can be added as a plugin.
-
-## Take the challenge
-
-There are **44 room presets**. **Four** have a trained policy's number. The other **40 cells are empty.**
-
-<table>
-<tr>
-<td width="50%"><img src="../assets/challenge-hammer-lose.gif" width="300" alt=""><br><b>A deadline</b> - at 40 s a press smashes the coin lock. Fail to open the door first and the episode is over for good</td>
-<td width="50%"><img src="../assets/gallery/tabletop_pick_by_hand.gif" width="300" alt=""><br><b>A real grasp</b> - no weld, two fingers pressing. Best trained policy <b>0.52</b></td>
-</tr>
-<tr>
-<td width="50%"><img src="../assets/gallery/light_split_the_beam.gif" width="300" alt=""><br><b>Shares of a beam</b> - split one beam so two photocells each clear their threshold</td>
-<td width="50%"><img src="../assets/gallery/ball_bowling.gif" width="300" alt=""><br><b>A chain</b> - push the ball, knock three pins down, the door opens</td>
-</tr>
-</table>
-
-The scripted solution solves every room (the repository checks that over 20 seeds, every
-time). A uniform random policy scores zero in almost all of them. **The gap between the two
-is where your algorithm goes.**
-
-> `puzzles/tabletop/pick_and_place` - PPO over **six runs, about 25 M steps in all, and the success rate never once rose above 0**.
-> Cloning the room's own scripted solution: **1.00 in 1.7 M steps**.
-> How many steps does yours need, and for how much?
-
-```bash
-uv run mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
-uv run mpg eval runs/mine --episodes 100                   # held-out seeds from 1,000,000
-uv run mpg eval runs/mine --episodes 100 --policy random    # the baseline on the same seeds
-```
-
-The other challenge rooms, the ladder over all 44, the protocol and the known records are in
-[the challenge document](challenges.en.md).
 
 ## Install
 
@@ -98,6 +66,38 @@ uv run mpg train examples/task_ppo.yaml --minutes 15 --id first
 ```bash
 uv run mpg render runs/first
 ```
+
+## Take the challenge
+
+There are **44 room presets**. **Four** have a trained policy's number. The other **40 cells are empty.**
+
+<table>
+<tr>
+<td width="50%"><img src="../assets/challenge-hammer-lose.gif" width="300" alt=""><br><b>A deadline</b> - at 40 s a press smashes the coin lock. Fail to open the door first and the episode is over for good</td>
+<td width="50%"><img src="../assets/gallery/tabletop_pick_by_hand.gif" width="300" alt=""><br><b>A real grasp</b> - no weld, two fingers pressing. Best trained policy <b>0.52</b></td>
+</tr>
+<tr>
+<td width="50%"><img src="../assets/gallery/light_split_the_beam.gif" width="300" alt=""><br><b>Shares of a beam</b> - split one beam so two photocells each clear their threshold</td>
+<td width="50%"><img src="../assets/gallery/ball_bowling.gif" width="300" alt=""><br><b>A chain</b> - push the ball, knock three pins down, the door opens</td>
+</tr>
+</table>
+
+The scripted solution solves every room (the repository checks that over 20 seeds, every
+time). A uniform random policy scores zero in almost all of them. **The gap between the two
+is where an algorithm goes.**
+
+> `puzzles/tabletop/pick_and_place` - PPO over **six runs, about 25 M steps in all, and the success rate never once rose above 0**.
+> Cloning the room's own scripted solution: **1.00 in 1.7 M steps**.
+> How many steps does an algorithm of your own need, and for how much?
+
+```bash
+uv run mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
+uv run mpg eval runs/mine --episodes 100                   # held-out seeds from 1,000,000
+uv run mpg eval runs/mine --episodes 100 --policy random    # the baseline on the same seeds
+```
+
+The other challenge rooms, the ladder over all 44, the protocol and the known records are in
+[the challenge document](challenges.en.md).
 
 ## Make your own puzzle room
 
@@ -129,7 +129,7 @@ All commands, training settings, adding parts and rewards, and swapping the body
 
 ## Results
 
-**This project is finished**: seven milestones got it to the state below, and it is not being grown further. The loop of building, checking, training and diagnosing a room runs, and four bodies - a two-legged duck, a quadruped, a humanoid and a fixed-base arm that does not walk - share **one body-adapter interface**. A part declares the capability it needs and `mpg check` refuses a body that lacks it, naming the reason, so a tabletop room is solved only by the body with no legs and a wide room only by a large one.
+**This is the finished scope**: seven milestones got it to the results below, and no further features are being added. The loop of building, checking, training and diagnosing a room runs, and four bodies - a two-legged duck, a quadruped, a humanoid and a fixed-base arm that does not walk - share **one body-adapter interface**. A part declares the capability it needs and `mpg check` refuses a body that lacks it, naming the reason, so a tabletop room is solved only by the body with no legs and a wide room only by a large one.
 
 Read the numbers as two kinds: the **scripted solution** (a script that knows the answer, used to prove a room is solvable) and a **trained policy** (reinforcement learning, or cloning the scripted solution).
 
@@ -144,10 +144,10 @@ The milestones in detail, the designs that were reverted and the numbers that se
 What is unfinished is written as measurements, not guesses.
 
 - **The room held by two fingers**: a policy that finishes it **does exist** (0.52 over 50 seeds), but that policy comes out of one fit in three. The variance is in the data distribution a seed draws, not in the initialization.
-- **40 ms of actuator latency**: five of the ten arm rooms collapse, and not for one reason but **four different ones** - (1) in `fetch_the_steel` the weld catches and is torn off the next step (3.04 N against a 3.0 N limit), (2) in `conveyor_triage` it catches, is dragged, and tears five steps later at 11.39 N, (3) in `pick_by_hand` the contact grasp never forms (`_pinched` is never once true, which is a separate thing from whether the fingers closed), and (4) `dead_wedge` and `lever_arm` stall on the final `goto goal`. Seven attempted fixes each broke another room or opened none; which room stops at which sub-goal is printed by `uv run python tools/latency_stall.py`.
+- **40 ms of actuator latency**: five of the ten arm rooms collapse, and not for one reason but **four different ones**. Three never finish the grasp (what they hold tears off above the force limit, or a contact-only grasp never forms at all), and two stall on the final move. Seven attempted fixes each broke another room or opened none. Which room stops at which sub-goal, the forces measured and how to reproduce it are in the [training log](training-log.md).
 - **Observations**: the high-level policy (the one that reads the puzzle and decides where to go and how fast) uses privileged observations that read the puzzle state directly by default. Adding a distance sensor and a camera to `obs:` trains on sensor observations, and `critic_obs:` gives privileged observations to the value function only, but camera training is about 15× slower, so the sensors-only policies read distances, joint encoders and marker gaze rather than the image itself.
-- **Order without a cue**: the best score on `order_blind` is **0.29**. Guessing one of the three candidate plates gives 1/3, so 0.29 sits **near** the ceiling for a policy that cannot read the cue, and nothing has gone above it. The walking bodies' basic rooms still have one fixed order (switch → door → goal).
-- **The walking policies** are the published ones per body, frozen. The **Microduck's** cannot walk backwards and moves forward at about 0.12-0.22 m/s, so rooms for that body have to size themselves and their time limits to it. The other bodies differ - the quadruped was measured at 1.019 m/s and runs a community checkpoint ([bodies and parts](bodies.md)).
+- **Order without a cue**: the best score on `order_blind` is **0.29**. Guessing one of the three candidate plates gives 1/3 (≈ 0.33), so 0.29 sits near the ceiling for a policy that cannot read the cue, and nothing has gone above it. The walking bodies' basic rooms still have one fixed order (switch → door → goal).
+- **The walking policies** are the published ones per body, frozen. The **Microduck's** cannot walk backwards and moves forward at about 0.12-0.22 m/s, so rooms for that body have to size themselves and their time limits to it. The other bodies differ - the quadruped was measured at 1.019 m/s and runs a community checkpoint ([bodies and parts](bodies.en.md)).
 - Simulation only; moving to hardware (sim2real) is out of scope. Verified on macOS (Apple Silicon, CPU MuJoCo); Linux rendering and Windows are unverified.
 
 ## Built with AI
@@ -161,8 +161,8 @@ The planning, design documents, code, tests and training experiments in this rep
 - Walking policy: `velstand.onnx` from [pollen-robotics/microduck-policies](https://huggingface.co/pollen-robotics/microduck-policies), Apache-2.0.
 - Second body's model: `unitree_go2/` from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) pinned commit `370c4396`, BSD-3-Clause, model and meshes alike.
 - The fixed-base arm's model: `robotstudio_so101/` from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) pinned commit `370c4396`, Apache-2.0. No usably licensed pretrained policy exists for it, so it is driven by inverse kinematics.
-- The humanoid's model: `unitree_g1/` from the same commit, BSD-3-Clause. Its walking policy is `deploy/pre_train/g1/motion.pt` from [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) at a pinned commit, BSD-3-Clause — **this policy is not an official frozen release either**, but the checkpoint that repository ships with its deployment example.
-- Second body's walking policy: [diasAiMaster/unitree-go2-velocity-flat](https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat) pinned revision `9a723b7a`, BSD-3-Clause. **This policy is not an official Unitree release but a community checkpoint.** It was trained on flat ground (no `gait_phase`, action scale 0.5) with the upstream training code unmodified. The details are in [bodies and parts](bodies.en.md).
+- The humanoid's model: `unitree_g1/` from the same commit, BSD-3-Clause. Its walking policy is `deploy/pre_train/g1/motion.pt` from [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) at a pinned commit, BSD-3-Clause. It is not an official frozen release, but the checkpoint that repository ships with its deployment example.
+- Second body's walking policy: [diasAiMaster/unitree-go2-velocity-flat](https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat) pinned revision `9a723b7a`, BSD-3-Clause. It is not an official Unitree release but a community checkpoint, trained on flat ground. The training settings and the measurements are in [bodies and parts](bodies.en.md).
 - The demo video and images show the CC BY-NC-SA 4.0 meshes.
 - This is an unofficial project, not affiliated with Pollen Robotics.
 
@@ -172,9 +172,9 @@ The planning, design documents, code, tests and training experiments in this rep
 - [Agent guide](../AGENTS.md): what an AI agent working in this repository reads first
 - [Sharing rooms and policies](community.en.md): submitting your rooms as PRs, sharing policies as ONNX, why we don't open other people's pickles
 - [Parts and presets guide](parts-guide.en.md): every part type at a glance, each one's fields and values, building a room from presets
-- [Bodies and parts](bodies.md): which part works with which body, and the measurements behind each verdict
+- [Bodies and parts](bodies.en.md): which part works with which body, and the measurements behind each verdict
 - [Challenges](challenges.en.md): all 44 rooms with their scripted, random and trained records, and the protocol
-- [Parts and attributes](parts.en.md): the three milestone-1 parts in detail
+- [Parts and attributes](parts.en.md): an older page covering only the three milestone-1 parts (everything is in the parts and presets guide above)
 - [Training log](training-log.md): training results and diagnoses of broken settings
 - [Speed measurements](bench.md)
 - [Design documents](specs/)
