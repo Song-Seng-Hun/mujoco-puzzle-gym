@@ -271,3 +271,36 @@ def test_distortion_must_be_a_number():
 
     with pytest.raises(ObsItemError, match="distortion"):
         MarkersSeen(None, None, distortion="barrel")
+
+
+# ---- the window (R133) ----------------------------------------------------------------
+def test_history_one_is_the_single_frame_path():
+    """The default has to be the old path exactly, or every other room's numbers move."""
+    from mujoco_puzzle_gym.algos.bc import BehaviourCloning
+
+    tr = BehaviourCloning(None, {})
+    assert tr.history == 1
+    obs = np.arange(4, dtype=np.float32)
+    assert np.array_equal(tr.window(obs), obs)
+
+
+def test_a_window_carries_the_last_observations_and_actions():
+    """`history: 3` feeds three observations and the two actions between them, oldest
+    first, and the first step of an episode repeats the current frame rather than invent
+    one."""
+    from mujoco_puzzle_gym.algos.bc import BehaviourCloning
+
+    tr = BehaviourCloning(None, {"algo_kwargs": {"history": 3}})
+    tr.act_dim = 2
+    tr.new_episode()
+    first = tr.window(np.array([1.0, 2.0], dtype=np.float32))
+    assert first.shape == (3 * 2 + 2 * 2,)
+    assert np.array_equal(first[:6], np.array([1, 2, 1, 2, 1, 2], dtype=np.float32))
+    assert np.array_equal(first[6:], np.zeros(4, dtype=np.float32))
+    tr.remember(np.array([0.5, -0.5], dtype=np.float32))
+    second = tr.window(np.array([3.0, 4.0], dtype=np.float32))
+    assert np.array_equal(second[:6], np.array([1, 2, 1, 2, 3, 4], dtype=np.float32))
+    assert np.array_equal(second[6:], np.array([0, 0, 0.5, -0.5], dtype=np.float32))
+    tr.new_episode()
+    assert np.array_equal(tr.window(np.array([9.0, 9.0], dtype=np.float32))[6:],
+                          np.zeros(4, dtype=np.float32))

@@ -3,7 +3,8 @@
 # block stays in the jaw because two fingers are pressing it, and it can be dropped by
 # physics.
 #
-# Measured (M7 R124-R125, 2026-11-18): **10 of 10 seeds, mean 11.4 s**, against 20/20 at
+# Measured (M7 R124-R125, 2026-11-18): **10 of 10 seeds, mean 11.4 s** (re-measured R133 on
+# 20 seeds: 20/20, 11.66 s - the mean moved with the carry and control work of R111-R132), against 20/20 at
 # 8.2 s for the welded version. The scene holds no weld at all - `hold: contact` builds
 # neither the equality constraint nor the gripper-to-object contact exclusion the weld
 # needs.
@@ -74,6 +75,11 @@ parts:
   - -0.25
   radius: 0.05
   enable: box.ok
+  # R133: the goal carries a marker because a policy that may only read sensors has to be
+  # able to find it, and that turned out to be load-bearing: the only training run that has
+  # ever finished this room (0.52 over 50 held-out seeds, `docs/training-log.md`) had it.
+  # A visual geom on the disk - the scripted solution is unchanged (20/20, 11.66 s).
+  marker: {}
 demo:
 - grab block
 - place block box

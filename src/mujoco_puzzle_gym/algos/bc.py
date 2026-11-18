@@ -57,7 +57,8 @@ from .base import Deadline, Trainer
 
 DEFAULTS = {"demo_episodes": 200, "noise": 0.15, "noise_share": 0.5, "epochs": 40,
             "batch": 256, "lr": 1e-3, "rollout_share": 0.25, "rounds": 1, "round_episodes": 100,
-            "tail_weight": 1, "tail_share": 0.3}
+            "tail_weight": 1, "tail_share": 0.3,
+            "history": 1}
 
 
 class Mlp(nn.Module):
@@ -81,6 +82,8 @@ class BehaviourCloning(Trainer):
 
     def __init__(self, env: Any, task: dict[str, Any], seed: int = 0):
         super().__init__(env, task, seed)
+        self._past: list[np.ndarray] = []            # `history`: the last observations seen
+        self._acts: list[np.ndarray] = []            # and the actions taken between them
         self.kw = {**DEFAULTS, **(task.get("algo_kwargs") or {})}
         bad = sorted(set(self.kw) - set(DEFAULTS))
         if bad:
@@ -89,6 +92,45 @@ class BehaviourCloning(Trainer):
         self.model: Mlp | None = None
         self.demo: dict[str, Any] = {}
         torch.manual_seed(seed)
+
+    # ---- the policy's input: a window, not a frame ------------------------------------
+    @property
+    def history(self) -> int:
+        return max(int(self.kw["history"]), 1)
+
+    def new_episode(self) -> None:
+        """Forget the window. The loops in this trainer call it; `mpg eval` cannot, so with
+        `history` above 1 the first few steps of an externally run episode carry the tail of
+        the previous one - the arm is at its home pose there, and it recovers within the
+        window. Measured below, that is what the number includes."""
+        self._past.clear()
+        self._acts.clear()
+
+    def window(self, obs: np.ndarray) -> np.ndarray:
+        """`history` observations and the actions between them, oldest first.
+
+        Why this exists, measured: cloning this room's scripted solution reproduces its
+        action to 0.03 per channel **on the demonstrated states** and still fails, because
+        the demonstrator is not Markov - it is a program with stages, and a single frame
+        cannot say which stage it is in. Reward shaping (R127), potential-based shaping
+        (R128), a curriculum (R129), joint proprioception, a marker on the goal and tail
+        weighting (R132) each moved *which* stage the policy does, never the count. A window
+        is the first change to the policy's **class** rather than to its data.
+        """
+        k = self.history
+        if k == 1:
+            return np.asarray(obs, dtype=np.float32)
+        obs = np.asarray(obs, dtype=np.float32)
+        if not self._past:
+            self._past = [obs.copy() for _ in range(k)]
+            self._acts = [np.zeros(self.act_dim, dtype=np.float32) for _ in range(k - 1)]
+        else:
+            self._past = self._past[1:] + [obs.copy()]
+        return np.concatenate([*self._past, *self._acts])
+
+    def remember(self, act: np.ndarray) -> None:
+        if self.history > 1:
+            self._acts = (self._acts + [np.asarray(act, dtype=np.float32).copy()])[-(self.history - 1):]
 
     # ---- 1. demonstrations ---------------------------------------------------------
     def _collect(self, deadline: Deadline, drive: bool = False, tag: str = "",
@@ -121,6 +163,8 @@ class BehaviourCloning(Trainer):
                 if deadline.done():
                     break
                 obs, _ = env.reset(seed=self.seed + (10_000 if drive else 0) + i)
+                self.act_dim = int(env.action_space.shape[0])
+                self.new_episode()
                 solver = ScriptedSolver(env)
                 solver.reset()
                 noisy = rng.random() < float(self.kw["noise_share"])
@@ -129,14 +173,14 @@ class BehaviourCloning(Trainer):
                 ok = False
                 while True:
                     want = np.asarray(solver.act(), dtype=np.float32)
-                    pairs.append((np.asarray(obs, dtype=np.float32), want.copy()))
+                    pairs.append((self.window(obs).copy(), want.copy()))
                     send = want
                     if drive:
-                        send = np.asarray(self.predict(np.asarray(obs, dtype=np.float32)),
-                                          dtype=np.float32)
+                        send = np.asarray(self.model_action(pairs[-1][0]), dtype=np.float32)
                     elif noisy:
                         send = np.clip(want + rng.normal(0.0, float(self.kw["noise"]),
                                                          want.shape), -1.0, 1.0)
+                    self.remember(send)
                     obs, _, term, trunc, info = env.step(send.astype(np.float32))
                     steps += 1
                     if term or trunc:
@@ -212,11 +256,13 @@ class BehaviourCloning(Trainer):
                 if deadline.done():
                     break
                 obs, _ = env.reset(seed=self.seed + 20_000 + i)
+                self.act_dim = int(env.action_space.shape[0])
+                self.new_episode()
                 ran += 1
                 while True:
-                    obs, _, term, trunc, info = env.step(
-                        np.asarray(self.predict(np.asarray(obs, dtype=np.float32)),
-                                   dtype=np.float32))
+                    act = np.asarray(self.model_action(self.window(obs)), dtype=np.float32)
+                    self.remember(act)
+                    obs, _, term, trunc, info = env.step(act)
                     steps += 1
                     if term or trunc:
                         ok += int(bool(info.get("success")))
@@ -227,7 +273,10 @@ class BehaviourCloning(Trainer):
 
     # ---- 3. logged rollout ----------------------------------------------------------
     def _rollout(self, deadline: Deadline) -> int:
-        if self.env is None:
+        if self.env is None or self.history > 1:
+            # The logged rollout runs `n_envs` episodes side by side and this trainer keeps
+            # one window, so with `history` the curves would be built from mixed-up windows.
+            # The measured score (`_score`, one env, its own window) is the number instead.
             return 0
         obs = self.env.reset()
         steps = 0
@@ -280,11 +329,12 @@ class BehaviourCloning(Trainer):
     # ---- save / load / predict -------------------------------------------------------
     def save(self, path: Path) -> Path:
         assert self.model is not None, "nothing trained yet"
+        self.demo.setdefault("history", self.history)
         out = Path(path).with_suffix(".pt")
         torch.save({"state_dict": self.model.state_dict(), "hidden": self.hidden,
                     "obs_dim": self.model.net[0].in_features,
                     "act_dim": self.model.net[-2].out_features,
-                    "demo": self.demo}, out)
+                    "demo": self.demo, "env_act_dim": getattr(self, "act_dim", 0)}, out)
         return out
 
     @classmethod
@@ -294,11 +344,25 @@ class BehaviourCloning(Trainer):
         self.hidden = [int(h) for h in blob["hidden"]]
         self.model = Mlp(int(blob["obs_dim"]), int(blob["act_dim"]), self.hidden)
         self.model.load_state_dict(blob["state_dict"])
+        self.act_dim = int(blob.get("env_act_dim") or blob["act_dim"])
         self.model.eval()
         self.demo = blob.get("demo", {})
         return self
 
     def predict(self, obs: np.ndarray, deterministic: bool = True) -> np.ndarray:
+        """`Trainer.predict`: one observation (or a batch) in, an action out.
+
+        With `history` above 1 a single observation is turned into a window from this
+        trainer's own buffer, so an external caller (`mpg eval`, `mpg render`) needs to know
+        nothing about it. A batch is assumed to be windows already.
+        """
+        if self.history > 1 and np.asarray(obs).ndim == 1:
+            act = self.model_action(self.window(obs))
+            self.remember(act)
+            return act
+        return self.model_action(obs)
+
+    def model_action(self, obs: np.ndarray, deterministic: bool = True) -> np.ndarray:
         assert self.model is not None, "nothing trained yet"
         x = np.asarray(obs, dtype=np.float32)
         flat = x.ndim == 1
