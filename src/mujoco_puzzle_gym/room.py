@@ -100,6 +100,7 @@ from . import catalog, randomize
 from . import floor as floor_mod
 from . import gaze as gaze_mod
 from . import markers
+from . import visuals
 from .bodies import BodyAdapter, flat_floor_spec
 from .floor import FloorMap, Rect, StaticTile
 from .layout import Grid, Segment
@@ -930,6 +931,7 @@ class Room:
             part.attach_body(spec, body)
         spec.visual.global_.offwidth = 960
         spec.visual.global_.offheight = 720
+        visuals.polish(spec, parts)            # R135: shading only, after everything is built
         return spec
 
 

@@ -161,7 +161,24 @@ def add_tiles(spec: mujoco.MjSpec, tiles: list[StaticTile], prefix: str = "floor
             name=f"{prefix}/{i}", type=mujoco.mjtGeom.mjGEOM_BOX,
             size=[hx, hy, TILE_THICKNESS / 2 + t.top / 2 if t.top > 0 else TILE_THICKNESS / 2],
             pos=[cx, cy, (t.top - TILE_THICKNESS) / 2 if t.top > 0 else t.top - TILE_THICKNESS / 2],
-            friction=list(t.friction), priority=1, rgba=TILE_RGBA[i % 2])
+            friction=list(t.friction), priority=1, rgba=TILE_RGBA[i % 2],
+            material=_tile_material(spec))
+
+
+def _tile_material(spec: mujoco.MjSpec) -> str:
+    """The shared tile material (R135), or "" in a spec that was not dressed.
+
+    A tile keeps its own `rgba` - the two greys that tell one tile from the next - and the
+    material only adds the sheen, so a tiled floor and a plane floor read alike. Visual
+    only: the friction and `priority` above are what the solver sees, and they are unchanged.
+    """
+    from . import visuals
+
+    try:
+        spec.material(visuals.TILE_MAT)
+    except (KeyError, ValueError):
+        return ""
+    return visuals.TILE_MAT
 
 
 def lower_catch_plane(spec: mujoco.MjSpec) -> None:
