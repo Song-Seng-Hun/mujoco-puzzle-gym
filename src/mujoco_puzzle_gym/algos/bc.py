@@ -29,6 +29,8 @@ privileged reasoning included - what the policy ends up reading is only the task
 
 `algo_kwargs`: `demo_episodes` (default 200), `noise` (0.15), `noise_share` (0.5),
 `epochs` (40), `batch` (256), `lr` (1e-3), `rollout_share` (0.25 of the time budget),
+`restarts` (1): fits per round, each from its own initialisation, keeping the measured
+best - the fit is where this method's variance lives (R133).
 `tail_weight` (1, off) and `tail_share` (0.3): repeat the last share of each solved
 episode that many times, so a multi-stage room's final stage is not a tenth of the data.
 Measured on the contact carry room with weight 4: the fit improved (loss 0.0094 -> 0.0008)
@@ -58,7 +60,7 @@ from .base import Deadline, Trainer
 DEFAULTS = {"demo_episodes": 200, "noise": 0.15, "noise_share": 0.5, "epochs": 40,
             "batch": 256, "lr": 1e-3, "rollout_share": 0.25, "rounds": 1, "round_episodes": 100,
             "tail_weight": 1, "tail_share": 0.3,
-            "history": 1}
+            "history": 1, "restarts": 1}
 
 
 class Mlp(nn.Module):
@@ -303,13 +305,25 @@ class BehaviourCloning(Trainer):
         collected = int(info["demo_env_steps"])
         best: tuple[float, dict[str, Any]] | None = None
         for r in range(1, rounds + 1):
-            info.update({f"round{r}_{k}": v for k, v in
-                         self._fit(np.asarray(xs), np.asarray(ys), learn).items()})
-            score, scored = self._score(int(self.kw["round_episodes"]), learn)
-            collected += scored
-            info[f"round{r}_success"] = round(score, 3)
-            if best is None or score > best[0]:
-                best = (score, {k: v.clone() for k, v in self.model.state_dict().items()})
+            # Several fits per round, each from its own initialisation, and the measured best
+            # is kept (R133). Not a flourish: the one configuration that has finished the
+            # contact carry room landed a working policy in one run of three, and inside that
+            # run one fit of three scored 0.5 while the others scored 0.0. The variance is in
+            # the fit, so the fix belongs here.
+            for i in range(max(int(self.kw["restarts"]), 1)):
+                torch.manual_seed(self.seed * 1000 + r * 10 + i)
+                tag = f"round{r}" if int(self.kw["restarts"]) < 2 else f"round{r}fit{i + 1}"
+                info.update({f"{tag}_{k}": v for k, v in
+                             self._fit(np.asarray(xs), np.asarray(ys), learn).items()})
+                score, scored = self._score(int(self.kw["round_episodes"]), learn)
+                collected += scored
+                info[f"{tag}_success"] = round(score, 3)
+                if best is None or score > best[0]:
+                    best = (score, {k: v.clone() for k, v in self.model.state_dict().items()})
+                if learn.done():
+                    break
+            assert best is not None and self.model is not None
+            self.model.load_state_dict(best[1])      # DAgger collects on the best so far
             if r < rounds and not learn.done():
                 nx, ny, ninfo = self._collect(learn, drive=True, tag=f"round{r}_",
                                               episodes=int(self.kw["round_episodes"]))
