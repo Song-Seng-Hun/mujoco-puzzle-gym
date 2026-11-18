@@ -1,0 +1,15 @@
+# Task for `puzzles/tabletop/pick_by_hand` (R124): the same settings as
+# `task_pick_and_place.yaml`. The difference is in the room - its block asks for
+# `hold: contact` - and in the caller, which has to switch the body's orientation task on
+# (`align_axis = [0, 0, 1]`, `align_rows = 1`) so the fingers straddle rather than press.
+# Measured that way: 9 of 10 seeds, mean 9.0 s, with no weld in the scene at all.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_by_hand.yaml
+body: so101
+actions: [move, head, grab]
+env: {hz: 10, episode_seconds: 40}
+obs: [gravity, ang_vel, lin_vel, part_pos, part_state]
+reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+termination: {success: true, fall: false}
+algo: ppo
+net: [128, 128]
+n_envs: 12

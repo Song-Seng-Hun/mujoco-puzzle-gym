@@ -169,6 +169,432 @@ def test_the_other_bodies_are_not_holonomic():
     assert all(not make_body(n).holonomic for n in BODIES if n != "so101")
 
 
+# ---- R111: what "the steady state is sound" means here, as numbers ------------------
+
+def _drive_to(body, data, aim, steps=300):
+    """Drive the gripper at a world point the way a controller would, and return the tip."""
+    for _ in range(steps):
+        now = np.array(data.site_xpos[body._site], float)
+        v = (aim - now)[:2]
+        v = v / max(float(np.linalg.norm(v)), 1e-9) * min(0.15, float(np.linalg.norm(v)) * 2)
+        yaw = body.state(data).yaw
+        c, s = math.cos(-yaw), math.sin(-yaw)
+        body.step(data, (c * v[0] - s * v[1], s * v[0] + c * v[1], 0.0))
+    return np.array(data.site_xpos[body._site], float)
+
+
+def test_the_command_is_tracked_as_a_velocity(scene):
+    """Measured ratios of travelled to commanded speed: 0.986, 0.999, 0.969, 0.990."""
+    body, _, data = scene
+    for cmd in [(0.15, 0.0, 0.0), (0.05, 0.0, 0.0), (0.0, 0.15, 0.0), (0.10, 0.10, 0.0)]:
+        body.reset(data)
+        for _ in range(25):                      # half a second to spin up
+            body.step(data, cmd)
+        p0 = np.array(data.site_xpos[body._site], float)
+        for _ in range(50):                      # one second
+            body.step(data, cmd)
+        p1 = np.array(data.site_xpos[body._site], float)
+        want = math.hypot(cmd[0], cmd[1])
+        got = float(np.linalg.norm((p1 - p0)[:2]))
+        assert 0.95 <= got / want <= 1.05, (cmd, got, want)
+
+
+def test_standing_still_costs_no_command_error(scene):
+    """Standing still, the servo's lead is paying for the arm's weight and not for a
+    position error: `kp * (ctrl - qpos)` equals the pose's own bias torque to 0.05 N.m, and
+    the gripper is at the height it was asked for.
+
+    The second half of that is what the height integral buys (R111). The target is rebuilt
+    from the measured angles every substep, so without an integral the lead that holds the
+    arm up has to come out of the inverse-kinematics increment and the gripper settles low:
+    measured 1.91 mm with an empty jaw, 2.47-5.27 mm holding a 30 g block, and up to
+    8.65 mm while travelling at the command ceiling - against a 0.04 m grab radius and a
+    0.02 m table height. With it: 0.001 mm settled and 1.66 mm travelling.
+    """
+    body, model, data = scene
+    body.reset(data)
+    for _ in range(100):                                  # two seconds of zero command
+        body.step(data, (0.0, 0.0, 0.0))
+    lead = np.array(data.ctrl[body._ctrl], float) - np.array(data.qpos[body._qpos], float)
+    torque = body._kp * lead
+    bias = np.array(data.qfrc_bias[body._qvel], float)
+    assert np.abs(torque - bias).max() < 0.05, (torque, bias)
+    assert abs(float(data.site_xpos[body._site][2]) - WORK_Z) < 0.001
+
+
+def test_a_drive_ends_where_it_was_aimed_loaded_and_unloaded(so101_asset_dir, repo_root):
+    """Inside the declared envelope the steady state is sub-millimetre, with or without a
+    block in the jaw: measured 0.03-0.04 mm of planar error at three targets 0.216-0.350 m
+    from the base, and the working height held to within a millimetre.
+
+    The planar half of that was already true before this work and is asserted here so it
+    stays true; what was not true is the height (see
+    `test_standing_still_costs_no_command_error`).
+
+    Two earlier readings of this as an inverse-kinematics failure were neither. One drove at
+    a point 0.528 m from the base - outside the declared 0.48 m - where `_clamp` stops the
+    aim on purpose, and read the 52 mm that was left as a stall. The other is already
+    written down in `bodies/base.py` (`approach_clearance`): the approach point landed
+    inside the room's receptacle, so the jaw was trapped, and driving the tip at the same
+    handle directly reached it in 30 control steps.
+    """
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+    try:
+        env.reset(seed=0)
+        body, data = env.body, env.data
+        bx, by, _ = body._base_pose
+        targets = [(bx + 0.25, by + 0.05), (bx + 0.18, by - 0.12), (bx + 0.35, by + 0.0)]
+        for x, y in targets:                               # unloaded first
+            aim = np.array([x, y, WORK_Z])
+            tip = _drive_to(body, data, aim)
+            assert np.linalg.norm((aim - tip)[:2]) < 5e-4, (x, y, tip)
+        solver = ScriptedSolver(env)
+        while not env.world.held:                          # the scripted grab, nothing else
+            env.step(solver.act())
+        body.set_head(0.0)
+        for x, y in targets:                               # and now with the block in the jaw
+            aim = np.array([x, y, WORK_Z])
+            tip = _drive_to(body, data, aim)
+            assert env.world.held, "it dropped the block on the way"
+            assert np.linalg.norm((aim - tip)[:2]) < 5e-4, (x, y, tip)
+            assert abs(tip[2] - WORK_Z) < 0.001, tip
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("cmd", [(0.15, 0.0, 0.0), (-0.15, 0.0, 0.0),
+                                 (0.15, 0.0, 1.0), (0.15, 0.15, 0.0)])
+def test_the_solve_stays_finite_at_the_envelope_edge(scene, cmd):
+    """Eight seconds of a command that drives into the edge, the base, or spins there: the
+    damped least squares stays finite, the gripper stops at the declared reach rather than
+    past it, and no joint rate runs away. Measured max torques 1.44-2.94 N.m and max joint
+    rates 1.04-2.14 rad/s."""
+    body, _, data = scene
+    body.reset(data)
+    worst_tau = worst_rate = 0.0
+    for _ in range(int(8.0 / body.control_dt)):
+        body.step(data, cmd)
+        worst_tau = max(worst_tau, float(np.abs(data.actuator_force[body._ctrl]).max()))
+        worst_rate = max(worst_rate, float(np.abs(data.qvel[body._qvel]).max()))
+    tip = np.array(data.site_xpos[body._site], float)
+    assert np.isfinite(data.qpos).all() and np.isfinite(data.qvel).all()
+    assert math.hypot(tip[0], tip[1]) <= REACH_MAX + 0.001, tip
+    assert worst_tau <= float(body._tau_max.max()) + 1e-6
+    assert worst_rate < 5.0
+
+
+# ---- R114: an orientation task, and what still stands between it and a grasp ---------
+
+def test_the_solve_takes_no_orientation_task_unless_one_is_asked_for():
+    """Off by default, because every shipped room was measured on the 3-row solve. The
+    seven arm rooms hold 20/20 at identical times with this code in (7.7, 7.1, 12.8, 18.6,
+    9.8, 7.4, 9.3 s), which is what "off" has to mean."""
+    assert make_body("so101").align_axis is None
+
+
+def test_an_orientation_task_brings_the_jaw_s_opening_axis_where_it_is_asked(scene):
+    """What the position-only solve could not do. Measured at the grasp height: without a
+    task the opening axis is 43-48 % vertical, so the fingers cannot straddle something
+    lying on the table; with one it comes to 0.2-0.4 %."""
+    body, _, data = scene
+    body.reset(data)
+    body.align_axis = None
+    body.jaw_target = 1.0
+    body.set_head(1.0)
+    for _ in range(250):
+        body.step(data, (0.0, 0.0, 0.0))
+    assert abs(body.opening_axis(data)[2]) > 0.3
+
+    body.reset(data)
+    body.align_axis = np.cross([0.0, 0.0, 1.0], [1.0, 0.0, 0.0])   # across a radial approach
+    body.jaw_target = 1.0
+    body.set_head(1.0)
+    for _ in range(250):
+        body.step(data, (0.0, 0.0, 0.0))
+    assert abs(body.opening_axis(data)[2]) < 0.01, body.opening_axis(data)
+    body.align_axis = None
+
+
+def test_the_height_integral_cannot_wind_up_past_its_cap(scene):
+    """R117: the anti-windup is on the term's contribution, not on the accumulator, and the
+    first version was wrong by a factor of the gain.
+
+    With `Z_I_GAIN` 10 a saturated 0.4 m.s accumulator asked for 4 m of height error. While
+    the height was reachable this never showed - the rooms keep their numbers either way -
+    but hold the arm somewhere it cannot satisfy and the solve folded it: measured, the
+    controlled point climbed to z 0.293 within 150 control steps. Now the contribution
+    cannot exceed `Z_I_MAX`, which is 0.02 m, twice the worst sag ever measured (8.65 mm).
+    """
+    from mujoco_puzzle_gym.bodies.so101 import Z_I_GAIN, Z_I_MAX
+
+    body, _, data = scene
+    body.reset(data)
+    body.align_axis = np.cross([0.0, 0.0, 1.0], [1.0, 0.0, 0.0])
+    body.jaw_target = 1.0
+    body.set_head(1.0)
+    try:
+        for _ in range(400):                      # eight seconds of an unreachable ask
+            body.step(data, (0.0, 0.0, 0.0))
+            assert abs(Z_I_GAIN * body._z_i) <= Z_I_MAX + 1e-9, body._z_i
+        tip = np.array(data.site_xpos[body._site], float)
+        assert np.isfinite(data.qpos).all()
+        assert tip[2] < 0.2, ("the arm folded up instead of holding the pose", tip)
+    finally:
+        body.align_axis = None
+
+
+def test_the_grasp_point_is_not_the_point_the_solve_servos(scene):
+    """Why an aligned jaw still does not grasp, as three numbers (R114).
+
+    The solve drives `gripperframe`, and the finger gap's midpoint is somewhere else: 25 mm
+    away in xy with the jaw open, 13.8 mm with it closed - so the offset is not even
+    constant - and 12 mm above the commanded height at the grab height, which is above the
+    middle of a 30 mm cube. Driving the site onto an object therefore leaves the object
+    outside the fingers, which is what the measurements showed: the jaw closed all the way
+    to -0.175 rad on nothing while the cube sat undisturbed 0.0 mm away.
+
+    So the next piece of work is a grasp frame - servo the gap's midpoint, not the wrist
+    site - and this test is here to fail when that lands, with the numbers it has to beat.
+    """
+    body, _, data = scene
+    body.reset(data)
+    body.align_axis = np.cross([0.0, 0.0, 1.0], [1.0, 0.0, 0.0])
+    try:
+        def mid():
+            a = np.mean([data.geom_xpos[g] for g in body._fixed_tips], axis=0)
+            b = np.mean([data.geom_xpos[g] for g in body._moving_tips], axis=0)
+            return (a + b) / 2.0
+
+        body.jaw_target = 1.0
+        for _ in range(250):
+            body.step(data, (0.0, 0.0, 0.0))
+        site = np.array(data.site_xpos[body._site], float)
+        open_off = float(np.linalg.norm((mid() - site)[:2]))
+        body.jaw_target = -1.0
+        for _ in range(200):
+            body.step(data, (0.0, 0.0, 0.0))
+        site = np.array(data.site_xpos[body._site], float)
+        shut_off = float(np.linalg.norm((mid() - site)[:2]))
+        assert open_off > 0.02 and shut_off > 0.01, (open_off, shut_off)
+        assert abs(open_off - shut_off) > 0.005, "the offset is constant after all: say so"
+        body.set_head(1.0)
+        for _ in range(200):
+            body.step(data, (0.0, 0.0, 0.0))
+        assert mid()[2] - float(data.site_xpos[body._site][2]) > 0.005
+    finally:
+        body.align_axis = None
+
+
+# ---- R120: it can grasp by contact, with no weld anywhere -----------------------------
+
+def _cube_scene(so101_asset_dir, mass=0.03, half=0.015, mu=1.0):
+    """A bare body scene with one free cube. No room, so no `World` and **no weld**: what
+    holds the cube here is friction and contact or nothing."""
+    body = make_body("so101")
+    spec = body.spawn(flat_floor_spec(), (0.0, 0.0, 0.0))
+    cube = spec.worldbody.add_body(name="cube", pos=[0.215, 0.0, half])
+    cube.add_freejoint()
+    cube.add_geom(name="cube", type=mujoco.mjtGeom.mjGEOM_BOX, size=[half] * 3, mass=mass,
+                  rgba=(0.8, 0.3, 0.3, 1.0), friction=[mu, 0.005, 0.0001])
+    model = spec.compile()
+    data = mujoco.MjData(model)
+    body.reset(data)
+    return body, model, data
+
+
+def _drive(body, data, xy, steps, speed=0.06):
+    for _ in range(steps):
+        v = np.asarray(xy, float) - body.control_point(data)[:2]
+        d = float(np.linalg.norm(v))
+        v = v / max(d, 1e-9) * min(speed, d * 2)
+        yaw = body.state(data).yaw
+        c, s = math.cos(-yaw), math.sin(-yaw)
+        body.step(data, (c * v[0] - s * v[1], s * v[0] + c * v[1], 0.0))
+
+
+@pytest.mark.parametrize("mass,standoff", [(0.03, 0.08), (0.06, 0.08), (0.01, 0.02)])
+def test_the_jaw_lifts_a_cube_by_contact(so101_asset_dir, mass, standoff):
+    """R120, and the whole point of R113 item 1: the arm picks a cube up with its fingers.
+
+    Measured lifts, 30 g and 60 g at a 0.08 m stand-off and 10 g at 0.02 m: 95.3, 92.3 and
+    91.2 mm, with the jaw stalling on the cube at +0.13 to +0.18 rad (closed onto something,
+    not shut on nothing) and 16-23 contacts. Friction 0.3 and 2.0 both lift as well.
+
+    Three of my own wrong turns had to be undone first, and each one is in the spec: the
+    controlled point was read live (it travels 4 cm with the jaw, which the solve cannot
+    see), the orientation task used three rows (six constraints on five joints - the solve
+    could not even hold the grab height), and the lead clamp re-anchored itself every step
+    (76 mm of creep under a zero command).
+    """
+    body, model, data = _cube_scene(so101_asset_dir, mass=mass)
+    cid = model.body("cube").id
+    cube_xy = np.array([0.215, 0.0])
+    radial = cube_xy / np.linalg.norm(cube_xy)
+    body.align_axis = np.array([0.0, 0.0, 1.0])     # the opening axis must leave vertical
+    body.align_rows = 1
+    body.jaw_target = 1.0                           # open
+    body.set_head(1.0)
+    _drive(body, data, cube_xy - radial * standoff, 200)
+    for _ in range(100):
+        body.step(data, (0.0, 0.0, 0.0))
+    z0 = float(data.xpos[cid][2])
+    _drive(body, data, cube_xy, 250, speed=0.035)
+    body.jaw_target = -1.0                          # close
+    for _ in range(160):
+        body.step(data, (0.0, 0.0, 0.0))
+    assert data.qpos[body._jaw_q] > 0.05, "the jaw shut on nothing"
+    body.set_head(0.0)                              # lift
+    for _ in range(300):
+        body.step(data, (0.0, 0.0, 0.0))
+    assert float(data.xpos[cid][2]) - z0 > 0.05, (mass, data.xpos[cid])
+
+
+def test_one_orientation_row_reaches_the_table_and_three_do_not(scene):
+    """Why `align_rows` exists. Three rows pin the whole orientation: three position rows
+    plus three is six constraints on five joints, and measured, the solve then holds the
+    site at z 0.0422 when asked for 0.0200 - it cannot get down to the table at all. One row
+    asks only that the opening axis leave the vertical, and reaches site z 0.0151 with the
+    axis just as horizontal (0.003 against 0.008)."""
+    body, _, data = scene
+    out = {}
+    for rows, want in ((3, np.cross([0.0, 0.0, 1.0], [1.0, 0.0, 0.0])),
+                       (1, np.array([0.0, 0.0, 1.0]))):
+        body.reset(data)
+        body.align_axis, body.align_rows = want, rows
+        body.jaw_target = 1.0
+        body.set_head(1.0)
+        for _ in range(300):
+            body.step(data, (0.0, 0.0, 0.0))
+        out[rows] = (abs(body.opening_axis(data)[2]), float(data.site_xpos[body._site][2]))
+    body.align_axis, body.align_rows = None, 3
+    assert out[1][0] < 0.02 and out[3][0] < 0.02, out      # both get the axis horizontal
+    assert out[1][1] < 0.025, out                          # one row reaches the table
+    assert out[3][1] > 0.035, out                          # three rows cannot
+
+
+# ---- R118: actuator realism, and how little latency this control survives ------------
+
+def test_the_actuator_realism_knobs_are_off_by_default():
+    body = make_body("so101")
+    assert body.latency_steps == 0
+
+
+def test_a_servo_gain_spread_of_a_fifth_changes_nothing(so101_asset_dir, repo_root):
+    """Measured on four rooms at +-5, 10 and 20 % spread between the five joints: 3 of 3
+    every time. The control is insensitive to gain spread, which is the good news in R118.
+    """
+    import numpy as np
+
+    from mujoco_puzzle_gym.check import check_solver
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+    try:
+        env.body.set_servo_spread(env.model, [1.126, 0.801, 1.143, 0.813, 1.092])
+        res = check_solver(env, seeds=2, need=2)
+        assert res["successes"] == 2, res
+    finally:
+        env.close()
+
+
+def test_this_control_carries_two_control_steps_of_latency(so101_asset_dir, repo_root):
+    """The number R118 produced, and R131 moved - because it was ours, not the delay's.
+
+    R118 measured the margin as about one control step (20 ms), with everything dead at two:
+
+        latency 0: pick_and_place 3/3 7.7 s, weigh_it_down 3/3 7.1, build_a_tower 3/3 9.8,
+                   fetch_the_steel 3/3 9.2
+        latency 1: the first three solved 2.5-3x slower (20.4, 18.8, 22.9 s), fetch 0/3
+        latency 2: all four 0/3
+
+    The cause was in `So101Adapter.step`: the solve integrated the next joint target from the
+    **measured** pose, so while a command was still in flight it re-applied the same error
+    every step. Integrating from the newest queued target instead (which is where the servo
+    will be) changes nothing at latency 0 and changes everything under delay. Measured again
+    over ten arm rooms, five seeds each:
+
+        latency 0:  10/10 rooms, times unchanged (pick_and_place 8.2 s, conveyor 18.8 s)
+        latency 1:  8/10 rooms, times **unchanged** rather than 3x (pick_and_place 8.3 s);
+                    pick_by_hand 1/5, fetch_the_steel 0/5
+        latency 2:  5/10 rooms (reach_target, reach_the_marker, pick_and_place,
+                    weigh_it_down, build_a_tower; pick_and_place 8.5 s)
+
+    So the delay a real servo bus costs is survivable now, and what is left is room-specific
+    timing (the contact pinch, the magnet's hand-off), not the controller. If any of this
+    regresses, change the numbers here and in the spec rather than deleting the test.
+    """
+    from mujoco_puzzle_gym.check import check_solver
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.task import load_task
+
+    def solves(latency, seeds=2):
+        task = load_task(repo_root / "examples/task_pick_and_place.yaml")
+        task["env"]["actuator_latency_steps"] = latency        # R131: declared, not poked in
+        env = PuzzleEnv(task=task)
+        try:
+            return check_solver(env, seeds=seeds, need=seeds)["successes"]
+        finally:
+            env.close()
+
+    assert solves(0) == 2
+    assert solves(1) == 2, "20 ms was survivable before R131 too; if it is not, say so"
+    assert solves(2) == 2, ("40 ms was fatal before R131 and is not any more; a regression "
+                            "here means the stale-pose integration is back")
+
+
+# ---- R105: it lifts what it holds, so it places over a wall rather than through it ----
+
+def test_only_this_body_lifts_what_it_holds():
+    """The declaration the carrier's box path is gated on. A walking body's head channel
+    pitches its head; this body's is the gripper's working height, so a held object rises
+    with it."""
+    assert make_body("so101").head_lifts_load is True
+    assert all(not make_body(n).head_lifts_load for n in BODIES if n != "so101")
+
+
+def test_the_arm_lowers_a_block_into_a_box_without_pressing_the_wall(so101_asset_dir, repo_root):
+    """R105, the measurement that moved the grid from 7 of 25 to 25 of 25.
+
+    Before the over-the-rim path the arm drove the block horizontally into the receptacle
+    at grab height: 10 of 25 block positions ended still holding it with the gripper
+    pushing the wall at 37-50 N and three joints at 100 % of their 2.94 N.m limit, 8 let
+    go 0.09-0.24 m short, and even the 7 that solved were pressing the wall at 17-29 N. So
+    what is asserted is the absence of that press, not just the success.
+    """
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+    try:
+        env.reset(seed=0)
+        model, data = env.model, env.data
+        walls = [model.geom(f"part/box/wall{i}").id for i in range(4)]
+        arm = {g for g in range(model.ngeom) if model.geom(g).name.startswith("so101/")}
+        solver, peak, force = ScriptedSolver(env), 0.0, np.zeros(6)
+        while True:
+            _, _, terminated, truncated, _ = env.step(solver.act())
+            for i in range(data.ncon):
+                c = data.contact[i]
+                if (c.geom1 in walls and c.geom2 in arm) or (c.geom2 in walls and c.geom1 in arm):
+                    mujoco.mj_contactForce(model, data, i, force)
+                    peak = max(peak, abs(float(force[0])))
+            if terminated or truncated:
+                break
+        box = env.parts["box"]
+        block = data.xpos[model.body("part/block").id]
+        assert peak < 1.0, f"the arm pressed the box wall at {peak:.1f} N"
+        assert (np.abs(block[:2] - box.xy) <= box.half).all(), block
+        assert not env.world.held, "it should have let go inside the box"
+    finally:
+        env.close()
+
+
 # ---- the gate, both ways -------------------------------------------------------------
 
 def test_a_walking_room_is_refused_by_name(so101_asset_dir, asset_dir, repo_root):

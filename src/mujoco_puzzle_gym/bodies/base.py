@@ -192,6 +192,64 @@ class BodyAdapter(ABC):
     #: face the target, then drive forward" can only ever drive radially outward; the
     #: lateral channel is the only way to reach anything else.
     holonomic: bool = False
+    #: True when `set_head` moves a **held object's** height, so the body can carry one
+    #: over an obstacle rather than into it (R105).
+    #:
+    #: For a walking body the head channel pitches the head: the beak rises, the feet
+    #: stay on the floor, and the way over a basket wall is to keep walking into it until
+    #: the body leans over the rim - which is what the shared `place` does and what was
+    #: measured for that body. A fixed-base arm cannot lean, and its head channel is the
+    #: gripper's working height, so the same press is a stall: measured on the arm over
+    #: the 25-cell grid of `puzzles/tabletop/pick_and_place`, 10 of 25 cells ended holding
+    #: the block with the gripper pushing the box wall at 37-50 N and three joints at
+    #: 100 % of their 2.94 N.m limit, and 8 more let go 0.09-0.24 m short. Even the 7 that
+    #: solved were pressing the wall at 17-29 N. So the carrier asks this instead of
+    #: asking which body it is (`tests/test_boundary.py` forbids body names outside
+    #: `bodies/`).
+    head_lifts_load: bool = False
+
+    def joint_state(self, data: "mujoco.MjData") -> np.ndarray | None:
+        """This body's own joint sensors, or None if it exposes none (R131).
+
+        Proprioception a real robot reads off its own encoders: joint positions scaled to
+        [-1, 1] over each joint's range, then joint velocities. It is what makes a
+        manipulation observation **Markov** - measured: a policy cloned from the scripted
+        solution matched it to 0.03 per channel on the demonstrated states and still scored
+        0.0, because without the jaw's own angle nothing in the observation said whether the
+        gripper had already opened, and the same jaw position means "about to close" on the
+        way in and "about to lift" on the way out.
+
+        None (the default) keeps every existing body and task unchanged: the `joints`
+        observation term is then zero-length, exactly as `beak` is in a room with nothing
+        to grab.
+        """
+        return None
+
+    def set_grasp_pose(self, on: bool) -> None:
+        """Hold (or stop holding) whatever wrist pose a contact grasp needs (R125).
+
+        A room that asks for `hold: contact` needs the gripper oriented so its fingers
+        straddle an object rather than press it, and a room has to be solvable **on its
+        own** - `mpg check` sets nothing up. So the hold asks the body, and a body with no
+        such pose ignores it.
+        """
+
+    def set_grab(self, level: float) -> None:
+        """Close or open a real gripper: `level` -1 open .. 1 closed, in action units (R121).
+
+        A body whose grab is a weld on a beak has nothing to move and ignores this; the env
+        hands it the same `grab` action that arms the weld, so both stay in step.
+        """
+
+    def jaw_geoms(self, model: mujoco.MjModel) -> list[list[int]] | None:
+        """Geom ids of each side of a real gripper, or None for a body without one (R121).
+
+        One list per side, so a hold can ask whether **both** sides touch an object - a
+        pinch rather than a brush. A body that answers None keeps the weld grab whatever a
+        room asks for, which is every walking body here: its grab is a beak, and `grab.py`
+        says what that is ("Not a physical grip").
+        """
+        return None
 
     @abstractmethod
     def spawn(self, spec: mujoco.MjSpec, pose: Pose = (0.0, 0.0, 0.0)) -> mujoco.MjSpec:

@@ -76,8 +76,14 @@ def test_jitter_measures_a_nudged_object(so101_asset_dir, repo_root):
     """R79: the number that was missing when it was needed. A solver count on a room that
     draws nothing says whether the solution works where the room put things; this says what
     happens a few millimetres off. It reports and fails nothing, so what is asserted here is
-    that it ran, named what it moved, and did not come out perfect at a nudge the hand
-    measurement had already put at 6 of 10."""
+    that it ran, named what it moved, and that the nudge it applies really bites.
+
+    The nudge has to bite at *some* size or this test is vacuous, and the size moved (R105).
+    Until the over-the-rim place, 10 mm was already enough to break the room - the hand
+    measurement put it at 6 of 10, and this test asserted "not perfect" there. It now solves
+    10 mm 4 of 4, so the proof that the check is not a no-op moved out to a nudge that still
+    breaks it: 0.2 m, measured 3 of 4 (and 0.1 m, 0.12 m, 0.15 m all 3 of 4 as well).
+    """
     from mujoco_puzzle_gym.check import check_jitter
     from mujoco_puzzle_gym.task import load_task
 
@@ -85,7 +91,9 @@ def test_jitter_measures_a_nudged_object(so101_asset_dir, repo_root):
     try:
         res = check_jitter(env, mm=10.0, seeds=4)
         assert res["ok"] and res["nudged"] == ["block"] and res["mm"] == 10.0
-        assert 0 <= res["successes"] < res["seeds"], res
+        assert res["successes"] == res["seeds"], ("10 mm is inside the place's reach now", res)
+        far = check_jitter(env, mm=200.0, seeds=4)
+        assert 0 <= far["successes"] < far["seeds"], ("the nudge must still bite somewhere", far)
         tight = check_jitter(env, mm=0.0, seeds=2)
         assert tight["successes"] == tight["seeds"], ("a zero nudge is the room itself", tight)
     finally:

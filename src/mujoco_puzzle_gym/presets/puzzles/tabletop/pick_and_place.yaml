@@ -10,11 +10,22 @@
 # were twenty trials): measured, five seeds of this room come out identical - same outcome,
 # same 27.9 s - so twenty seeds are the same
 # episode twenty times, and the number says the solution works at this one block position.
-# Moved, it often does not. Sweeping the block over 80x80 mm in 20 mm steps, 3 of 25
-# positions solve; the rest stall in the grab (towards +x) or in the place (towards -x).
-# Declaring `randomize: {pos: [...]}` on the block instead gives 9/10 at +-2 mm, 8/10 at
-# +-5 mm, 6/10 at +-10 mm and 3/10 at +-20 mm. The grid and what it means for the envelope
-# a body declares are in `docs/bodies.md` section 9.
+# Moved, it used often not to. That is what changed in M7 (R108, `Carrier._lower_in_act`):
+# sweeping the block over 80x80 mm in 20 mm steps now solves **24 of 25**, where it solved
+# 3 of 25 when this room shipped and 7 of 25 after the M6 carry work. Widened to 200x200 mm
+# in 50 mm steps it is **22 of 25**. Every failure left on either grid is a `grab` - the
+# envelope, not the place (R111 traded one cell of the narrow grid for three of the wide
+# one when the place became one path for the whole body). The mean time halved, 16.3 s ->
+# 7.7 s, because the
+# place no longer wrestles the box wall: measured before the change, 10 of the 25 cells
+# ended holding the block with the gripper pushing a wall at 37-50 N and three joints at
+# 100 % of their 2.94 N.m torque limit, 8 let go 0.09-0.24 m short, and even the 7 that
+# solved were pressing the wall at 17-29 N. Now nothing touches the wall while the block is
+# held (< 1 N, `tests/test_so101.py`).
+# Declaring `randomize: {pos: [...]}` on the block instead gave 9/10 at +-2 mm, 8/10 at
+# +-5 mm, 6/10 at +-10 mm and 3/10 at +-20 mm when this room shipped; `check_jitter` now
+# puts +-10 mm at 4/4 and the nudge that still breaks it at 0.2 m (3/4). The grid and what
+# it means for the envelope a body declares are in `docs/bodies.md` section 9.
 #
 # It took four fixes to get there, and all four were height or a walking body's action read
 # by a body that is a jaw (the history is in `docs/bodies.md` section 9):

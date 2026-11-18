@@ -162,3 +162,33 @@ def test_walk_off_is_not_blocked_by_a_zone_sensor_box(make):
     env = make([{"name": "dump", "preset": "input/object_zone", "pos": [0.0, 0.0], "size": [0.4, 0.4]}])
     stand_at(env, 0.1, 0.0)                              # the box's far face 0.1 m ahead
     assert not ScriptedSolver(env).carrier._blocked_ahead()
+
+
+# ---- R124: a room carried by a physical pinch, with no weld in the scene --------------
+
+def test_a_room_is_solved_by_contact_with_no_weld_anywhere(so101_asset_dir, repo_root):
+    """The end of R113 item 1: `puzzles/tabletop/pick_by_hand` is `pick_and_place` with its
+    block asking for `hold: contact`, so the scene has no weld equality and no
+    gripper-to-object contact exclusion - the block stays in the jaw because two fingers
+    press it.
+
+    Measured: **10 of 10 seeds, mean 11.4 s** (the welded room is 20/20 at 8.2 s), with
+    nothing set up by the caller - the hold asks the body for a grasp pose itself, which is
+    what a room has to do to be a preset. Two seeds here because the suite pays for each.
+
+    See the room's header for the measurements that had to come first, each of them a
+    mistake of ours rather than a limit of the arm.
+    """
+    from mujoco_puzzle_gym.check import check_solver
+    from mujoco_puzzle_gym.env import PuzzleEnv
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_by_hand.yaml"))
+    try:
+        beak = env.parts["_beak"]
+        assert beak.hold == "contact"
+        assert not beak._eq, "a contact hold must build no welds"
+        res = check_solver(env, seeds=2, need=2)
+        assert res["successes"] == 2, res
+    finally:
+        env.close()

@@ -1,0 +1,37 @@
+# All five hardware items in one environment (R126): the arm, a contact grasp, and an
+# observation a robot could actually produce.
+#
+#   - the room is `pick_by_hand`, so the block is held by **two fingers pressing it** and
+#     the scene has no weld (R124, R125);
+#   - `obs:` is `sensors_only` by `obs.obs_kind` - proprioception plus the gaze check on
+#     the ArUco markers the room puts on the block, the box and the door (R27). The arm's
+#     own wrist camera is what makes that gaze possible at all (R115);
+#   - the goal is at a fixed spot in this room, so it needs no marker of its own;
+#   - actuator latency and sensor noise are modelled and measurable (R118, R119), and left
+#     at zero here so this task measures the observation and the grasp, not those.
+#
+# What this is and is not. The **environment** composes: it builds, it is `sensors_only`,
+# the scripted solution carries it 3 of 3 at 11.3 s (the solver reads privileged state by
+# design - it is the room's check, not a controller). What does **not** exist is a trained
+# policy that solves it, and that is measured rather than assumed:
+#
+#   PPO, 20 minutes, **4,361,688 steps** (3,635/s), 10,896 episodes:
+#   success rate **0.0**, mean return -0.03 -> 2.02, `stage` 0.0 throughout.
+#
+# Read the `stage` 0.0: the policy never picks the block up at all, so the rising return is
+# the distance term and nothing else. And read the step count: 4.36 M is **more** than the
+# 2.96 M that took the walking body's `switch_door` to 0.99 with privileged observation
+# (docs/training-log.md), so this is not a few more minutes away. An arm manipulation task
+# observed through marker gaze needs reward design, a curriculum (`--curriculum forward`,
+# which this room declares no checkpoints for yet), or a much longer run. That is research,
+# not a missing capability - every piece it needs is in the repository and measured.
+room: ../src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_by_hand.yaml
+body: so101
+actions: [move, head, grab]
+env: {hz: 10, episode_seconds: 40}
+obs: [gravity, ang_vel, lin_vel, markers_seen]
+reward: {progress: 10.0, stage: 2.0, success: 10.0, fall: -5.0}
+termination: {success: true, fall: false}
+algo: ppo
+net: [128, 128]
+n_envs: 12

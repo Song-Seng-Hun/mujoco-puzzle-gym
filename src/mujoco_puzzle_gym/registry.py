@@ -121,6 +121,7 @@ def get_algo(name: str) -> type["Trainer"]:
     """Built-in or registered algorithm, else the entry point of that name."""
     from importlib.metadata import entry_points
 
+    from .algos import bc  # noqa: F401  registers bc (R131)
     from .algos import sb3  # noqa: F401  registers ppo, sac, a2c
 
     if name in ALGOS:

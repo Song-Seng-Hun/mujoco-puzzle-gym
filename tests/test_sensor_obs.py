@@ -237,3 +237,147 @@ def test_critic_obs_rejects_sac(tmp_path):
     path.write_text(yaml.safe_dump({"room": str(ROOM), "critic_obs": ["part_pos"]}))
     with pytest.raises(TaskError, match="actor-critic"):
         train(path, minutes=1.0, algo="sac", runs_dir=tmp_path / "runs", run_id="x")
+
+
+# ---- R112: which observation terms a robot could not produce -------------------------
+
+def test_the_privileged_terms_are_declared_where_a_program_can_read_them():
+    """`PRIVILEGED_OBS` and the "Privileged:" labels in the term docstrings are the same
+    fact written twice, so this fails if either side drifts.
+
+    Why it matters: a task meant to train a policy for hardware is disqualified by any of
+    these - they read the simulator's own state (a part's exact position, a part's internal
+    state, which part the solution wants next), and nothing on the robot produces them. The
+    labels were already in the docstrings; the tuple is the version `privileged_terms()`
+    can check a task against.
+    """
+    import inspect
+
+    from mujoco_puzzle_gym.obs import PRIVILEGED_OBS, privileged_terms
+    from mujoco_puzzle_gym.registry import OBS
+
+    labelled = {n for n, o in OBS.items()
+                if (inspect.getdoc(o) or "").lstrip().startswith("Privileged:")}
+    assert labelled == set(PRIVILEGED_OBS), (labelled, PRIVILEGED_OBS)
+    assert privileged_terms(["lin_vel", "part_pos", {"item": "target_pos"}, "camera"]) == \
+        ["part_pos", "target_pos"]
+    assert privileged_terms(["lin_vel", "gravity", "camera", "rangefinder", "beak"]) == []
+    assert privileged_terms(None) == [] and privileged_terms([]) == []
+
+
+def test_the_tasks_a_robot_could_observe_are_named(repo_root):
+    """The audit run on the real files, by the package's own standard.
+
+    Two declarations say what a policy may see, and they are not the same test.
+    `PRIVILEGED_OBS` names the three terms that read the simulator's own state. `obs_kind`
+    is stricter and older: it answers `sensors_only` only when **every** term is in
+    `SENSOR_TERMS` (gravity, ang_vel, lin_vel, rangefinder, camera, markers_seen), so a
+    room-signal channel or `beak` makes it `privileged` too. For the hardware question the
+    strict one is the right one - `beak`'s handle vector is a perfect-perception stand-in,
+    not a sensor - so that is what this asserts.
+
+    When this test was first written the answer was zero, and it had to be: the arm
+    answered `None` for `view_camera` and has no rangefinder mount, so it had no
+    exteroception to be clean with. R115 wired its wrist camera, which made one possible,
+    and R126 added the second - the same observation over the room that is held by two
+    fingers instead of a weld. Read their headers for how narrow the claim is: no policy
+    solves either. R130 added the third, and that one **is** solved by a trained policy
+    (0.93 over 100 held-out seeds against 0.01 random, and 6/50 against 48/50 with its
+    marker gaze zeroed) - it is a reach, not a manipulation.
+
+    If the list changes, change it here and say so in the docs; the names are the point.
+    """
+    tasks = sorted((repo_root / "examples").glob("task_*.yaml"))
+    assert tasks, "no example tasks found"
+    from mujoco_puzzle_gym.obs import obs_kind, privileged_terms
+
+    clean, sensors_only = [], []
+    for path in tasks:
+        spec = yaml.safe_load(path.read_text()) or {}
+        if not spec.get("obs"):
+            continue
+        if not privileged_terms(spec["obs"]):
+            clean.append(path.name)
+        if obs_kind(spec) == "sensors_only":
+            sensors_only.append(path.name)
+    want = ["task_pick_and_place_onboard.yaml", "task_pick_by_hand_onboard.yaml",
+            "task_reach_the_marker.yaml"]
+    assert sensors_only == want, sensors_only
+    assert clean == want, clean
+    assert len(tasks) > 10, "the audit has to be running on the real set"
+
+
+def test_the_clean_task_builds_and_runs(so101_asset_dir, repo_root):
+    """What "clean" is actually checked to mean: the task loads, the observation space holds
+    an image beside the vector, the image is not blank, and an episode steps. Measured:
+    Dict(image (3, 48, 64) uint8, vector (14,)), image std 31.2, 30 random steps.
+
+    It does **not** check that a policy can learn the room from it. Nothing here does, and
+    the task's own header says so.
+    """
+    from mujoco_puzzle_gym.task import load_task
+
+    env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place_onboard.yaml"))
+    try:
+        obs, _ = env.reset(seed=0)
+        assert set(obs) == {"image", "vector"}, sorted(obs)
+        assert obs["image"].shape == (3, 48, 64) and obs["image"].dtype == np.uint8
+        assert obs["vector"].shape == (9,), "proprioception only: 3 + 3 + 3"
+        assert float(obs["image"].std()) > 5.0, "the eye sees nothing"
+        for _ in range(30):
+            env.step(env.action_space.sample())
+    finally:
+        env.close()
+
+
+def test_the_arm_has_an_eye_at_all(so101_asset_dir):
+    """R115, the reason the count above could not have been 1 before: a body with no camera
+    and no rangefinder cannot be observed without privileged terms. Measured at the home
+    pose, the wrist camera sits 0.04 m behind and above the jaw and looks down across the
+    working area."""
+    import mujoco
+
+    from mujoco_puzzle_gym.bodies import flat_floor_spec, make_body
+
+    body = make_body("so101")
+    model = body.spawn(flat_floor_spec(), (0.0, 0.0, 0.0)).compile()
+    cam = body.view_camera(model)
+    assert cam is not None and model.camera(cam).name.endswith("wrist_cam")
+    data = mujoco.MjData(model)
+    body.reset(data)
+    mujoco.mj_forward(model, data)
+    view = -np.asarray(data.cam_xmat[cam], float).reshape(3, 3)[:, 2]
+    assert view[2] < -0.3, ("the eye should look down over the table", view)
+
+
+def test_all_five_hardware_items_compose_in_one_environment(so101_asset_dir, repo_root):
+    """R126: the arm, a contact grasp, and an observation a robot could produce, together.
+
+    `examples/task_pick_by_hand_onboard.yaml` is the `pick_by_hand` room - held by two
+    fingers pressing, with no weld in the scene - observed as `sensors_only`:
+    proprioception plus the gaze check on the markers the room carries. Measured: obs is
+    Box(24) = 3 + 3 + 3 and 15 marker values, one marker visible at reset, and the scripted
+    solution still carries it 3 of 3 at 11.3 s.
+
+    What this asserts is that the **environment** composes. It says nothing about a trained
+    policy solving it - no policy does, and the task's header carries that number.
+    """
+    from mujoco_puzzle_gym.check import check_solver
+    from mujoco_puzzle_gym.obs import obs_kind, privileged_terms
+    from mujoco_puzzle_gym.task import load_task
+
+    path = repo_root / "examples/task_pick_by_hand_onboard.yaml"
+    spec = yaml.safe_load(path.read_text())
+    assert obs_kind(spec) == "sensors_only", spec["obs"]
+    assert privileged_terms(spec["obs"]) == []
+
+    env = PuzzleEnv(task=load_task(path))
+    try:
+        assert env.parts["_beak"].hold == "contact"
+        assert not env.parts["_beak"]._eq, "a contact hold builds no welds"
+        obs, _ = env.reset(seed=0)
+        assert np.asarray(obs).shape == (24,), obs
+        res = check_solver(env, seeds=1, need=1)
+        assert res["successes"] == 1, res
+    finally:
+        env.close()

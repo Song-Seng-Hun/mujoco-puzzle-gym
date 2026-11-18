@@ -44,8 +44,13 @@ PRESET_TASKS.update({f"puzzles/wide/{n}": ROOT / f"examples/task_wide_{n}.yaml"
 #: M4 R61: the tabletop room is for a body with no legs; its task is what says so.
 PRESET_TASKS["puzzles/tabletop/reach_target"] = ROOT / "examples/task_reach_target.yaml"
 PRESET_TASKS["puzzles/tabletop/pick_and_place"] = ROOT / "examples/task_pick_and_place.yaml"
+#: M7 R130: the goal is drawn every episode, so the task is the first arm room where a
+#: `sensors_only` observation has to carry where it went (`examples/task_reach_the_marker`).
+PRESET_TASKS["puzzles/tabletop/reach_the_marker"] = ROOT / "examples/task_reach_the_marker.yaml"
 #: M5 R75: the arm delegates its weight to an object; needs `head` and `grab`.
 PRESET_TASKS["puzzles/tabletop/weigh_it_down"] = ROOT / "examples/task_weigh_it_down.yaml"
+#: M7 R124: the same room as `pick_and_place`, held by a physical pinch instead of a weld.
+PRESET_TASKS["puzzles/tabletop/pick_by_hand"] = ROOT / "examples/task_pick_by_hand.yaml"
 #: M5 R70: the room carries the block out of the sector the arm cannot reach.
 PRESET_TASKS["puzzles/tabletop/dead_wedge"] = ROOT / "examples/task_dead_wedge.yaml"
 #: M5 R74: two belts, two bins, one at a time.

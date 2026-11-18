@@ -80,6 +80,48 @@ def tow(env):
     return np.zeros(4)
 
 
+#: Observation terms that read the simulator's own state rather than something a robot
+#: could measure (R112). Three terms, and all three were already labelled "Privileged:" in
+#: their own docstrings - this is the same fact where a program can read it, so a task that
+#: means to train a policy for hardware can be **checked** instead of eyeballed:
+#: `obs.privileged_terms(task.obs)` names what disqualifies it.
+#:
+#: What makes a term privileged here is that no sensor on the robot produces it: a part's
+#: exact position (`part_pos`), a part's internal state (`part_state`), and which part the
+#: solution wants next (`target_pos`). The rest of the catalogue is either the body's own
+#: proprioception (`lin_vel`, `ang_vel`, `gravity`, `addon`, `beak`), a declared sensor
+#: (`camera`, `rangefinder`, `markers_seen`), or a count the room itself would signal
+#: (`counters`, `checkpoints`, `coins`) - which a real cell can wire up.
+#:
+#: This is a declaration, not a sim-to-real claim: a task that uses none of these is still
+#: only *observation*-clean. `docs/specs/2026-11-17-arm-steady-state/spec.md` R113 lists
+#: what else stands between this package and hardware (the weld grab above all).
+PRIVILEGED_OBS = ("part_pos", "part_state", "target_pos")
+
+
+def privileged_terms(items) -> list[str]:
+    """The privileged terms in an `obs:`/`critic:` list, in catalogue order.
+
+    `items` is whatever a task.yaml puts there: term names, or `{item: name, ...}` mappings.
+    A critic list is *meant* to be privileged (asymmetric actor-critic), so this is for
+    checking the actor's `obs:`.
+    """
+    used = set()
+    for it in items or ():
+        name = it.get("item") if isinstance(it, dict) else it
+        if isinstance(name, str):
+            used.add(name)
+    return [n for n in PRIVILEGED_OBS if n in used]
+
+
+@register_obs("joints", replace=True)
+def joints(env):
+    """The body's own joint sensors (R131): positions in [-1, 1] over each joint's range,
+    then velocities. Zero-length for a body that exposes none (`BodyAdapter.joint_state`)."""
+    out = env.body.joint_state(env.data)
+    return np.zeros(0) if out is None else np.asarray(out, dtype=float)
+
+
 @register_obs("part_pos", replace=True)
 def part_pos(env):
     """Privileged: every part's position relative to the body, heading frame (2 per part;
@@ -280,7 +322,8 @@ from . import gaze  # noqa: E402,F401  registers `markers_seen` (R27)
 
 #: Items a real robot has (proprioception and sensors). A task whose `obs:` uses
 #: only these is "sensors only" (`obs_kind`, R39); plugin terms count as privileged.
-SENSOR_TERMS = frozenset({"gravity", "ang_vel", "lin_vel", "rangefinder", "camera", "markers_seen"})
+SENSOR_TERMS = frozenset({"gravity", "ang_vel", "lin_vel", "joints", "rangefinder",
+                          "camera", "markers_seen"})
 
 
 class ObsItemError(ValueError):

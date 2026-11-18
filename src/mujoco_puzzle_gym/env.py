@@ -180,6 +180,15 @@ class PuzzleEnv(gym.Env):
         self.term_fall = bool(self.task["termination"].get("fall", True))
         self.term_success = bool(self.task["termination"].get("success", True))
         self.command_scale = float(self.task["env"].get("command_scale", 1.0))
+        #: Control steps of actuator latency the task declares (R131). R118 put the knob on
+        #: the arm and measured the margin; a task could not say it, so nothing could be
+        #: *trained* under it - and a policy cloned from a latency-free demonstrator fails at
+        #: the first delayed step (measured: 10/10 at 0 ms, 0/10 at 20 ms). Declaring it puts
+        #: the demonstrations, the training and the evaluation under the same delay.
+        self.actuator_latency_steps = int(self.task["env"].get("actuator_latency_steps", 0))
+        if self.actuator_latency_steps and not hasattr(self.body, "latency_steps"):
+            raise TaskError(f"env.actuator_latency_steps: body {self.body_name!r} has no "
+                            f"actuator latency to delay")
         self.respawn = self.task["env"].get("respawn", "start")
         if self.respawn not in RESPAWN:
             raise TaskError(f"env.respawn must be one of {RESPAWN}, got {self.respawn!r}")
@@ -528,6 +537,8 @@ class PuzzleEnv(gym.Env):
                 layout["parts"][name] = xy
                 obj.floor_z = base.floor_z + base.top()
         self.body.reset(self.data, layout["spawn"])
+        if self.actuator_latency_steps:                      # R131: survives every reset
+            self.body.latency_steps = self.actuator_latency_steps
         if self.floor is not None:
             self._place_body(layout["spawn"])
         self.signals.reset()
@@ -728,6 +739,12 @@ class PuzzleEnv(gym.Env):
                     self.body.crouch(self.data)
             else:
                 self.world.grab = float(v)
+                # A body with real fingers also has to **move** them (R121). Until now the
+                # grab action only reached the weld in `grab.py`, so the arm's jaw sat at
+                # its initial 0.0 for every episode ever run - measured, commanded to close
+                # it stayed at 0.000 rad - and nobody saw it, because a weld does not need
+                # fingers. `set_grab` is a no-op on a body whose grab is a beak.
+                self.body.set_grab(float(np.clip(v, -1.0, 1.0)))
 
     def scripted_action(self, move, head: float = -1.0, grab: float = -1.0,
                         crouch: float = -1.0) -> np.ndarray:

@@ -219,3 +219,33 @@ def test_opencv_detects_the_ids(tmp_path, asset_dir):
     det = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50))
     _, ids, _ = det.detectMarkers(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
     assert ids is not None and sorted(ids.ravel().tolist()) == [7, 42]
+
+
+# ---- R116: a goal may carry a marker, if the room asks ------------------------------
+
+def test_a_goal_carries_a_marker_only_when_the_room_asks(tmp_path):
+    """Why this exists: with no marker on the goal, a `sensors_only` observation cannot see
+    where the episode wants the body to go, so no room whose success is "reach the goal"
+    can be solved from sensors alone. Measured on `switch_door` with marker gaze and a
+    rangefinder: the switch goes on in 0.66 of episodes and the goal is reached in 0.08,
+    against 0.99 for the same room and budget with privileged observation.
+
+    `marked` stays False, so this changes no room that does not ask: the first assertion is
+    the one that protects the shipped rooms.
+    """
+    switch = {"name": "sw", "type": "switch", "pos": [0.5, 0.0], "size": [0.3, 0.3]}
+    out = _compile(_room(tmp_path, [switch]))
+    _, model, _ = out
+    names = [model.geom(i).name for i in range(model.ngeom)]
+    assert not any(n.startswith("part/goal/marker") for n in names), \
+        "a goal grew a marker nobody asked for"
+
+    raw = {"name": "markers", "size": [3.0, 3.0], "spawn": {"pos": [0.0, 0.0], "yaw": 0.0},
+           "parts": [switch, {"name": "goal", "type": "goal", "pos": [-1.2, -1.2],
+                              "marker": {"id": 5}}]}
+    path = tmp_path / "goal.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    out = _compile(path)
+    _, model, _ = out
+    names = [model.geom(i).name for i in range(model.ngeom)]
+    assert "part/goal/marker/top" in names, names

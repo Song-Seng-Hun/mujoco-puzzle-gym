@@ -85,6 +85,59 @@ GRAB_Z = 0.02
 #: worth of travel at the command ceiling (0.15 m/s x 0.02 s x 10).
 MAX_LEAD = 0.03
 Z_GAIN = 12.0           # [1/s] P gain pulling the gripper back to `WORK_Z`
+#: Integral gain and clamp [m.s] on the working-height error (`step`).
+#:
+#: Swept, with the arm holding a zero command for 3 s and then travelling at the command
+#: ceiling for 3 s (settled sag / sag while travelling, mm): 0 and 1 both -1.91 / -8.65,
+#: 3 gives -0.005 / -2.61, and 10 and 30 both -0.001 / -1.66. 10 is the first value at the
+#: flat end of that sweep, and 30 measuring the same says it is not perched on a cliff.
+#: The reset transient (+1.88 mm of overshoot) is the same at every gain, so the integral
+#: is not what causes it.
+#:
+#: The clamp is the anti-windup, and it is on the term's **contribution** in metres, not on
+#: the accumulator: without one, a gripper held down - by a lid, pressing a block onto a
+#: table, or asked for a pose it cannot hold - integrates for as long as it is held and then
+#: springs. 0.02 m is twice the worst sag ever measured here (8.65 mm while travelling).
+Z_I_GAIN = 10.0
+Z_I_MAX = 0.02
+#: Gain [1/s] on the orientation task, when one is asked for (`align_axis`, R114).
+#:
+#: The solve is position-only by default and the gripper's orientation is whatever the five
+#: joints happen to leave - which is why nothing here can grasp by contact: measured, the
+#: jaw's opening axis at the grasp height is (0.900, -0.047, 0.434), 43 % vertical, so the
+#: two fingers do not straddle an object lying on the table. One goes into the table and the
+#: other over the top, and across masses 10-60 g, frictions 0.3-2.0, cube half-widths
+#: 10-20 mm and wrist rolls 0-1.2 s the cube never rose.
+#:
+#: Asking for an axis adds three rows (`mj_jacSite`'s rotational half) to the damped solve.
+#: It is **off unless a caller sets `align_axis`**, so every room that ships today takes the
+#: same 3-row solve it was measured with. Three control changes measured earlier today each
+#: broke a shipped room; this one is written so that it cannot.
+ALIGN_GAIN = 6.0
+#: Where a grasp closes, as a **fixed** offset in the gripper site's own frame [m] (R120).
+#:
+#: Measured from the finger-tip geoms with the jaw open, which is the pose an approach
+#: straddles an object in. It has to be fixed rather than read live, because the live
+#: midpoint travels with the jaw - measured (-0.0116, 0, +0.0226) open, (-0.0010, 0,
+#: +0.0069) half open, (-0.0009, 0, -0.0184) shut, so 4 cm along the site's own z - and the
+#: jaw joint is **not** in the solve's column set, so that travel is motion the Jacobian
+#: cannot see. Servoing the live point made the arm chase it: 7 cm of drift over 8 s with a
+#: zero command.
+GRASP_OFFSET = (-0.0116, 0.0001, 0.0226)
+#: Actuator realism the arm did not model at all (R118). Both default to "none", so every
+#: room that ships today runs exactly as it was measured.
+#:
+#: What the arm had: `kp` 998.22, `kv` 2.731 and a +-2.94 N.m ceiling, all from the real
+#: servo, and nothing else - no command latency, no backlash, no servo-to-servo spread. And
+#: no randomization layer could add any: `randomize.py`'s `physics` draws **part** values
+#: and `body` draws **observation noise**, so neither reaches an actuator. The walking body
+#: does have this (its vendor asset carries backlash and friction domain randomization),
+#: which is what makes the arm's absence worth naming rather than assuming.
+#:
+#: `latency_steps` delays the joint targets by whole control steps (0.02 s each), which is
+#: what a serial bus and a servo's own loop cost. `servo_spread` scales each joint's `kp` by
+#: a factor, for the spread between units of the same part.
+LATENCY_MAX = 10
 IK_GAIN = 8.0           # [1/s] how hard the solve chases the aim point
 DAMPING = 0.05          # damped-least-squares lambda for the inverse kinematics
 #: Measured envelope (see the module docstring).
@@ -129,6 +182,11 @@ class So101Adapter(BodyAdapter):
     #: Standing still is the zero command here: the command maps symmetrically onto the
     #: gripper's velocity, so a walking body's `(-1, 0, 0)` would be full speed backwards.
     stand_action = (0.0, 0.0, 0.0)
+    #: `set_head` is this body's working height, so a held object rises with it and the
+    #: carrier may lift one over a basket wall instead of pressing it against the wall
+    #: (`bodies/base.py` `head_lifts_load`). WORK_Z 0.12 m clears a receptacle's default
+    #: 0.06 m wall; a taller-walled box is out of this body's range and reads as before.
+    head_lifts_load = True
     #: Clearing a placed object means moving the jaw its own footprint plus the object's
     #: size away, not a walking body's 0.35 m, which can be outside this body's envelope.
     place_clearance = 0.10
@@ -164,6 +222,16 @@ class So101Adapter(BodyAdapter):
         self._data: mujoco.MjData | None = None
         self._base_pose: Pose = (0.0, 0.0, 0.0)
         self._aim = np.zeros(3)            # the aim point `step` drives (world frame)
+        self._z_i = 0.0                    # integrated working-height error [m.s]
+        #: World direction to bring the jaw's opening axis onto, or None for no orientation
+        #: task (the default, and what every shipped room uses). Set it to grasp by contact.
+        self.align_axis: np.ndarray | None = None
+        #: Rows the orientation task adds: 3 pins the whole orientation, 1 only brings the
+        #: opening axis onto the plane `align_axis` spans (R120).
+        self.align_rows = 3
+        #: Control steps of delay on the joint targets (R118); 0 = none, the default.
+        self.latency_steps = 0
+        self._queue: list[np.ndarray] = []
         self.jaw_target = 0.0
         #: Height the z term holds the jaw at [m]; `set_head` moves it (WORK_Z .. GRAB_Z).
         self.work_z = WORK_Z
@@ -208,21 +276,31 @@ class So101Adapter(BodyAdapter):
         self._site = int(model.site(PREFIX + SITE).id)
         self._base_body = int(model.body(PREFIX + "base").id)
         self._range = model.jnt_range[[model.joint(PREFIX + n).id for n in ARM_JOINTS]]
+        self._fixed_tips = [model.geom(f"{PREFIX}fixed_jaw_sph_tip{i}").id for i in (1, 2, 3)]
+        self._moving_tips = [model.geom(f"{PREFIX}moving_jaw_sph_tip{i}").id for i in (1, 2, 3)]
+        #: Position-servo gain [N.m/rad] and torque ceiling [N.m], read from the model
+        #: rather than written here, so a re-exported arm cannot silently disagree with
+        #: the feed-forward (`step`). Measured on the shipped model: 998.22 and 2.94.
+        self._kp = model.actuator_gainprm[self._ctrl, 0].copy()
+        self._tau_max = np.abs(model.actuator_forcerange[self._ctrl]).max(axis=1)
 
     def reset(self, data: mujoco.MjData, pose: Pose = (0.0, 0.0, 0.0)) -> None:
         """Restore the home pose. **`pose` is ignored**: the base is welded to the world
         where `spawn` put it, so an episode cannot place this body somewhere else."""
         if self._data is not data:
             self._bind(data)
+        self._z_i = 0.0
+        self._queue = []
         data.qpos[self._qpos] = HOME
         data.qvel[self._qvel] = 0.0
         data.ctrl[self._ctrl] = HOME
         data.qpos[self._jaw_q] = 0.0
         data.ctrl[self._jaw_ctrl] = 0.0
         self.jaw_target = 0.0
+        self._queue.clear()                # R131: an episode does not inherit targets in flight
         self.work_z = WORK_Z               # `set_head` is held until changed; reset levels it
         mujoco.mj_forward(data.model, data)
-        self._aim = self._clamp(np.array(data.site_xpos[self._site], dtype=float))
+        self._aim = self._clamp(self.control_point(data))
 
     def _clamp(self, aim: np.ndarray) -> np.ndarray:
         """Hold an aim point inside the measured envelope, in the base's own frame."""
@@ -266,30 +344,196 @@ class So101Adapter(BodyAdapter):
         # Anti-windup (`MAX_LEAD`): the aim may not run away from the gripper. Without
         # this the arm carries on travelling after its command stops, by however far the
         # aim got ahead while the jaw was blocked.
-        now = np.asarray(data.site_xpos[self._site], dtype=float)
+        # The point the whole bookkeeping is about (R117). `gripperframe` by default, which
+        # is also what this body reports as its position; the middle of the finger gap when
+        # an orientation task is on, because that is where a grasp closes and it is not the
+        # site: measured 25.0 mm away in xy with the jaw open, 13.8 mm closed, 12 mm above
+        # the commanded height at the grab height. Moving only the solve's error to that
+        # point - and leaving this clamp on the site - made the two references push against
+        # each other and the arm folded inside 150 control steps (grasp point up at z 0.293,
+        # aim drifted to (0.0585, 0.0083)). So the lead clamp moves with it.
+        now = self.control_point(data)
         lead = aim - now
         n = float(np.linalg.norm(lead[:2]))
-        if n > MAX_LEAD:
+        # Only while a command is running (R120). The clamp re-anchors the aim to
+        # "wherever the point is now, plus `MAX_LEAD` along the residual", which is right
+        # for a blocked jaw under a live command and a **ratchet** without one: if anything
+        # holds the residual open - an orientation task spending the same joints, say - the
+        # aim is re-planted 0.03 m ahead every step and the arm creeps with a zero command.
+        # Measured before this: 76 mm of travel over 8 s, commanded to stand still.
+        if n > MAX_LEAD and float(np.hypot(vx, vy)) > 1e-9:
             aim[:2] = now[:2] + lead[:2] * (MAX_LEAD / n)
         self._aim = aim
         steps = max(1, round(self.control_dt / model.opt.timestep))
         for _ in range(steps):
             jacp = np.zeros((3, model.nv))
-            mujoco.mj_jacSite(model, data, jacp, None, self._site)
-            err = self._aim - data.site_xpos[self._site]
-            err[2] *= Z_GAIN / IK_GAIN         # hold the working height a little harder
+            jacr = np.zeros((3, model.nv)) if self.align_axis is not None else None
+            mujoco.mj_jacSite(model, data, jacp, jacr, self._site)
+            here = self.control_point(data)
+            if jacr is not None:
+                # The Jacobian of that point: `v = v_site + w x r` for a point at world
+                # offset `r` from the site, which is this cross product per column.
+                jacp = jacp + np.cross(jacr.T, here - np.asarray(data.site_xpos[self._site],
+                                                                dtype=float)).T
+            err = self._aim - here
+            # Height: proportional, plus an integral that is the one thing the position
+            # servos cannot do for themselves (R111). A servo torque is `kp * (ctrl - qpos)`
+            # and the target here is rebuilt from the *measured* angles each substep, so the
+            # lead has to pay for holding the arm up before it buys any motion, and the
+            # gripper settles below the height it was asked for: measured 1.91 mm with an
+            # empty jaw and 2.47-5.27 mm holding a 30 g block, against a 0.04 m grab radius
+            # and a 0.02 m table height. The integral is on **z alone** on purpose. Feeding
+            # the whole bias torque forward fixes the same sag (0.02 mm and 0.32-0.64 mm)
+            # but hands the arm back its full planar authority too, and the shipped rooms
+            # are tuned to the carry it has: measured, `conveyor_triage` went 20/20 -> 0/20
+            # (its bins sit where this carry puts a block, by its own header) and
+            # `build_a_tower` the same, through a faster approach knocking the carried block
+            # out of the jaw. Height alone leaves the planar dynamics untouched.
+            # Anti-windup on the **contribution**, not on the accumulator (R117). Clamping
+            # `z_i` alone was wrong by a factor of the gain: with `Z_I_GAIN` 10 a saturated
+            # 0.4 m.s accumulator asks for 4 m of height error. That never showed while the
+            # height was reachable - the rooms keep their numbers either way - but ask for
+            # an orientation the pose cannot hold and the z error stops converging, the
+            # accumulator saturates, and the solve folds the arm: measured, the controlled
+            # point climbed to z 0.293 within 150 control steps.
+            cap = Z_I_MAX / Z_I_GAIN if Z_I_GAIN > 0 else 0.0
+            self._z_i = float(np.clip(self._z_i + err[2] * model.opt.timestep, -cap, cap))
+            err[2] = err[2] * Z_GAIN / IK_GAIN + Z_I_GAIN * self._z_i
             j = jacp[:, self._qvel]
+            if jacr is not None:
+                # Orientation task (R114): bring the opening axis onto `align_axis`. The
+                # axis is carried by the gripper, so turning the site at `w` turns the axis
+                # at `w x a`; asking for `a` to move towards the target is asking for
+                # `w = a x target`, the cross product below. Three more rows, same solve.
+                axis = self.opening_axis(data)
+                want = np.asarray(self.align_axis, dtype=float)
+                want = want / max(float(np.linalg.norm(want)), 1e-9)
+                if self.align_rows == 1:
+                    # One row, not three (R120). Three rows pin the whole orientation, and
+                    # with three position rows that is six constraints on five joints -
+                    # measured, the solve could then not even hold the grab height (site z
+                    # 0.0422 against the 0.0200 asked). One row asks for a single scalar
+                    # instead: `s = axis . want` to zero, so the opening axis only has to
+                    # leave `want`'s direction. `ds/dt = (w x axis) . want = w . (axis x
+                    # want)`, which is the row below.
+                    row = np.cross(axis, want) @ jacr[:, self._qvel]
+                    j = np.vstack([j, row])
+                    err = np.append(err, -float(np.dot(axis, want)) * ALIGN_GAIN)
+                else:
+                    j = np.vstack([j, jacr[:, self._qvel]])
+                    err = np.concatenate([err, np.cross(axis, want) * ALIGN_GAIN])
             # Damped least squares: J^T (J J^T + lambda^2 I)^-1 e. The damping is what
             # keeps the solve finite near the envelope's edge, where the Jacobian loses
             # rank and an undamped pseudo-inverse would ask for an enormous joint rate.
-            dq = j.T @ np.linalg.solve(j @ j.T + DAMPING ** 2 * np.eye(3), err * IK_GAIN)
+            dq = j.T @ np.linalg.solve(j @ j.T + DAMPING ** 2 * np.eye(len(err)),
+                                       err * IK_GAIN)
             dq[4] += wz            # the wrist roll spins the jaw about its own axis
-            target = data.qpos[self._qpos] + dq * model.opt.timestep
-            data.ctrl[self._ctrl] = np.clip(target, self._range[:, 0], self._range[:, 1])
-            data.ctrl[self._jaw_ctrl] = self.jaw_target
+            # Integrate from where the arm **will** be, not where it is (R131). The servo
+            # reaches a target within a control step (kp 998 against these inertias), so the
+            # newest queued target is that position; with no queue this is `data.qpos` and
+            # nothing changes. It matters under latency: integrating every step from the
+            # measured pose re-applies the same error while the command is still in flight,
+            # which is why 40 ms failed at every gain scale and with a 4x episode budget
+            # before this line, and solves at 11.2 s after it.
+            base = self._queue[-1][:-1] if self._queue else data.qpos[self._qpos]
+            target = base + dq * model.opt.timestep
+            target = np.clip(target, self._range[:, 0], self._range[:, 1])
+            if self.latency_steps > 0:
+                # A real servo gets its target late (bus plus its own loop). Hold the last
+                # `latency_steps` worth and apply the oldest; before the queue fills, hold
+                # the home pose rather than inventing a target.
+                depth = int(min(self.latency_steps, LATENCY_MAX)) * max(
+                    1, round(self.control_dt / model.opt.timestep))
+                # The jaw rides the same queue: one bus carries every servo, so delaying
+                # the arm and not the jaw would close the fingers early *by construction* -
+                # and this room's grasp is a pinch whose timing is the whole trick.
+                self._queue.append(np.append(target, self.jaw_target))
+                # Before the queue fills, hold **where the arm is**, not the home pose: a
+                # servo with no new target holds its position, and commanding HOME for the
+                # first few steps threw the arm across the table at the start of an episode.
+                held = (self._queue.pop(0) if len(self._queue) > depth
+                        else np.append(data.qpos[self._qpos], data.qpos[self._jaw_q]))
+                target, jaw = held[:-1], float(held[-1])
+            else:
+                jaw = self.jaw_target
+            data.ctrl[self._ctrl] = target
+            data.ctrl[self._jaw_ctrl] = jaw
             mujoco.mj_step(model, data)
             if on_substep is not None:
                 on_substep(model, data)
+
+    def set_servo_spread(self, model: mujoco.MjModel, factors) -> None:
+        """Scale each arm joint's position gain by `factors` (R118): the spread between
+        servos of the same part. 1.0 everywhere is the shipped model."""
+        f = np.asarray(factors, dtype=float)
+        if f.shape != (len(ARM_JOINTS),) or not np.all(f > 0):
+            raise ValueError(f"servo spread needs {len(ARM_JOINTS)} positive factors, got {factors!r}")
+        for i, gid in enumerate(self._ctrl):
+            model.actuator_gainprm[gid, 0] = self._kp[i] * f[i]
+            model.actuator_biasprm[gid, 1] = -self._kp[i] * f[i]
+
+    def set_grasp_pose(self, on: bool) -> None:
+        """The wrist pose a contact grasp needs (R125): the opening axis off the vertical,
+        asked for with one row so the solve can still reach the table (see `align_rows`)."""
+        self.align_axis = np.array([0.0, 0.0, 1.0]) if on else None
+        self.align_rows = 1
+
+    def set_grab(self, level: float) -> None:
+        """Drive the jaw: `level` -1 opens it, +1 closes it (R121).
+
+        The sign is the shared `grab` convention (above 0.5 is "closed"), and the joint runs
+        the other way - `ctrlrange` [-0.175, 1.745] with -0.175 shut and 1.745 wide open, so
+        measured finger-tip gaps are 0.0044 m at -1 and 0.0889 m at +1 of this `level`.
+        """
+        shut, wide = -0.175, 1.0
+        self.jaw_target = wide + (float(np.clip(level, -1.0, 1.0)) + 1.0) / 2.0 * (shut - wide)
+
+    def jaw_geoms(self, model: mujoco.MjModel) -> list[list[int]]:
+        """The two jaw sides' geoms (R121): the fixed jaw and the moving one. A contact hold
+        asks whether both touch the object, which is the difference between a pinch and a
+        brush."""
+        sides: list[list[int]] = [[], []]
+        for gid in range(model.ngeom):
+            name = model.geom(gid).name
+            if name.startswith(PREFIX + "fixed_jaw"):
+                sides[0].append(gid)
+            elif name.startswith(PREFIX + "moving_jaw"):
+                sides[1].append(gid)
+        return sides
+
+    def control_point(self, data: mujoco.MjData) -> np.ndarray:
+        """The point `step` drives: the grasp point when an orientation task is on, else the
+        gripper site. One function, so the solve, the lead clamp and the aim agree (R117)."""
+        if self.align_axis is None:
+            return np.asarray(data.site_xpos[self._site], dtype=float)
+        return self.grasp_point(data)
+
+    def grasp_point(self, data: mujoco.MjData) -> np.ndarray:
+        """Where a grasp closes, in world coordinates: `GRASP_OFFSET` carried by the site.
+
+        Rigid in the site's frame on purpose (see `GRASP_OFFSET`); `live_grasp_point` is the
+        measured one, kept so the two can be measured against each other."""
+        site = np.asarray(data.site_xpos[self._site], dtype=float)
+        rot = np.asarray(data.site_xmat[self._site], dtype=float).reshape(3, 3)
+        return site + rot @ np.asarray(GRASP_OFFSET, dtype=float)
+
+    def live_grasp_point(self, data: mujoco.MjData) -> np.ndarray:
+        """Middle of the finger gap as the geometry actually has it, jaw angle and all."""
+        a = np.mean([data.geom_xpos[g] for g in self._fixed_tips], axis=0)
+        b = np.mean([data.geom_xpos[g] for g in self._moving_tips], axis=0)
+        return (np.asarray(a, dtype=float) + np.asarray(b, dtype=float)) / 2.0
+
+    def opening_axis(self, data: mujoco.MjData) -> np.ndarray:
+        """Unit world direction the jaw opens along: fixed finger tips to moving ones.
+
+        Read from the geometry rather than declared, because it depends on the jaw angle -
+        the moving tip sweeps from +0.065 to -0.017 m in the site's own z as the jaw closes.
+        """
+        a = np.mean([data.geom_xpos[g] for g in self._fixed_tips], axis=0)
+        b = np.mean([data.geom_xpos[g] for g in self._moving_tips], axis=0)
+        v = np.asarray(b - a, dtype=float)
+        n = float(np.linalg.norm(v))
+        return v / n if n > 1e-9 else np.array([1.0, 0.0, 0.0])
 
     def state(self, data: mujoco.MjData, floor_z: float = 0.0) -> BodyState:
         """Where the gripper is, which way it faces, and how fast it is moving.
@@ -300,7 +544,12 @@ class So101Adapter(BodyAdapter):
         if self._data is not data:
             self._bind(data)
         model = data.model
-        pos = np.array(data.site_xpos[self._site], dtype=float)
+        # Where this body says it is. The gripper site by default; the grasp point once an
+        # orientation task is on (R122), so that the shared carry - which drives whatever
+        # `state` reports - aims the place a grasp actually closes. Without this the carry
+        # put the wrist on the handle and the fingers somewhere else, which is why a room
+        # with `hold: contact` stalled on its first grab.
+        pos = self.control_point(data)
         rot = data.site_xmat[self._site].reshape(3, 3)
         yaw = math.atan2(rot[1, 0], rot[0, 0])
         jacp = np.zeros((3, model.nv))
@@ -311,6 +560,25 @@ class So101Adapter(BodyAdapter):
         return BodyState(pos=pos, yaw=yaw, lin_vel=lin,
                          ang_vel=np.zeros(3), gravity=np.array([0.0, 0.0, -1.0]),
                          fallen=False)
+
+    def joint_state(self, data: mujoco.MjData) -> np.ndarray:
+        """Twelve numbers an SO-101 reads off itself: six joint angles scaled to [-1, 1]
+        over their own ranges (the five arm joints, then the jaw), then their velocities.
+
+        This is the arm's encoders and nothing else - no part position, no target. It is in
+        `obs.SENSOR_TERMS` for that reason. The jaw is included on purpose: it is the one
+        value that says what phase a grasp is in (R131), and a jaw's own angle is cheaper to
+        read on real hardware than anything else in this observation.
+        """
+        if self._data is not data:
+            self._bind(data)
+        model = data.model
+        jaw_id = int(model.joint(PREFIX + JAW_JOINT).id)
+        rng = np.vstack([self._range, model.jnt_range[jaw_id]])
+        q = np.append(data.qpos[self._qpos], data.qpos[self._jaw_q])
+        mid, half = rng.mean(axis=1), np.maximum((rng[:, 1] - rng[:, 0]) / 2.0, 1e-9)
+        dq = np.append(data.qvel[self._qvel], data.qvel[int(model.jnt_dofadr[jaw_id])])
+        return np.concatenate([np.clip((q - mid) / half, -1.0, 1.0), dq])
 
     def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:
         """Put the gripper at `pose` by solving for it, since the base cannot move.
@@ -349,7 +617,29 @@ class So101Adapter(BodyAdapter):
         lets this arm reach down to something lying on the table. A task without it leaves
         the jaw at the working height, exactly as before.
         """
-        self.work_z = WORK_Z + float(np.clip(level, 0.0, 1.0)) * (GRAB_Z - WORK_Z)
+        want = WORK_Z + float(np.clip(level, 0.0, 1.0)) * (GRAB_Z - WORK_Z)
+        if want != self.work_z:
+            # Setpoint change: drop the integrated height error (R111). Carrying it across
+            # a 0.10 m step between the working height and the table makes the next command
+            # a spike, and measured, that spike broke the weld grab - `conveyor_triage` left
+            # its first block 0.035 m from where it picked it up and stalled on the next
+            # grab (0/20), while the room's own bins never moved.
+            self._z_i = 0.0
+        self.work_z = want
+
+    def view_camera(self, model: mujoco.MjModel) -> int:
+        """The arm's own wrist camera, which is the only exteroception this body has (R115).
+
+        The vendor asset ships `wrist_cam` on `camera_mount`, and until this was wired the
+        adapter answered `None`, so the `camera` observation term could not be used with
+        this body at all - and it has no rangefinder mount either. That left proprioception
+        as the whole of its non-privileged observation, which means **no** task for this
+        body could be observation-clean: a policy with no exteroception cannot find the
+        block. Measured at the home pose: the camera sits at (0.182, 0.054, 0.156), 0.04 m
+        behind and above the jaw, with fovy 61 deg, looking along (0.382, -0.547, -0.745) -
+        down and across the working area in front of the gripper.
+        """
+        return int(model.camera(PREFIX + "wrist_cam").id)
 
     def grab_site(self) -> str:
         """The jaw's own site: what the weld grab (R18) attaches an object to.

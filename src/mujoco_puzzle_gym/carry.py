@@ -72,7 +72,26 @@ HANG_TOL = 0.75      # hook: let go once the leading handle is this part of `tol
 SETTLE = 1.5         # [s] longest stand after letting go
 REST_SPEED = 0.02    # [m/s] cube this slow: placed
 AWAY = 0.35          # [m] walk off this far from a placed cube
+#: [m] Stand-off behind an object for a finger grab, and how close the grasp point
+#: has to be before the fingers close (R123). The stand-off is R120's measured one;
+#: the close distance is tight on purpose - at 0.03 m the jaw shuts before the
+#: fingers are around anything.
+FINGER_STANDOFF = 0.08
+FINGER_CLOSE = 0.016
+#: [m] Inside this the height is left alone and only the advance runs (R123).
+FINGER_SETTLE = 0.04
+#: [m] How close the grasp point has to be to a handle before fingers close (R122).
+GRASP_CLOSE = 0.03
 STUCK = 1.5          # [s] place: standing this long with the object beside the target: walk off, retry
+#: [m] How far above a box's wall top an object is carried in (`_lower_in_act`).
+#: Both ends are measured on `puzzles/tabletop/pick_and_place`, seed 0: at 0.02 the
+#: fixed jaw still brushes the rim for four control steps at 14.7 N (it crosses, the
+#: room still solves); at 0.05 and 0.065 nothing touches the wall but the episode
+#: never finishes (400 steps, the block inside the box and the place never closing),
+#: because the lift runs into the arm's working-height ceiling and the lowering that
+#: follows cannot reach the release height. 0.035 is the one that does neither:
+#: 0.00 N and 80 steps.
+RIM_CLEAR = 0.035
 HEAD_GAIN = 6.0      # head level per metre of tip height error, per env step
 TIP_PER_HEAD = 0.0375   # [m] beak tip drop per head unit (0.21 -> 0.135 m over -1 .. 1, OQ2)
 PITCH_PER_HEAD = 0.8    # [rad] a point `reach` m ahead of the tip moves TIP_PER_HEAD +
@@ -217,11 +236,81 @@ class Carrier:
         return pts[int(np.argmax(pts[:, :2] @ np.array([math.cos(yaw), math.sin(yaw)])))]
 
     # ---- sub-goals ---------------------------------------------------------------------
+    def _fingers(self) -> bool:
+        """True when this room holds objects by contact and this body has fingers (R123)."""
+        beak = self.env.parts.get("_beak")
+        return (beak is not None and getattr(beak, "hold", "weld") == "contact"
+                and self.env.body.head_lifts_load)
+
+    def _finger_grab_act(self, cube) -> np.ndarray | None:
+        """Grab with fingers: the sequence that was measured to work (R120, R123).
+
+        The shared path drives at the handle from along its normal and closes in, which was
+        never meant to put an object **between** two jaws - measured, the grasp point came
+        to 30 mm and stopped there. This one does what lifted 10-60 g in a bare scene:
+        stand off behind the object along the base's radial, hold the jaw open, advance onto
+        it, and close only when the grasp point is on the handle.
+
+        `held` comes from the contact detector in `grab.py`, so the sub-goal ends when the
+        fingers really have it; nothing is welded, and physics can drop it again.
+        """
+        env = self.env
+        # The object's **centre**, not a handle. A handle sits on a face, so putting the
+        # grasp point there drives the fingers into the object's side; what lifted 10-60 g
+        # in the bare scene aimed the middle, with the jaw straddling it (R123). The handle
+        # height still sets how high to carry it.
+        handle = np.asarray(cube.pos(env.data), dtype=float).copy()
+        handle[2] = float(cube.handle_points(env.data)[self._pick_handle(cube)][2])
+        base = np.asarray(getattr(env.body, "_base_pose", (0.0, 0.0, 0.0))[:2], dtype=float)
+        radial = handle[:2] - base
+        radial = radial / max(float(np.linalg.norm(radial)), 1e-9)
+        here = np.asarray(env.body_state.pos, dtype=float)
+        gap = float(np.linalg.norm(here - handle))
+        # Height while approaching, not every step on the way in (R123). `_hold_tip_at` is a
+        # closed loop on the controlled point's height, and that point moves with the wrist
+        # the orientation task is holding - re-running it on every step of the advance had
+        # the two trading against each other and the advance stopped 15 mm out. The bare
+        # scene that lifted 10-60 g set the height once and let it settle.
+        if self.phase == "approach" or gap > FINGER_SETTLE:
+            self._hold_tip_at(float(handle[2]), lambda: np.asarray(env.body_state.pos, float))
+        if self.phase == "approach":
+            self.grab = -1.0                                  # open
+            act = self._walk(handle[:2] - radial * FINGER_STANDOFF)
+            if act is not None:
+                return act
+            self.phase = "in"
+        if gap <= FINGER_SETTLE and env.body.align_axis is not None:
+            # Let the orientation go for the last stretch (R124). Position takes three rows
+            # of a five-joint solve and the orientation task one more, and the last 2 cm
+            # needs a degree of freedom that row is holding: measured, the advance stopped
+            # 17.7 mm out with nothing touching, and releasing the row there carried it in
+            # to a two-sided pinch (8 and 7 contacts). The axis has done its work by then -
+            # the fingers are already straddling the object.
+            env.body.align_axis = None
+        if gap > FINGER_CLOSE:
+            self.grab = -1.0
+            return self.steer(handle[:2], SLOW)
+        self.grab = 1.0                                       # on it: close and hold still
+        return self._stand()
+
     def grab_act(self, cube) -> np.ndarray | None:
         env = self.env
         if self.held() is cube:
             return None
-        self.grab = 1.0
+        if self._fingers():
+            return self._finger_grab_act(cube)
+        # A beak carries its grab closed and the weld decides when it catches; fingers have
+        # to arrive **open** or they shut before the object is between them (R121, R122).
+        # Open until the grasp point is actually at the handle, then close - keyed on
+        # distance, not on the phase: measured, this carry is in phase `in` while still
+        # 90 mm short, so a phase test shut the jaw before it arrived.
+        if env.body.head_lifts_load:
+            handle = cube.handle_points(env.data)[self._handle if self._point is not None
+                                                  else self._pick_handle(cube)]
+            reach = float(np.linalg.norm(env.body_state.pos - np.asarray(handle, float)))
+            self.grab = 1.0 if reach <= GRASP_CLOSE else -1.0
+        else:
+            self.grab = 1.0
         here = np.asarray(cube.pos(env.data)[:2], dtype=float)
         moved = float(np.linalg.norm(here - self._was_at)) if self._was_at is not None else 0.0
         self._was_at = here
@@ -249,6 +338,11 @@ class Carrier:
         self._pick_z = float(h[2])
         n = h[:2] - cube.pos(env.data)[:2]
         n = n / max(float(np.linalg.norm(n)), 1e-9)
+        if env.body.head_lifts_load:
+            # Put the **grasp point** at the handle's height, not the wrist: measured, the
+            # wrist-height target left the grasp point 19 mm below the handle (R122).
+            return self._close_in(h[:2] + n * self._approach(), h,
+                                  lambda: np.asarray(env.body_state.pos, dtype=float))
         return self._close_in(h[:2] + n * self._approach(), h)
 
     def _approach(self) -> float:
@@ -288,6 +382,8 @@ class Carrier:
 
         if getattr(part, "shape", None) == "hook":
             return self._hang_act(cube, part, holding)
+        if holding and env.body.head_lifts_load and self.phase not in ("still", "drop"):
+            return self._lower_in_act(cube, part, drop)
         target = np.asarray(part.xy, dtype=float)
         tol = part.place_tolerance(cube) if hasattr(part, "place_tolerance") else PLACE_TOL
         if holding and self.phase == "back":           # overshot: walk off and come again
@@ -336,8 +432,15 @@ class Carrier:
         self.grab = 1.0
         self.phase = "stack"
         aim = np.asarray(part.place_xy(cube), dtype=float)
-        self._hold_tip_at(float(part.place_height(cube)))
         err = float(np.linalg.norm(cube.pos(env.data)[:2] - aim))
+        # Over what is already there, not through it (R111). Holding the final height for
+        # the whole approach carries the object straight at the block it is about to be
+        # stacked on. A weak enough servo scraped past; once the gravity feed-forward gave
+        # the arm its full authority back, the carried block was knocked out of the jaw
+        # 0.068 m short of the aim and the room went 20/20 -> 0/20. Same shape of mistake
+        # as the box place in R108: approach high, lower when over.
+        want_z = float(part.place_height(cube))
+        self._hold_tip_at(want_z if err <= STACK_TOL else want_z + RIM_CLEAR)
         if err > STACK_TOL:
             self._settle = 0
             # Aim the grab point, not the object: `steer` drives where the body is, and the
@@ -358,6 +461,54 @@ class Carrier:
         if self._settle <= (STACK_STILL + STACK_OPEN) * env.hz:
             return self._stand()
         return None
+
+    def _lower_in_act(self, cube, part, drop: bool = False) -> np.ndarray | None:
+        """The place a body that lifts its load takes: carry the object **over** whatever is
+        at the target, drive it there, and lower it in.
+
+        Taken by any body that answers `head_lifts_load` (`bodies/base.py`), for every
+        place target except a hook and a stack, which have paths of their own. It is a
+        path rather than a flag on the walking bodies' place because **three** of that
+        place's assumptions are about walking, and each one was measured to be a stall
+        here:
+
+          - "lean on the basket wall and keep walking, and the body tips over the rim":
+            the arm is bolted down and cannot tip. Over the 25-cell grid of
+            `puzzles/tabletop/pick_and_place`, 10 cells ended holding the block with the
+            gripper pushing the wall at 37-50 N and three joints at 100 % of their 2.94
+            N.m torque limit, 8 let go 0.09-0.24 m short, and even the 7 that solved were
+            pressing the wall at 17-29 N (R108).
+          - "the object is as far from the target as I am, so walk off and come again":
+            the jaw holds the object ahead of the tip, so that test is true on **every**
+            approach. Carrying the object high without taking this path froze 21 of 25
+            cells in phase `back`; gating the rule instead of replacing the path fixed
+            two rooms and broke a third (`fetch_the_steel`, 20/20 -> 0/20) (R111).
+          - "carry at the height you will release at": that drives the object through
+            whatever it is being put next to. In `conveyor_triage` the retry dragged the
+            held block along the floor until the weld let go.
+
+        So: hold the **object** a clearance above what is at the target, steer so that the
+        object - not the grab point - lands on it, and hand over to `_let_go`, which lowers
+        it to the height it was picked up at and opens there. `drop` keeps its meaning: the
+        head goes level first, and the object is released from there.
+        """
+        env = self.env
+        self.grab = 1.0
+        self.phase = "over"
+        aim = np.asarray(part.place_xy(cube) if hasattr(part, "place_xy") else part.xy,
+                         dtype=float)
+        tol = part.place_tolerance(cube) if hasattr(part, "place_tolerance") else PLACE_TOL
+        if float(np.linalg.norm(cube.pos(env.data)[:2] - aim)) <= tol:
+            self.phase = "still"
+            if drop:
+                self.head = -1.0
+            return self._stand()
+        self._hold_tip_at(self._carry_z(part, cube), lambda: cube.pos(env.data))
+        # Aim the grab point, not the object, for the reason `_stack_act` measured: the
+        # object hangs wherever the grab left it, so steering its target puts the grab
+        # point on the centre and the object beside it.
+        hold = cube.pos(env.data)[:2] - env.body_state.pos[:2]
+        return self.steer(aim - hold, SLOW)
 
     def _hang_act(self, obj, hook, holding: bool) -> np.ndarray | None:
         """Bring `obj`'s leading handle to the peg tip, let go there, walk off."""
@@ -429,6 +580,18 @@ class Carrier:
         else:                           # turn while walking slowly: an in-place turn may not start
             act[0] = max(act[0], SLOW)  # from the stance after letting go (cube_plate seed 11)
         return act
+
+    def _carry_z(self, part, cube) -> float:
+        """Height to carry an object at so it clears what is at the target [m].
+
+        A box's wall top, a stack's next place height, or the floor for a flat zone or
+        plate - plus `RIM_CLEAR`. It is the **object** that is held there, not the tip
+        (`_lower_in_act` passes the object's position to `_hold_tip_at`), so the clearance
+        is measured where the obstacle is actually crossed."""
+        floor = float(getattr(part, "_floor", 0.0))
+        if hasattr(part, "place_height"):
+            return float(part.place_height(cube)) + RIM_CLEAR
+        return floor + float(getattr(part, "wall_h", 0.0)) + RIM_CLEAR
 
     def _blocked_ahead(self) -> bool:
         """Something fixed (a wall, a basket wall) right in front of the feet: turn in

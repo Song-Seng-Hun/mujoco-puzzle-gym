@@ -56,6 +56,9 @@ class Grabbable(FreeObject):
               doc="the beak grabs a handle this close to its tip (R18)"),
         Field("max_hold_force", "float", 3.0, unit="N", min=0.01, max=100.0,
               doc="the grab lets go when holding it takes more force"),
+        Field("hold", "enum", "weld", choices=("weld", "contact"),
+              doc="what holds it when grabbed: a weld (R18) or the gripper's own contact "
+                  "(R121; needs a body with fingers, `BodyAdapter.jaw_geoms`)"),
         Field("hitch", "bool", False,
               doc="a tow rope (R31) can tie to it (its centre); in a rope room its friction wins over the floor's"),
     )

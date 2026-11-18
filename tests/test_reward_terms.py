@@ -240,3 +240,62 @@ def test_the_evaluation_only_plate_is_the_wide_draw(free_env, mode, drawn):
 def test_hz_must_divide_body_steps(asset_dir, repo_root):
     with pytest.raises(TaskError, match="whole number"):
         PuzzleEnv(task={"room": str(repo_root / "examples/switch_door.yaml"), "env": {"hz": 7}})
+
+
+# ---- R127: the carry rooms' missing shaping, and the guard that caught three bugs ------
+
+def _sum_terms(env, seeds=1):
+    """Sum each reward term over a scripted episode: what a term pays the **solution**."""
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+
+    out: dict[str, float] = {}
+    solver = ScriptedSolver(env)
+    env.reset(seed=seeds)
+    solver.reset()
+    for _ in range(400):
+        _, _, terminated, truncated, info = env.step(solver.act())
+        for name, value in (info.get("reward_terms") or {}).items():
+            out[name] = out.get(name, 0.0) + float(value)
+        if terminated or truncated:
+            break
+    return out
+
+
+def test_the_carry_shaping_terms_pay_the_solution(so101_asset_dir, repo_root, tmp_path):
+    """The acceptance test these terms needed and the first version did not have: a shaping
+    term has to pay the **scripted solution** a positive amount. Three bugs were caught by
+    this one assertion, each of which had looked fine:
+
+      - `grasp_progress` summed **-1.736** - it punished the solution, because it decided
+        an object was still wanted from the object's own `satisfied()`, which is False for
+        ever on a cube. Destinations know (`inside`).
+      - `carry_progress` summed **0.000** - it looked for a destination with an `objects:`
+        list, and rooms say `accept:`; `accepts(obj)` is the question to ask.
+      - `grasp_hold` paid every time anything became held, which is farmable: measured, a
+        policy collected **578** of it per episode by opening and shutting the jaw, with a
+        success rate of 0.0. Once per object per episode.
+
+    Measured here: grasp_progress +1.356, grasp_hold +10.0 (weight 10, once), and
+    carry_progress +3.053 over `pick_by_hand`.
+    """
+    import yaml as _yaml
+
+    from mujoco_puzzle_gym.env import PuzzleEnv as _Env
+    from mujoco_puzzle_gym.task import load_task
+
+    spec = _yaml.safe_load((repo_root / "examples/task_pick_by_hand.yaml").read_text())
+    spec["room"] = str(repo_root / "src/mujoco_puzzle_gym/presets/puzzles/tabletop/pick_by_hand.yaml")
+    spec["reward"] = {"progress": 10.0, "success": 20.0, "stage": 2.0, "fall": -5.0,
+                      "grasp_progress": 10.0, "grasp_hold": 10.0, "carry_progress": 10.0}
+    path = tmp_path / "shaped.yaml"
+    path.write_text(_yaml.safe_dump(spec, sort_keys=False))
+
+    env = _Env(task=load_task(path))
+    try:
+        sums = _sum_terms(env, seeds=1)
+        assert sums.get("success", 0) > 0, ("the scripted solution has to solve it", sums)
+        assert sums["grasp_progress"] > 0.5, sums
+        assert 5.0 <= sums["grasp_hold"] <= 15.0, ("once per object, times its weight", sums)
+        assert sums["carry_progress"] > 1.0, sums
+    finally:
+        env.close()

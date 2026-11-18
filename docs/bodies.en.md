@@ -69,7 +69,7 @@ and `x` means the `body` stage of `mpg check` refuses, naming the part and the m
 | `budget` | - | o | o | Signals only |
 | `button` | `walk` | o | o | Stepping on it. Judged by the body's centre coordinates |
 | `cannon` | - | o | o | Fires on a signal, nothing to do with the body |
-| `checkpoint` | `walk` | o | o | Stepping on it |
+| `checkpoint` | (none) | o | o | Reaching it - the `walk` ask was an over-declaration (R129): a flag is on when the body comes within `radius`, and a fixed arm's position is its gripper. That ask had closed the staged-training machinery to the arm |
 | `coin` | `walk` | o | o | Collected by passing through |
 | `coin_group` | - | o | o | Signals only |
 | `coin_lock` | - | o | o | Signals only |
@@ -996,3 +996,70 @@ carries clear. That was wrong.
 So the clearing is a bug and at the same time a **guard that protects the walking bodies**.
 Fixing it properly means handling their path too, so only the measurement was kept and the
 change was not shipped.
+
+## 10. Placing over the rim (M7 R108, 2026-11-17)
+
+The grid in section 9 went from 7 of 25 to **25 of 25**. What changed is the place, not the
+inverse kinematics.
+
+Classifying all 25 cells by *how* they failed (one episode each): 7 ok, **10 driving into the
+box wall** (still holding the block, the gripper pushing the wall at 37-50 N with three joints
+at **100 %** of their 2.94 N.m torque limit), **8 letting go short** (0.089-0.244 m from the
+centre). Even the 7 that solved were **pressing** the wall at 17-29 N. No cell failed in the
+grab at all.
+
+The cause was a walking body's idea inside the shared place: lean on a basket wall and keep
+walking, and the body tips over the rim. A bolted arm cannot tip. So a body now declares
+`head_lifts_load` (its `set_head` moves a held object's height - the arm alone), and such a
+body takes `Carrier._lower_in_act`, which **carries the object 0.035 m above the wall top and
+drives it onto the centre** before lowering it in. The walking bodies' path is unchanged.
+
+The measurement also showed there were **two** walker ideas, not one: "the object leads the
+body, so back off and come again" is true on every approach for the arm. A first attempt that
+only lifted the object froze 21 of 25 cells in phase `back` and made the score **worse**,
+7 to 1. Hence a path of its own.
+
+The 0.035 m clearance has both ends measured: at 0.02 the fixed jaw still brushes the rim for
+four control steps at 14.7 N, and at 0.05 nothing touches the wall but the episode never
+finishes (400 steps). All seven shipped rooms hold their 20/20, and `pick_and_place` halved,
+16.3 s -> **8.0 s**. Widened to +-100 mm the grid is 19 of 25, and **five of the six** failures
+left are `grab` - which is where the next piece of work is.
+
+## 11. The steady state, and the distance left to hardware (M7 R111-R113, 2026-11-17)
+
+**The planar steady state was already sound.** Inside the envelope a drive at a point
+0.30 m away ends 0.0001 m short, three targets with a 30 g block in the jaw end 0.03-0.04 mm
+short, a constant command is tracked at 0.969-0.999, and standing still `kp * (ctrl - qpos)`
+equals `qfrc_bias` to 0.043 N.m. Both readings that had been taken for an inverse-kinematics
+failure were something else: one aimed at a point **0.528 m** from the base, outside the
+declared 0.48 m, where `_clamp` stops the aim on purpose; the other is the trapped jaw
+section 9 already describes.
+
+**The real defect was height**: 1.91 mm of sag with an empty jaw, 2.47-5.27 mm holding a
+block, **8.65 mm** while travelling at the command ceiling - against a 0.04 m grab radius
+and a 0.02 m table. The target is rebuilt from the measured angles every substep, so the
+servo's lead pays for holding the arm up first, and with no integrator that error stays. An
+integral on the height alone (`Z_I_GAIN` 10, clamp 0.4 m.s, cleared when the setpoint moves)
+brings it to 0.001 mm settled and 1.66 mm travelling.
+
+A gravity feed-forward was measured and **not shipped**: it fixes the sag better (0.02 mm)
+but hands back the planar authority too, and `conveyor_triage` and `build_a_tower` went
+20/20 -> 0/20, because the shipped rooms are tuned to the carry they have.
+
+The integral's change of timing set off **two latent walking-body assumptions**. Gating them
+saved two rooms and killed a third, so instead a body that answers `head_lifts_load` now
+takes one path for every place target except a hook and a stack: `Carrier._lower_in_act`
+replaces the rim press (R108), the retry rule (true on every approach for a jaw that holds
+the object ahead of itself) and carrying at release height (which drives the object through
+whatever it is put beside).
+
+Result: all seven rooms **20/20** (times within 15 %, `weigh_it_down` 11.5 -> 7.1 s), the
+grid 24 of 25 at +-40 mm and 22 of 25 at +-100 mm, and **no `place` failure left on either
+grid** - everything remaining is a `grab`.
+
+**It is not a hardware policy yet.** The privileged observation terms are now declared where
+a program can read them (`obs.PRIVILEGED_OBS`: `part_pos`, `part_state`, `target_pos`), and
+the audit says **every** `examples/task_*.yaml` uses at least one: zero observation-clean
+tasks. The five things left - a contact grasp instead of the weld, a clean task, evidence
+from a trained policy, actuator latency and randomization, sensor noise - are listed with
+their state in `docs/specs/2026-11-17-arm-steady-state/spec.md` R113.
