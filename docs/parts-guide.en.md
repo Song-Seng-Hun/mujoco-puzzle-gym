@@ -1946,7 +1946,6 @@ Role `switch`, update stage `input`.
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
 - `puzzles/tabletop/fetch_the_steel`
-- `puzzles/tabletop/jenga_lift`
 - `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/pick_by_hand`
