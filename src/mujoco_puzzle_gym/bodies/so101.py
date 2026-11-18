@@ -161,6 +161,16 @@ PAN_LIMIT = 1.92
 REACH_HEIGHT = WORK_Z
 
 
+#: Identity matrices the damped solve adds its damping to, built once (R137). `np.eye`
+#: allocated one per substep - 30,000 in a 1500-step profile - for a matrix that never
+#: changes. Measured 2.84 us against 2.31 us for the solve around it.
+_EYE = {n: np.eye(n) for n in range(1, 8)}
+
+
+def _eye(n: int) -> np.ndarray:
+    return _EYE[n] if n in _EYE else np.eye(n)
+
+
 class So101Adapter(BodyAdapter):
     """The SO-101 arm, driven by inverse kinematics on its position actuators."""
 
@@ -397,7 +407,8 @@ class So101Adapter(BodyAdapter):
             # accumulator saturates, and the solve folds the arm: measured, the controlled
             # point climbed to z 0.293 within 150 control steps.
             cap = Z_I_MAX / Z_I_GAIN if Z_I_GAIN > 0 else 0.0
-            self._z_i = float(np.clip(self._z_i + err[2] * model.opt.timestep, -cap, cap))
+            z_i = self._z_i + err[2] * model.opt.timestep     # min/max, not np.clip: 14x (R137)
+            self._z_i = -cap if z_i < -cap else (cap if z_i > cap else float(z_i))
             err[2] = err[2] * Z_GAIN / IK_GAIN + Z_I_GAIN * self._z_i
             j = jacp[:, self._qvel]
             if jacr is not None:
@@ -425,7 +436,7 @@ class So101Adapter(BodyAdapter):
             # Damped least squares: J^T (J J^T + lambda^2 I)^-1 e. The damping is what
             # keeps the solve finite near the envelope's edge, where the Jacobian loses
             # rank and an undamped pseudo-inverse would ask for an enormous joint rate.
-            dq = j.T @ np.linalg.solve(j @ j.T + DAMPING ** 2 * np.eye(len(err)),
+            dq = j.T @ np.linalg.solve(j @ j.T + DAMPING ** 2 * _eye(len(err)),
                                        err * IK_GAIN)
             dq[4] += wz            # the wrist roll spins the jaw about its own axis
             # Integrate from where the arm **will** be, not where it is (R131). The servo
@@ -437,7 +448,7 @@ class So101Adapter(BodyAdapter):
             # before this line, and solves at 11.2 s after it.
             base = self._queue[-1][:-1] if self._queue else data.qpos[self._qpos]
             target = base + dq * model.opt.timestep
-            target = np.clip(target, self._range[:, 0], self._range[:, 1])
+            target = target.clip(self._range[:, 0], self._range[:, 1])
             if self.latency_steps > 0:
                 # A real servo gets its target late (bus plus its own loop). Hold the last
                 # `latency_steps` worth and apply the oldest; before the queue fills, hold
@@ -486,7 +497,8 @@ class So101Adapter(BodyAdapter):
         measured finger-tip gaps are 0.0044 m at -1 and 0.0889 m at +1 of this `level`.
         """
         shut, wide = -0.175, 1.0
-        self.jaw_target = wide + (float(np.clip(level, -1.0, 1.0)) + 1.0) / 2.0 * (shut - wide)
+        lv = -1.0 if level < -1.0 else (1.0 if level > 1.0 else float(level))
+        self.jaw_target = wide + (lv + 1.0) / 2.0 * (shut - wide)
 
     def jaw_geoms(self, model: mujoco.MjModel) -> list[list[int]]:
         """The two jaw sides' geoms (R121): the fixed jaw and the moving one. A contact hold
@@ -578,7 +590,7 @@ class So101Adapter(BodyAdapter):
         q = np.append(data.qpos[self._qpos], data.qpos[self._jaw_q])
         mid, half = rng.mean(axis=1), np.maximum((rng[:, 1] - rng[:, 0]) / 2.0, 1e-9)
         dq = np.append(data.qvel[self._qvel], data.qvel[int(model.jnt_dofadr[jaw_id])])
-        return np.concatenate([np.clip((q - mid) / half, -1.0, 1.0), dq])
+        return np.concatenate([((q - mid) / half).clip(-1.0, 1.0), dq])
 
     def teleport(self, data: mujoco.MjData, pose: Pose, z: float = 0.0) -> None:
         """Put the gripper at `pose` by solving for it, since the base cannot move.
@@ -600,7 +612,7 @@ class So101Adapter(BodyAdapter):
             if np.linalg.norm(err) < 1e-4:
                 break
             j = jacp[:, self._qvel]
-            dq = j.T @ np.linalg.solve(j @ j.T + DAMPING ** 2 * np.eye(3), err)
+            dq = j.T @ np.linalg.solve(j @ j.T + DAMPING ** 2 * _eye(3), err)
             data.qpos[self._qpos] = np.clip(data.qpos[self._qpos] + dq,
                                             self._range[:, 0], self._range[:, 1])
         data.qvel[self._qvel] = 0.0
@@ -617,7 +629,8 @@ class So101Adapter(BodyAdapter):
         lets this arm reach down to something lying on the table. A task without it leaves
         the jaw at the working height, exactly as before.
         """
-        want = WORK_Z + float(np.clip(level, 0.0, 1.0)) * (GRAB_Z - WORK_Z)
+        lv = 0.0 if level < 0.0 else (1.0 if level > 1.0 else float(level))
+        want = WORK_Z + lv * (GRAB_Z - WORK_Z)
         if want != self.work_z:
             # Setpoint change: drop the integrated height error (R111). Carrying it across
             # a 0.10 m step between the working height and the table makes the next command
@@ -666,7 +679,7 @@ class So101Adapter(BodyAdapter):
         still, because there is no gait to keep going: a gripper at rest is a gripper at
         rest, and the solver's "slowest" command (`action[0] = -1`) is full speed
         backwards rather than a stop."""
-        a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        a = np.asarray(action, dtype=np.float64).clip(-1.0, 1.0)
         return np.array([a[0] * self.cmd_limits[0][1], a[1] * self.cmd_limits[1][1],
                          a[2] * self.cmd_limits[2][1]])
 

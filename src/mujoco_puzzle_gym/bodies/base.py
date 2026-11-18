@@ -392,7 +392,7 @@ class BodyAdapter(ABC):
         `cmd_limits`. Bodies whose walker ignores parts of that range (dead
         zones) override this so the whole action range does something.
         """
-        a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        a = np.asarray(action, dtype=np.float64).clip(-1.0, 1.0)
         lo = np.array([lim[0] for lim in self.cmd_limits])
         hi = np.array([lim[1] for lim in self.cmd_limits])
         return lo + (a + 1.0) / 2.0 * (hi - lo)
@@ -402,7 +402,7 @@ class BodyAdapter(ABC):
             return np.asarray(cmd, dtype=np.float64)
         lo = np.array([lim[0] for lim in self.cmd_limits])
         hi = np.array([lim[1] for lim in self.cmd_limits])
-        return np.clip(np.asarray(cmd, dtype=np.float64), lo, hi)
+        return np.asarray(cmd, dtype=np.float64).clip(lo, hi)
 
 
 def flat_floor_spec() -> mujoco.MjSpec:
@@ -428,7 +428,20 @@ def yaw_from_quat(q: np.ndarray) -> float:
 
 
 def rotate_inverse(q: np.ndarray, v: np.ndarray) -> np.ndarray:
-    """Rotate `v` by the inverse of unit quaternion `q` = [w, x, y, z]."""
-    w, xyz = q[0], q[1:4]
-    t = 2.0 * np.cross(xyz, v)
-    return v - w * t + np.cross(xyz, t)
+    """Rotate `v` by the inverse of unit quaternion `q` = [w, x, y, z].
+
+    Written out by component rather than with `np.cross`, and that is a measured choice:
+    `np.cross` on two 3-vectors spends its time in `moveaxis` and `normalize_axis_tuple`,
+    and this function is called eleven times per environment step by every walking body
+    (projected gravity for the policy's observation, and the body state the puzzle reads).
+    Measured: 13.87 us with `np.cross` against 0.88 us like this - 15.8x - which was 18 % of
+    the duck's whole step in a 1500-step profile (R137).
+    """
+    w, x, y, z = float(q[0]), float(q[1]), float(q[2]), float(q[3])
+    vx, vy, vz = float(v[0]), float(v[1]), float(v[2])
+    tx = 2.0 * (y * vz - z * vy)
+    ty = 2.0 * (z * vx - x * vz)
+    tz = 2.0 * (x * vy - y * vx)
+    return np.array([vx - w * tx + (y * tz - z * ty),
+                     vy - w * ty + (z * tx - x * tz),
+                     vz - w * tz + (x * ty - y * tx)])
