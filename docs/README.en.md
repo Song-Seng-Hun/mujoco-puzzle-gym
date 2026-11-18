@@ -9,7 +9,7 @@
 
 # mujoco-puzzle-gym — a puzzle lab that agents build
 
-A framework in which AI coding agents build puzzle rooms inside a MuJoCo physics simulation and train a robot body in them. The robot is driven by a policy trained with reinforcement learning in those rooms; the agent never steers the robot directly. A puzzle is a program, not a fixed scene. You build a room whose state changes by wiring floor switches, doors, signals and logic together in YAML, and when a part is missing you register one more Python class. The agent runs the loop itself: build a room, check that it can be solved, train briefly, and when training fails, get a diagnosis and fix the room.
+A framework in which AI coding agents build puzzle rooms inside a MuJoCo physics simulation and train a robot body in them. The robot is driven by a policy learned in those rooms - by reinforcement learning, or by cloning the room's scripted solution; the agent never steers the robot directly. A puzzle is a program, not a fixed scene. You build a room whose state changes by wiring floor switches, doors, signals and logic together in YAML, and when a part is missing you register one more Python class. The agent runs the loop itself: build a room, check that it can be solved, train briefly, and when training fails, get a diagnosis and fix the room.
 
 <p align="center"><img src="../assets/demo.gif" width="480" alt="Microduck simulation driven by a trained policy. The duck robot starts on the left of a room split by a wall, walks to a yellow floor switch and steps on it; the switch turns green and the door in the divider opens. The duck walks through the open door and reaches the blue goal circle on the right."></p>
 <p align="center"><sub>A policy trained for 15 minutes steps on the switch, opens the door and reaches the goal on a layout it has not seen. Robot model: Pollen Robotics Microduck (CC BY-NC-SA 4.0).</sub></p>
@@ -27,7 +27,7 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 
 ## Features
 
-- **A part is a bundle of attributes.** Each part is a type (`type`) plus attributes: position, size, whether it stays on once stepped on, which way it opens, how much its position varies each episode, and so on. The parts and their attributes are listed in a separate [parts document](parts.en.md).
+- **A part is a bundle of attributes.** Each part is a type (`type`) plus attributes: position, size, whether it stays on once stepped on, which way it opens, how much its position varies each episode, and so on. Every type and its attributes are in the [parts and presets guide](parts-guide.en.md).
 - **The agent designs puzzles by assembling parts.** Pick parts, place them and wire them with signal links (`links`), and you have a puzzle. Simple rooms like switch → door → goal and rooms with stacked conditions, such as a door that opens only when several switches are all on (`require: all`), are built the same way. A missing part can be written and plugged in.
 - **Randomization is supported.** Today, part positions and the start position and heading are randomized within set ranges every episode, so a policy solves the puzzle instead of memorising the layout. Placing anywhere in a region, choosing one of several candidates, and randomizing the room's wiring and the room itself are in as well.
 - **Baseline environments are included.** The example room, a verified PPO training config, a pretrained policy (`mpg demo`), a random-policy comparison on the same seeds (`mpg eval --policy random`), and a set of deliberately broken configs ([`examples/broken/`](../examples/broken/)) give a starting point to compare new rooms or new algorithms against.
@@ -35,23 +35,13 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 
 ## The parts that come with it
 
-**68 built-in part types**, **87 presets** (the same parts with their values already set) and **44 room presets** (a whole room each). Every part's fields and numbers are in the [parts document](parts.md) and the [parts and presets guide](parts-guide.en.md), and a part that is missing can be added as a plugin.
+**68 built-in part types**, **87 presets** (the same parts with their values already set) and **44 room presets** (a whole room each). From switches, doors and goals to logic gates and counters, moving platforms and conveyors, traps, magnets and light (mirrors, splitters, photocells), and objects a gripper handles including levers and dials.
 
-| Group | Parts (`type`) |
-|---|---|
-| Goal and switch | `goal`, `switch` |
-| Inputs and sensing | `button`, `pressure`, `laser`, `beam`, `zone`, `target`, `checkpoint`, `receptacle`, `stack`, `emitter`, `photocell` |
-| Logic and wiring | `gate`, `counter`, `relay`, `wire`, `source`, `transmitter`, `receiver`, `budget` |
-| Devices | `door`, `swing_door`, `trapdoor`, `rope_door`, `platform`, `conveyor`, `spring`, `turntable`, `warp`, `setter`, `pillar`, `low_bar`, `magnet`, `mirror`, `splitter`, `filter`, `goal_net`, `destroyer`, `rope`, `anchor`, `hitch_station`, `addon_station` |
-| Floor | `floor_tile`, `coin`, `coin_group`, `coin_lock` |
-| Objects | `cube`, `ball`, `pin` |
-| Things to pick up and work | `key`, `egg`, `stick`, `handle_ball`, `laundry`, `lever`, `dial`, `drawer`, `pull_cord`, `dispenser` |
-| Traps | `pit`, `pusher`, `spinner`, `pendulum`, `cannon`, `wind`, `brake_strip` |
-| Robots that move on their own | `npc` |
+Every type, its fields and the presets are in the [parts and presets guide](parts-guide.en.md), and a part that is missing can be added as a plugin.
 
 ## Take the challenge
 
-There are **44 room presets**. **Three** have a trained policy's number. The other **41 cells are empty.**
+There are **44 room presets**. **Four** have a trained policy's number. The other **40 cells are empty.**
 
 <table>
 <tr>
@@ -68,17 +58,17 @@ The scripted solution solves every room (the repository checks that over 20 seed
 time). A uniform random policy scores zero in almost all of them. **The gap between the two
 is where your algorithm goes.**
 
-> `puzzles/tabletop/pick_and_place` - PPO: **25 M steps, success 0.00**.
+> `puzzles/tabletop/pick_and_place` - PPO over **six runs, about 25 M steps in all, and the success rate never once rose above 0**.
 > Cloning the room's own scripted solution: **1.00 in 1.7 M steps**.
 > How many steps does yours need, and for how much?
 
 ```bash
-mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
-mpg eval runs/mine --episodes 100                   # held-out seeds from 1,000,000
-mpg eval runs/mine --episodes 100 --policy random    # the baseline on the same seeds
+uv run mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
+uv run mpg eval runs/mine --episodes 100                   # held-out seeds from 1,000,000
+uv run mpg eval runs/mine --episodes 100 --policy random    # the baseline on the same seeds
 ```
 
-The other six rooms, the ladder over all 44, the protocol and the known records are in
+The other challenge rooms, the ladder over all 44, the protocol and the known records are in
 [the challenge document](challenges.en.md).
 
 ## Install
@@ -137,29 +127,28 @@ To train on this room, copy [`examples/task_ppo.yaml`](../examples/task_ppo.yaml
 
 All commands, training settings, adding parts and rewards, and swapping the body are in the [guide](guide.en.md).
 
-## Progress
+## Results
 
-- [x] **Milestone 1**: the full loop of building, checking, training, diagnosing and evaluating a switch → door → goal puzzle. The built-in parts are switch, door and goal; other devices can be added as plugins.
-- [x] **Milestone 2**: a part catalog
-  - [x] Buttons, sensors, logic gates, counters, coins, warps, balls and goal nets, several kinds of door, checkpoints and curriculum training, ArUco markers and a gaze sensor, camera and distance-sensor observations. The part presets and the example rooms are in the [parts and presets guide](parts-guide.en.md).
-  - [x] Moving devices (platforms, conveyors, springs), traps, robots that move on their own
-  - [x] Cubes and beak grabbing, tow ropes (`puzzles/tow/`), more episode randomization (anywhere in a region, one of several candidates, the room's wiring and the room itself)
-- [x] **Milestone 3**: a second body (a quadruped) and the body capability gate — a part declares what it needs from the body, and `mpg check` refuses a body that lacks it, with the reason
-- [x] **Milestone 4**: a fixed-base arm and a humanoid, and puzzles whose answer is the difference between bodies — four bodies (duck, quadruped, arm, humanoid) share one boundary, the tabletop rooms are solvable only by a body with no legs, and the wide rooms only by a large one
-- [x] **Milestone 5**: carrying a load — rooms where the arm picks something up and puts it in a box, on a tower or on a conveyor. What blocked it was the receiver's rim rather than the arm (the grab grid went 7/25 to 22-24/25)
-- [x] **Milestone 6**: parts whose answer is weight or a budget — a lever (mass x distance) and a shared pool two doors draw from
-- [x] **Milestone 7**: magnets and light (emitter, photocell, mirror, splitter, filter), a grasp held by two fingers pressing (20/20 with no weld in the scene), and **how close a policy gets to hardware**:
-  - policies trained **on sensors alone** (proprioception, joint encoders and the wrist camera's gaze): reach 0.93, and 0.52 for carrying a block held by two fingers. With privileged observation a pick-and-place policy scores 1.00 - by cloning the room's own scripted solution rather than by reinforcement learning
-  - actuator latency and detection error (position noise, dropout, calibration, lens distortion) in the model, and 0.94 trained under them
-  - what is left is written as numbers too: the recipe for the finger-grasp carry lands one run in three, and five of ten arm rooms still fail at 40 ms of latency (the [training log](training-log.md))
+**This project is finished**: seven milestones got it to the state below, and it is not being grown further. The loop of building, checking, training and diagnosing a room runs, and four bodies - a two-legged duck, a quadruped, a humanoid and a fixed-base arm that does not walk - share **one body-adapter interface**. A part declares the capability it needs and `mpg check` refuses a body that lacks it, naming the reason, so a tabletop room is solved only by the body with no legs and a wide room only by a large one.
+
+Read the numbers as two kinds: the **scripted solution** (a script that knows the answer, used to prove a room is solvable) and a **trained policy** (reinforcement learning, or cloning the scripted solution).
+
+- **Trained policy, walking body**: the duck on the example room [`examples/switch_door.yaml`](../examples/switch_door.yaml) solves **99%** of unseen layouts after 15 minutes of training on 12 cores. The quadruped has a trained record of its own: 30 minutes of PPO on the room built to its dimensions (`puzzles/wide/switch_door`) scores **0.96** over 100 unseen layouts, against 0.00 for a random policy on the same seeds. The humanoid solves that room too, but **by the scripted solution**; it has no trained record.
+- **Trained policy, close to hardware**: the arm, from sensors alone (proprioception + wrist-camera gaze, `obs: [gravity, ang_vel, lin_vel, markers_seen]`), reaches **0.93** on `tabletop/reach_the_marker` over 100 unseen layouts. Put **four detection errors** (position noise, dropout, calibration bias, lens distortion) in the model and train under them, and the policy scores **0.94** with all four on and 0.96 with them off, losing nothing (the same 50 seeds). Actuator latency is not part of that number - latency is under Limits.
+- **Scripted solution**: the arm picks objects up and moves them into boxes, towers and conveyors, and holds one by finger contact alone with no weld constraint - `mpg check` solves those rooms on **all 20 seeds**. The best a *trained* policy has done on the finger-grasp room is 0.52, and that policy comes out of one fit in three (see Limits).
+
+The milestones in detail, the designs that were reverted and the numbers that sent them back are in the [training log](training-log.md) and the [specs](specs/). All 44 rooms with their scripted, random and trained records are in one table in the [challenge document](challenges.en.md).
 
 ## Limits
 
-- By default the high-level policy uses privileged observations that read the puzzle state directly. Add `rangefinder` (head distance sensor) and `camera` (64×64 head camera) to `obs:` in task.yaml to train on real-sensor observations, and use `critic_obs:` to give privileged observations to the value function only. Policies that solve a room from sensors alone **do exist** - on the arm, reach 0.93 and 0.52 for a carry held by two fingers (with privileged observation a pick-and-place policy reaches 1.00). Camera training is still about 15× slower than privileged observation, so those policies read distances, joint encoders and marker gaze rather than the image itself.
-- The high-level policy generalises to unseen layouts, and working the order out by itself has been tested (`order_cue` and `order_blind`: the same room with the cue on and off). The walking body's default rooms still always have the same order (switch → door → goal) with the reward pointing at it.
-- The official walking policy is kept frozen. It cannot walk backward and walks forward at about 0.12–0.22 m/s. Room sizes and time limits have to fit this speed.
-- Simulation only. Transfer to the real robot (sim2real) is out of scope.
-- Tested on macOS (Apple Silicon, CPU MuJoCo). Rendering on Linux has not been checked yet.
+What is unfinished is written as measurements, not guesses.
+
+- **The room held by two fingers**: a policy that finishes it **does exist** (0.52 over 50 seeds), but that policy comes out of one fit in three. The variance is in the data distribution a seed draws, not in the initialization.
+- **40 ms of actuator latency**: five of the ten arm rooms collapse, and not for one reason but **four different ones** - (1) in `fetch_the_steel` the weld catches and is torn off the next step (3.04 N against a 3.0 N limit), (2) in `conveyor_triage` it catches, is dragged, and tears five steps later at 11.39 N, (3) in `pick_by_hand` the contact grasp never forms (`_pinched` is never once true, which is a separate thing from whether the fingers closed), and (4) `dead_wedge` and `lever_arm` stall on the final `goto goal`. Seven attempted fixes each broke another room or opened none; which room stops at which sub-goal is printed by `uv run python tools/latency_stall.py`.
+- **Observations**: the high-level policy (the one that reads the puzzle and decides where to go and how fast) uses privileged observations that read the puzzle state directly by default. Adding a distance sensor and a camera to `obs:` trains on sensor observations, and `critic_obs:` gives privileged observations to the value function only, but camera training is about 15× slower, so the sensors-only policies read distances, joint encoders and marker gaze rather than the image itself.
+- **Order without a cue**: the best score on `order_blind` is **0.29**. Guessing one of the three candidate plates gives 1/3, so 0.29 sits **near** the ceiling for a policy that cannot read the cue, and nothing has gone above it. The walking bodies' basic rooms still have one fixed order (switch → door → goal).
+- **The walking policies** are the published ones per body, frozen. The **Microduck's** cannot walk backwards and moves forward at about 0.12-0.22 m/s, so rooms for that body have to size themselves and their time limits to it. The other bodies differ - the quadruped was measured at 1.019 m/s and runs a community checkpoint ([bodies and parts](bodies.md)).
+- Simulation only; moving to hardware (sim2real) is out of scope. Verified on macOS (Apple Silicon, CPU MuJoCo); Linux rendering and Windows are unverified.
 
 ## Built with AI
 
@@ -182,7 +171,10 @@ The planning, design documents, code, tests and training experiments in this rep
 - [Guide](guide.en.md): the loop, commands, training settings, extending, body adapter
 - [Agent guide](../AGENTS.md): what an AI agent working in this repository reads first
 - [Sharing rooms and policies](community.en.md): submitting your rooms as PRs, sharing policies as ONNX, why we don't open other people's pickles
-- [Parts and attributes](parts.en.md): the parts available now and their attributes
+- [Parts and presets guide](parts-guide.en.md): every part type at a glance, each one's fields and values, building a room from presets
+- [Bodies and parts](bodies.md): which part works with which body, and the measurements behind each verdict
+- [Challenges](challenges.en.md): all 44 rooms with their scripted, random and trained records, and the protocol
+- [Parts and attributes](parts.en.md): the three milestone-1 parts in detail
 - [Training log](training-log.md): training results and diagnoses of broken settings
 - [Speed measurements](bench.md)
 - [Design documents](specs/)

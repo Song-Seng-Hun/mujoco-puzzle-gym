@@ -1,6 +1,6 @@
 # The challenge - one empty cell per room
 
-This repository has **44 room presets**. **Three of them have a trained policy's number.**
+This repository has **44 room presets**. **Four of them have a trained policy's number.**
 The other 41 "trained policy" cells are **empty**, and the table below is that emptiness.
 
 The scripted solution solves every room (the repository checks that over 20 seeds, every
@@ -27,9 +27,9 @@ A challenge has to be comparable. In this repository the same room has scored **
 0.52** with nothing changed but the seed, so three things are reported together.
 
 ```bash
-mpg train examples/task_<room>.yaml --minutes <budget> --id mine
-mpg eval runs/mine --episodes 100            # held-out seeds 1,000,000-1,000,099
-mpg eval runs/mine --episodes 100 --policy random   # the baseline on the same seeds
+uv run mpg train examples/task_<room>.yaml --minutes <budget> --id mine
+uv run mpg eval runs/mine --episodes 100            # held-out seeds 1,000,000-1,000,099
+uv run mpg eval runs/mine --episodes 100 --policy random   # the baseline on the same seeds
 ```
 
 - **One number**: `success_rate` from `mpg eval`. Not the training-time success rate.
@@ -43,7 +43,7 @@ Ten rooms, four bodies, ten different mechanisms. Every number is one this repos
 
 | | body | what happens on screen | scripted | random | trained |
 |---|---|---|---:|---:|---|
-| <img src="../assets/challenge-hammer-lose.gif" width="260" alt="coins/beat_the_hammer"> | 네 발 | `coins/beat_the_hammer` — 40초 뒤 프레스가 코인 자물쇠를 부순다 — 그 전에 문을 열어야 한다 | 44.2s | 0/20 | **empty** |
+| <img src="../assets/challenge-hammer-lose.gif" width="260" alt="coins/beat_the_hammer"> | quadruped | `coins/beat_the_hammer` - after 40 s a press smashes the coin lock; the door has to be open before that | 45.6s | 0/20 | **empty** |
 | <img src="../assets/gallery/tabletop_pick_by_hand.gif" width="260" alt="tabletop/pick_by_hand"> | 팔 | `tabletop/pick_by_hand` — 용접 없이 **손가락 둘로 눌러** 블록을 들어 상자에 넣는다 | 11.66s | 0/20 | 0.52 |
 | <img src="../assets/gallery/light_split_the_beam.gif" width="260" alt="light/split_the_beam"> | 오리 | `light/split_the_beam` — 한 줄기 빛을 분광기로 나눠 두 광전지에 **몫**을 맞춘다 | 11.1s | 1/20 | **empty** |
 | <img src="../assets/gallery/ball_bowling.gif" width="260" alt="ball/bowling"> | 오리 | `ball/bowling` — 공을 밀어 핀 세 개를 쓰러뜨리면 문이 열린다 | 23.82s | 0/20 | **empty** |
@@ -64,7 +64,7 @@ The stars are measured, not opinions: **a room a random policy solves three time
 
 | | room | scripted | random | trained policy |
 |---|---|---:|---:|---|
-| ★★★ | `wide/switch_door` | 24.58s | 0/20 | **empty** |
+| ★★★ | `wide/switch_door` | 24.58s | 0/20 | **0.96** (quadruped, PPO 30 min) |
 | ★★★★ | `wide/pit_detour` | 30.78s | 0/20 | **empty** |
 | ★★★★ | `coins/beat_the_hammer` | 45.6s | 0/20 | **empty** |
 
@@ -124,7 +124,7 @@ The stars are measured, not opinions: **a room a random policy solves three time
 | What | The measured state |
 |---|---|
 | **Carry something held by two fingers** (`tabletop/pick_by_hand`) | A policy that finishes it **exists** - 0.52 over 50 seeds. The recipe lands one such policy in **three runs**, and nine more fits on a third seed changed nothing, so the variance is in the data a seed draws |
-| **40 ms of actuator latency** | **Five** of the ten arm rooms collapse there, and not for one reason but **four**: three never finish their `grab` (the weld tears at 3.04-11.39 N, or the fingers never close at all), and only two reach the `goto goal` the fixes were written for. Seven attempted fixes each broke another room or opened none. Which room stops at which sub-goal is printed by `python tools/latency_stall.py` |
+| **40 ms of actuator latency** | **Five** of the ten arm rooms collapse there, and not for one reason but **four**: three never finish their `grab` (the weld tears at 3.04-11.39 N, or `_pinched` stays false so the contact grasp never forms), and only two reach the `goto goal` the fixes were written for. Seven attempted fixes each broke another room or opened none. Which room stops at which sub-goal is printed by `uv run python tools/latency_stall.py` |
 | **Order reasoning with the cue off** (`order_blind`) | **0.29, exactly against the 1/3 ceiling** a policy that cannot read the cue is limited to. Nothing has gone above it |
 
 ## Known records
@@ -134,7 +134,8 @@ The stars are measured, not opinions: **a room a random policy solves three time
 | `tabletop/reach_the_marker` | arm | **sensors only** | **0.93** | PPO 15 min, 4.08 M steps |
 | `tabletop/pick_and_place` | arm | privileged | **1.00** | cloned (`algo: bc`), 1.70 M steps |
 | `tabletop/pick_by_hand` | arm | **sensors only** | **0.52** | cloned + DAgger, one run in three |
-| `examples/rooms/switch_door` | duck | privileged | 0.99 | PPO 15 min (an example room, not a preset) |
+| `wide/switch_door` | quadruped | privileged | **0.96** | PPO 30 min, 2.85 M steps |
+| `examples/switch_door.yaml` | duck | privileged | 0.99 | PPO 15 min (an example room, not a preset) |
 
 Where those numbers come from, and the attempts that failed, are in the
 [training log](training-log.md) - which also lists the **ten** measuring traps this project

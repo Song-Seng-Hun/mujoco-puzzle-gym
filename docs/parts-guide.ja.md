@@ -4,6 +4,22 @@
 
 パズル部屋は部品を組み立てて作ります。この文書では、部品が信号でつながるしくみ、プリセットで部屋を組む手順、点検と段階的な学習、そしてすべての部品の値の表を扱います。値の表は`mpg parts --markdown`が出力したもので、それ以外は人が書いた説明です。
 
+## 部品の種類を一覧で
+
+内蔵部品68種をグループごとにまとめた表です(READMEから移しました)。各種類が受け取る値は以下の節と値の表にあります。
+
+| グループ | 部品 (`type`) |
+|---|---|
+| 目標・スイッチ | `goal`, `switch` |
+| 入力・検知 | `button`, `pressure`, `laser`, `beam`, `zone`, `target`, `checkpoint`, `receptacle`, `stack`, `emitter`, `photocell` |
+| 論理・配線 | `gate`, `counter`, `relay`, `wire`, `source`, `transmitter`, `receiver`, `budget` |
+| 装置 | `door`, `swing_door`, `trapdoor`, `rope_door`, `platform`, `conveyor`, `spring`, `turntable`, `warp`, `setter`, `pillar`, `low_bar`, `magnet`, `mirror`, `splitter`, `filter`, `goal_net`, `destroyer`, `rope`, `anchor`, `hitch_station`, `addon_station` |
+| 床 | `floor_tile`, `coin`, `coin_group`, `coin_lock` |
+| 物体 | `cube`, `ball`, `pin` |
+| つかんで扱うもの | `key`, `egg`, `stick`, `handle_ball`, `laundry`, `lever`, `dial`, `drawer`, `pull_cord`, `dispenser` |
+| 罠 | `pit`, `pusher`, `spinner`, `pendulum`, `cannon`, `wind`, `brake_strip` |
+| 自分で動くロボット | `npc` |
+
 ## 部品、プリセット、組み立てプリセット
 
 - **部品**は`room.yaml`の`parts:`の一行です。種類(`type`)と値でできています。種類ごとに受け付ける値と単位、既定値、許される範囲が決まっていて(値のスキーマ)、範囲外の値は`mpg build`と`mpg check`が理由と範囲を示して拒否します。

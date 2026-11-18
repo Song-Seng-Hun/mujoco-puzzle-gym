@@ -1,6 +1,6 @@
 # 挑戦 — 部屋ごとに空いた一マス
 
-このリポジトリには部屋プリセットが**44個**あり、そのうち**学習した方策の記録があるのは三つ**です。
+このリポジトリには部屋プリセットが**44個**あり、そのうち**学習した方策の記録があるのは四つ**です。
 残り41個の「学習した方策」のマスは**空**で、下の表がその空白です。
 
 台本の解法はすべての部屋を解きます(リポジトリが毎回20シードで確認します)。ランダムな方策はほとんどの
@@ -26,9 +26,9 @@
 あります(違いはシードだけでした)。だから三つを一緒に書きます。
 
 ```bash
-mpg train examples/task_<部屋>.yaml --minutes <予算> --id mine
-mpg eval runs/mine --episodes 100            # held-outシード 1,000,000〜1,000,099
-mpg eval runs/mine --episodes 100 --policy random   # 同じシードの基準線
+uv run mpg train examples/task_<部屋>.yaml --minutes <予算> --id mine
+uv run mpg eval runs/mine --episodes 100            # held-outシード 1,000,000〜1,000,099
+uv run mpg eval runs/mine --episodes 100 --policy random   # 同じシードの基準線
 ```
 
 - **数字ひとつ**: `mpg eval`の`success_rate`。学習中の成功率ではありません。
@@ -41,7 +41,7 @@ mpg eval runs/mine --episodes 100 --policy random   # 同じシードの基準�
 
 | | 体 | 画面で起きること | 台本 | ランダム | 学習した方策 |
 |---|---|---|---:|---:|---|
-| <img src="../assets/challenge-hammer-lose.gif" width="260" alt="coins/beat_the_hammer"> | 네 발 | `coins/beat_the_hammer` — 40초 뒤 프레스가 코인 자물쇠를 부순다 — 그 전에 문을 열어야 한다 | 44.2s | 0/20 | **空** |
+| <img src="../assets/challenge-hammer-lose.gif" width="260" alt="coins/beat_the_hammer"> | 四足 | `coins/beat_the_hammer` — 40秒後にプレスがコイン錠を壊す。その前に扉を開けなければならない | 45.6s | 0/20 | **空** |
 | <img src="../assets/gallery/tabletop_pick_by_hand.gif" width="260" alt="tabletop/pick_by_hand"> | 팔 | `tabletop/pick_by_hand` — 용접 없이 **손가락 둘로 눌러** 블록을 들어 상자에 넣는다 | 11.66s | 0/20 | 0.52 |
 | <img src="../assets/gallery/light_split_the_beam.gif" width="260" alt="light/split_the_beam"> | 오리 | `light/split_the_beam` — 한 줄기 빛을 분광기로 나눠 두 광전지에 **몫**을 맞춘다 | 11.1s | 1/20 | **空** |
 | <img src="../assets/gallery/ball_bowling.gif" width="260" alt="ball/bowling"> | 오리 | `ball/bowling` — 공을 밀어 핀 세 개를 쓰러뜨리면 문이 열린다 | 23.82s | 0/20 | **空** |
@@ -61,7 +61,7 @@ mpg eval runs/mine --episodes 100 --policy random   # 同じシードの基準�
 
 | | 部屋 | 台本の解法 | ランダム | 学習した方策 |
 |---|---|---:|---:|---|
-| ★★★ | `wide/switch_door` | 24.58s | 0/20 | **空** |
+| ★★★ | `wide/switch_door` | 24.58s | 0/20 | **0.96**(四足、PPO 30分) |
 | ★★★★ | `wide/pit_detour` | 30.78s | 0/20 | **空** |
 | ★★★★ | `coins/beat_the_hammer` | 45.6s | 0/20 | **空** |
 
@@ -121,7 +121,7 @@ mpg eval runs/mine --episodes 100 --policy random   # 同じシードの基準�
 | 何 | 測定された状態 |
 |---|---|
 | **指二本で押さえて運ぶ** (`tabletop/pick_by_hand`) | 完走する方策は**あります** — 50シードで0.52。ただしその組み合わせがそういう方策を出すのは**三回に一回**で、三つめのシードで九回適合しても変わりませんでした(分散はデータ側) |
-| **40 msのアクチュエータ遅延** | アームの部屋十のうち**五つ**がここで崩れます。原因は一つではなく**四つ**です: 三つは`grab`を終えられず(溶接が3.04〜11.39 Nで引き剥がされる、または指がまったく閉じない)、`goto goal`に届くのは二つだけです。七回の修正はいずれも別の部屋を壊すか、どの部屋も開けませんでした。どの部屋がどのサブゴールで止まるかは`python tools/latency_stall.py`が出力します |
+| **40 msのアクチュエータ遅延** | アームの部屋十のうち**五つ**がここで崩れます。原因は一つではなく**四つ**です: 三つは`grab`を終えられず(溶接が3.04〜11.39 Nで引き剥がされる、または `_pinched` が偽のままで接触によるつかみが成立しない)、`goto goal`に届くのは二つだけです。七回の修正はいずれも別の部屋を壊すか、どの部屋も開けませんでした。どの部屋がどのサブゴールで止まるかは`uv run python tools/latency_stall.py`が出力します |
 | **手がかりなしの順序推論** (`order_blind`) | 理論上の上限1/3に**ぴったり張りついた0.29**。手がかりを読めない方策の最善で、その上に行った方策はありません |
 
 ## 既知の記録
@@ -131,7 +131,8 @@ mpg eval runs/mine --episodes 100 --policy random   # 同じシードの基準�
 | `tabletop/reach_the_marker` | アーム | **センサーのみ** | **0.93** | PPO 15分、4.08 Mステップ |
 | `tabletop/pick_and_place` | アーム | 特権 | **1.00** | 台本の複製(`algo: bc`)、1.70 Mステップ |
 | `tabletop/pick_by_hand` | アーム | **センサーのみ** | **0.52** | 台本の複製 + DAgger、三回に一回 |
-| `examples/rooms/switch_door` | アヒル | 特権 | 0.99 | PPO 15分(例の部屋、プリセットではない) |
+| `wide/switch_door` | 四足 | 特権 | **0.96** | PPO 30分、2.85 Mステップ |
+| `examples/switch_door.yaml` | アヒル | 特権 | 0.99 | PPO 15分(例の部屋、プリセットではない) |
 
 数字の出どころと失敗した試みは[学習ログ](training-log.md)にあります。そこには測定の罠**十個**も
 書いてあります — 測る側で騙される方法がそれだけありました。
