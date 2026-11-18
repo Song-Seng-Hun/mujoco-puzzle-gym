@@ -42,15 +42,15 @@ uv run mpg eval runs/mine --episodes 100 --policy random   # 同じシードの�
 | | 体 | 画面で起きること | 台本 | ランダム | 学習した方策 |
 |---|---|---|---:|---:|---|
 | <img src="../assets/challenge-hammer-lose.gif" width="260" alt="coins/beat_the_hammer"> | 四足 | `coins/beat_the_hammer` — 40秒後にプレスがコイン錠を壊す。その前に扉を開けなければならない | 45.6s | 0/20 | **空** |
-| <img src="../assets/gallery/tabletop_pick_by_hand.gif" width="260" alt="tabletop/pick_by_hand"> | 팔 | `tabletop/pick_by_hand` — 용접 없이 **손가락 둘로 눌러** 블록을 들어 상자에 넣는다 | 11.66s | 0/20 | 0.52 |
-| <img src="../assets/gallery/light_split_the_beam.gif" width="260" alt="light/split_the_beam"> | 오리 | `light/split_the_beam` — 한 줄기 빛을 분광기로 나눠 두 광전지에 **몫**을 맞춘다 | 11.1s | 1/20 | **空** |
-| <img src="../assets/gallery/ball_bowling.gif" width="260" alt="ball/bowling"> | 오리 | `ball/bowling` — 공을 밀어 핀 세 개를 쓰러뜨리면 문이 열린다 | 23.82s | 0/20 | **空** |
-| <img src="../assets/gallery/roller_glide_under.gif" width="260" alt="roller/glide_under"> | 오리(롤러) | `roller/glide_under` — 롤러를 달고 **낮은 바 밑을 미끄러져** 지나간다 | 14.66s | 0/20 | **空** |
-| <img src="../assets/gallery/wide_pit_detour.gif" width="260" alt="wide/pit_detour"> | 네 발 | `wide/pit_detour` — 5×4 m 방에서 구덩이를 돌아간다 — 큰 몸이 설 수 있는 곳만 길이다 | 30.78s | 0/20 | **空** |
-| <img src="../assets/gallery/tabletop_build_a_tower.gif" width="260" alt="tabletop/build_a_tower"> | 팔 | `tabletop/build_a_tower` — 블록 둘을 **쌓는다**(쌓임을 읽는 부품이 판정) | 10.6s | 0/20 | **空** |
-| <img src="../assets/gallery/tabletop_conveyor_triage.gif" width="260" alt="tabletop/conveyor_triage"> | 팔 | `tabletop/conveyor_triage` — 두 벨트, 두 통 — 색이 다른 블록을 한 번에 하나씩 분류 | 18.8s | 0/20 | **空** |
-| <img src="../assets/gallery/circuit_fuse_repair.gif" width="260" alt="circuit/fuse_repair"> | 오리 | `circuit/fuse_repair` — 끊긴 회로를 **퓨즈를 물어다 끼워** 되살린다 | 26.73s | 0/20 | **空** |
-| <img src="../assets/gallery/tow_sled_delivery.gif" width="260" alt="tow/sled_delivery"> | 오리 | `tow/sled_delivery` — 썰매를 로프로 **끌어서** 배달한다 | 19.36s | 1/20 | **空** |
+| <img src="../assets/gallery/tabletop_pick_by_hand.gif" width="260" alt="tabletop/pick_by_hand"> | アーム | `tabletop/pick_by_hand` — 溶接なしで**指二本で挟んで**ブロックを持ち上げ、箱に入れる | 11.66s | 0/20 | 0.52 |
+| <img src="../assets/gallery/light_split_the_beam.gif" width="260" alt="light/split_the_beam"> | アヒル | `light/split_the_beam` — 一本の光線をスプリッターで分け、二つの光電池に届く**割り当て**を合わせる | 11.1s | 1/20 | **空** |
+| <img src="../assets/gallery/ball_bowling.gif" width="260" alt="ball/bowling"> | アヒル | `ball/bowling` — ボールを押してピン三本のどれか一本を倒すとドアが開く | 23.82s | 0/20 | **空** |
+| <img src="../assets/gallery/roller_glide_under.gif" width="260" alt="roller/glide_under"> | アヒル(ローラー) | `roller/glide_under` — ローラーを付けて**低いバーの下を滑って**通る | 14.66s | 0/20 | **空** |
+| <img src="../assets/gallery/wide_pit_detour.gif" width="260" alt="wide/pit_detour"> | 四足 | `wide/pit_detour` — 5×4 mの部屋で穴を回り込む。大きな体が立てる所だけが道になる | 30.78s | 0/20 | **空** |
+| <img src="../assets/gallery/tabletop_build_a_tower.gif" width="260" alt="tabletop/build_a_tower"> | アーム | `tabletop/build_a_tower` — ブロック二つを**積む**(積み重なりを読む部品が判定する) | 10.6s | 0/20 | **空** |
+| <img src="../assets/gallery/tabletop_conveyor_triage.gif" width="260" alt="tabletop/conveyor_triage"> | アーム | `tabletop/conveyor_triage` — ベルト二本、箱二つ。色の違うブロックを一つずつ仕分ける | 18.8s | 0/20 | **空** |
+| <img src="../assets/gallery/circuit_fuse_repair.gif" width="260" alt="circuit/fuse_repair"> | アヒル | `circuit/fuse_repair` — 切れた回路を**ヒューズをくちばしで運んで差し**直す | 26.73s | 0/20 | **空** |
+| <img src="../assets/gallery/tow_sled_delivery.gif" width="260" alt="tow/sled_delivery"> | アヒル | `tow/sled_delivery` — そりをロープで**引いて**届ける | 19.36s | 1/20 | **空** |
 
 ## はしご
 

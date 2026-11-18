@@ -44,15 +44,15 @@ Ten rooms, four bodies, ten different mechanisms. Every number is one this repos
 | | body | what happens on screen | scripted | random | trained |
 |---|---|---|---:|---:|---|
 | <img src="../assets/challenge-hammer-lose.gif" width="260" alt="coins/beat_the_hammer"> | quadruped | `coins/beat_the_hammer` - after 40 s a press smashes the coin lock; the door has to be open before that | 45.6s | 0/20 | **empty** |
-| <img src="../assets/gallery/tabletop_pick_by_hand.gif" width="260" alt="tabletop/pick_by_hand"> | 팔 | `tabletop/pick_by_hand` — 용접 없이 **손가락 둘로 눌러** 블록을 들어 상자에 넣는다 | 11.66s | 0/20 | 0.52 |
-| <img src="../assets/gallery/light_split_the_beam.gif" width="260" alt="light/split_the_beam"> | 오리 | `light/split_the_beam` — 한 줄기 빛을 분광기로 나눠 두 광전지에 **몫**을 맞춘다 | 11.1s | 1/20 | **empty** |
-| <img src="../assets/gallery/ball_bowling.gif" width="260" alt="ball/bowling"> | 오리 | `ball/bowling` — 공을 밀어 핀 세 개를 쓰러뜨리면 문이 열린다 | 23.82s | 0/20 | **empty** |
-| <img src="../assets/gallery/roller_glide_under.gif" width="260" alt="roller/glide_under"> | 오리(롤러) | `roller/glide_under` — 롤러를 달고 **낮은 바 밑을 미끄러져** 지나간다 | 14.66s | 0/20 | **empty** |
-| <img src="../assets/gallery/wide_pit_detour.gif" width="260" alt="wide/pit_detour"> | 네 발 | `wide/pit_detour` — 5×4 m 방에서 구덩이를 돌아간다 — 큰 몸이 설 수 있는 곳만 길이다 | 30.78s | 0/20 | **empty** |
-| <img src="../assets/gallery/tabletop_build_a_tower.gif" width="260" alt="tabletop/build_a_tower"> | 팔 | `tabletop/build_a_tower` — 블록 둘을 **쌓는다**(쌓임을 읽는 부품이 판정) | 10.6s | 0/20 | **empty** |
-| <img src="../assets/gallery/tabletop_conveyor_triage.gif" width="260" alt="tabletop/conveyor_triage"> | 팔 | `tabletop/conveyor_triage` — 두 벨트, 두 통 — 색이 다른 블록을 한 번에 하나씩 분류 | 18.8s | 0/20 | **empty** |
-| <img src="../assets/gallery/circuit_fuse_repair.gif" width="260" alt="circuit/fuse_repair"> | 오리 | `circuit/fuse_repair` — 끊긴 회로를 **퓨즈를 물어다 끼워** 되살린다 | 26.73s | 0/20 | **empty** |
-| <img src="../assets/gallery/tow_sled_delivery.gif" width="260" alt="tow/sled_delivery"> | 오리 | `tow/sled_delivery` — 썰매를 로프로 **끌어서** 배달한다 | 19.36s | 1/20 | **empty** |
+| <img src="../assets/gallery/tabletop_pick_by_hand.gif" width="260" alt="tabletop/pick_by_hand"> | arm | `tabletop/pick_by_hand` - lift the block with **two fingers pressing on it**, no weld, and put it in the box | 11.66s | 0/20 | 0.52 |
+| <img src="../assets/gallery/light_split_the_beam.gif" width="260" alt="light/split_the_beam"> | duck | `light/split_the_beam` - split one beam with a splitter and match the **share** that reaches two photocells | 11.1s | 1/20 | **empty** |
+| <img src="../assets/gallery/ball_bowling.gif" width="260" alt="ball/bowling"> | duck | `ball/bowling` - push the ball, and knocking any one of three pins down opens the door | 23.82s | 0/20 | **empty** |
+| <img src="../assets/gallery/roller_glide_under.gif" width="260" alt="roller/glide_under"> | duck (roller) | `roller/glide_under` - put the rollers on and **slide under a low bar** | 14.66s | 0/20 | **empty** |
+| <img src="../assets/gallery/wide_pit_detour.gif" width="260" alt="wide/pit_detour"> | quadruped | `wide/pit_detour` - go around the pit in a 5x4 m room; the only route is where a large body can stand | 30.78s | 0/20 | **empty** |
+| <img src="../assets/gallery/tabletop_build_a_tower.gif" width="260" alt="tabletop/build_a_tower"> | arm | `tabletop/build_a_tower` - **stack** two blocks (a part that reads the stack decides it) | 10.6s | 0/20 | **empty** |
+| <img src="../assets/gallery/tabletop_conveyor_triage.gif" width="260" alt="tabletop/conveyor_triage"> | arm | `tabletop/conveyor_triage` - two belts, two bins; sort blocks of different colours one at a time | 18.8s | 0/20 | **empty** |
+| <img src="../assets/gallery/circuit_fuse_repair.gif" width="260" alt="circuit/fuse_repair"> | duck | `circuit/fuse_repair` - bring a cut circuit back by **carrying a fuse in the beak and plugging it in** | 26.73s | 0/20 | **empty** |
+| <img src="../assets/gallery/tow_sled_delivery.gif" width="260" alt="tow/sled_delivery"> | duck | `tow/sled_delivery` - **drag** the sled on a rope and deliver it | 19.36s | 1/20 | **empty** |
 
 ## The ladder
 
