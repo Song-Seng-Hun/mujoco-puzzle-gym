@@ -27,7 +27,7 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 
 ## Features
 
-- **A part is a bundle of attributes.** Each part is a type (`type`) plus attributes: position, size, whether it stays on once stepped on, which way it opens, how much its position varies each episode, and so on. The parts and their attributes are listed in a separate [parts document](parts.en.md).
+- **A part is a bundle of attributes.** Each part is a type (`type`) plus attributes: position, size, whether it stays on once stepped on, which way it opens, how much its position varies each episode, and so on. Every type and its attributes are in the [parts and presets guide](parts-guide.en.md).
 - **The agent designs puzzles by assembling parts.** Pick parts, place them and wire them with signal links (`links`), and you have a puzzle. Simple rooms like switch → door → goal and rooms with stacked conditions, such as a door that opens only when several switches are all on (`require: all`), are built the same way. A missing part can be written and plugged in.
 - **Randomization is supported.** Today, part positions and the start position and heading are randomized within set ranges every episode, so a policy solves the puzzle instead of memorising the layout. Placing anywhere in a region, choosing one of several candidates, and randomizing the room's wiring and the room itself are in as well.
 - **Baseline environments are included.** The example room, a verified PPO training config, a pretrained policy (`mpg demo`), a random-policy comparison on the same seeds (`mpg eval --policy random`), and a set of deliberately broken configs ([`examples/broken/`](../examples/broken/)) give a starting point to compare new rooms or new algorithms against.
@@ -63,12 +63,12 @@ is where your algorithm goes.**
 > How many steps does yours need, and for how much?
 
 ```bash
-mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
-mpg eval runs/mine --episodes 100                   # held-out seeds from 1,000,000
-mpg eval runs/mine --episodes 100 --policy random    # the baseline on the same seeds
+uv run mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
+uv run mpg eval runs/mine --episodes 100                   # held-out seeds from 1,000,000
+uv run mpg eval runs/mine --episodes 100 --policy random    # the baseline on the same seeds
 ```
 
-The other six rooms, the ladder over all 44, the protocol and the known records are in
+The other challenge rooms, the ladder over all 44, the protocol and the known records are in
 [the challenge document](challenges.en.md).
 
 ## Install
@@ -129,22 +129,24 @@ All commands, training settings, adding parts and rewards, and swapping the body
 
 ## Results
 
-Seven milestones got it here. The loop of building, checking, training and diagnosing a room runs, and four bodies - a two-legged duck, a quadruped, a humanoid and a fixed-base arm that does not walk - share one boundary. A part declares the capability it needs and `mpg check` refuses a body that lacks it, naming the reason, so a tabletop room is solved only by the body with no legs and a wide room only by a large one.
+**This project is finished**: seven milestones got it to the state below, and it is not being grown further. The loop of building, checking, training and diagnosing a room runs, and four bodies - a two-legged duck, a quadruped, a humanoid and a fixed-base arm that does not walk - share **one body-adapter interface**. A part declares the capability it needs and `mpg check` refuses a body that lacks it, naming the reason, so a tabletop room is solved only by the body with no legs and a wide room only by a large one.
 
-- **Walking bodies**: 15 minutes of training on 12 cores solves **99%** of unseen layouts.
-- **The arm**: it picks objects up and moves them into boxes, towers and conveyors, and holds one by finger contact alone, with no weld, **20/20**.
-- **Closer to hardware**: from sensors alone (proprioception + joint encoders + wrist-camera gaze) reach is **0.93**, and with actuator latency and detection error (position noise, dropout, calibration bias, lens distortion) in the model, a policy trained under all of it scores **0.94**.
+Read the numbers as two kinds: the **scripted solution** (a script that knows the answer, used to prove a room is solvable) and a **trained policy** (reinforcement learning, or cloning the scripted solution).
 
-The milestones in detail, the designs that were reverted and the numbers that sent them back are in the [training log](training-log.md) and the [specs](specs/).
+- **Trained policy, walking body**: the duck on the example room [`examples/switch_door.yaml`](../examples/switch_door.yaml) solves **99%** of unseen layouts after 15 minutes of training on 12 cores. The quadruped and the humanoid solve rooms too, but **by the scripted solution**; neither has a trained record.
+- **Trained policy, close to hardware**: the arm, from sensors alone (proprioception + joint encoders + wrist-camera gaze), reaches **0.93** on `tabletop/reach_the_marker`. With actuator latency and four detection errors (position noise, dropout, calibration bias, lens distortion) in the model, a policy trained under all of it scores **0.94** on the same room.
+- **Scripted solution**: the arm picks objects up and moves them into boxes, towers and conveyors, and holds one by finger contact alone with no weld constraint - `mpg check` solves those rooms on **all 20 seeds**. The best a *trained* policy has done on the finger-grasp room is 0.52, and that policy comes out of one fit in three (see Limits).
+
+The milestones in detail, the designs that were reverted and the numbers that sent them back are in the [training log](training-log.md) and the [specs](specs/). All 44 rooms with their scripted, random and trained records are in one table in the [challenge document](challenges.en.md).
 
 ## Limits
 
 What is unfinished is written as measurements, not guesses.
 
 - **The room held by two fingers**: a policy that finishes it **does exist** (0.52 over 50 seeds), but that policy comes out of one fit in three. The variance is in the data distribution a seed draws, not in the initialization.
-- **40 ms of actuator latency**: five of the ten arm rooms collapse, and not for one reason but **four** - three never finish their `grab` and only two reach the travel stage. Seven attempted fixes each broke another room or opened none; which room stops at which sub-goal is printed by `python tools/latency_stall.py`.
-- **Observations**: by default the high-level policy reads the puzzle state directly. Adding a distance sensor and a camera to `obs:` trains on sensor observations, and `critic_obs:` gives privileged observations to the value function only, but camera training is about 15× slower, so the sensors-only policies read distances, joint encoders and marker gaze rather than the image itself.
-- **Order without a cue**: the best score on `order_blind` is 0.29, exactly at the theoretical ceiling. The walking bodies' basic rooms still have one fixed order (switch → door → goal).
+- **40 ms of actuator latency**: five of the ten arm rooms collapse, and not for one reason but **four different ones** - (1) in `fetch_the_steel` the weld catches and is torn off the next step (3.04 N against a 3.0 N limit), (2) in `conveyor_triage` it catches, is dragged, and tears five steps later at 11.39 N, (3) in `pick_by_hand` the fingers never close at all, and (4) `dead_wedge` and `lever_arm` stall on the final `goto goal`. Seven attempted fixes each broke another room or opened none; which room stops at which sub-goal is printed by `uv run python tools/latency_stall.py`.
+- **Observations**: the high-level policy (the one that reads the puzzle and decides where to go and how fast) uses privileged observations that read the puzzle state directly by default. Adding a distance sensor and a camera to `obs:` trains on sensor observations, and `critic_obs:` gives privileged observations to the value function only, but camera training is about 15× slower, so the sensors-only policies read distances, joint encoders and marker gaze rather than the image itself.
+- **Order without a cue**: the best score on `order_blind` is **0.29**. Guessing one of three orders gives 1/3, so that is exactly the ceiling for a policy that cannot read the cue, and nothing has gone above it. The walking bodies' basic rooms still have one fixed order (switch → door → goal).
 - **The walking policy** is the published one, frozen. It cannot walk backwards and moves forward at about 0.12-0.22 m/s, so room sizes and time limits have to match that speed.
 - Simulation only; moving to hardware (sim2real) is out of scope. Verified on macOS (Apple Silicon, CPU MuJoCo); Linux rendering and Windows are unverified.
 
@@ -169,7 +171,10 @@ The planning, design documents, code, tests and training experiments in this rep
 - [Guide](guide.en.md): the loop, commands, training settings, extending, body adapter
 - [Agent guide](../AGENTS.md): what an AI agent working in this repository reads first
 - [Sharing rooms and policies](community.en.md): submitting your rooms as PRs, sharing policies as ONNX, why we don't open other people's pickles
-- [Parts and attributes](parts.en.md): the parts available now and their attributes
+- [Parts and presets guide](parts-guide.en.md): every part type at a glance, each one's fields and values, building a room from presets
+- [Bodies and parts](bodies.md): which part works with which body, and the measurements behind each verdict
+- [Challenges](challenges.en.md): all 44 rooms with their scripted, random and trained records, and the protocol
+- [Parts and attributes](parts.en.md): the three milestone-1 parts in detail
 - [Training log](training-log.md): training results and diagnoses of broken settings
 - [Speed measurements](bench.md)
 - [Design documents](specs/)
