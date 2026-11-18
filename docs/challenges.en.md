@@ -13,7 +13,13 @@ One line, if you read nothing else:
 > Cloning the room's own scripted solution: **1.00 in 1.7 M steps**.
 > How many steps does yours need, and for how much?
 
-<p align="center"><img src="../assets/challenge-hammer.gif" width="360" alt="A quadruped sweeping up three coins while a hammer standing over the lock comes down at 40 seconds and smashes it."></p>
+<p align="center"><img src="../assets/challenge-hammer-lose.gif" width="380" alt="The press comes down on the lock and the lock turns dark red. The cable from the lock to the door is still there, but no number of further coins opens it, and the quadruped ends up in front of a shut door."></p>
+
+<p align="center"><b>That is the run you lose.</b> Once the press hits the lock (it turns dark red) the counter that was adding up coins reads zero for the rest of the episode, so the cable from the lock to the door has nothing to carry - and the door never opens again.</p>
+
+<p align="center"><img src="../assets/challenge-hammer-win.gif" width="300" alt="The same room won: the three coins are collected in time, the door opens, and the press coming down later changes nothing because the door is already open."></p>
+
+<p align="center">And this is the run you win - open the door at 28 s and the press falling at 40 s is <b>too late</b> (the door is <code>oneshot</code>: once open, it stays open).</p>
 
 ## The protocol - one number, fixed seeds, a declared budget
 
