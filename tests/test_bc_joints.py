@@ -156,13 +156,13 @@ def test_marker_noise_params_are_checked(item, match):
         MarkersSeen(None, None, **item)
 
 
-def in_view(envs):
+def in_view(envs, seed: int = 1_000_000):
     """Step both envs with a zero command until the clean one has the marker in view.
 
     The noise only touches the observation, so the two envs stay in the same state; the
     first element of each `markers_seen` slot is the seen flag.
     """
-    obs = [e.reset(seed=1_000_000)[0] for e in envs]
+    obs = [e.reset(seed=seed)[0] for e in envs]
     for _ in range(20):
         if obs[0][3] == 1.0:
             return obs
@@ -222,3 +222,52 @@ def test_the_scripted_solution_survives_declared_actuator_latency(so101_asset_di
                     break
     finally:
         env.close()
+
+
+def test_calibration_bias_is_one_draw_held_for_the_whole_episode(so101_asset_dir, repo_root):
+    """What makes `bias` different from `noise`, and harder: it cannot be averaged away.
+
+    Within an episode the offset is the same every step (so the clean and biased readings
+    differ by a constant); a different episode draws a different one. Same seed, same draw -
+    an episode stays reproducible.
+    """
+    clean = PuzzleEnv(task=marker_task(repo_root))
+    biased = PuzzleEnv(task=marker_task(repo_root, bias=0.05))
+    try:
+        a, b = in_view([clean, biased])
+        off = b[4:6] - a[4:6]
+        assert np.linalg.norm(off) > 1e-3, "the bias should move the reported position"
+        for _ in range(3):
+            zero = np.zeros(clean.action_space.shape, dtype=np.float32)
+            a = clean.step(zero)[0]
+            b = biased.step(zero)[0]
+            if a[3] == 1.0 and b[3] == 1.0:
+                assert np.allclose(b[4:6] - a[4:6], off, atol=1e-5)
+        a2, b2 = in_view([clean, biased], seed=1_000_007)
+        assert not np.allclose(b2[4:6] - a2[4:6], off, atol=1e-4)
+    finally:
+        clean.close()
+        biased.close()
+
+
+def test_lens_distortion_grows_with_distance_from_the_centre(so101_asset_dir, repo_root):
+    """The radial model: `r (1 + k r^2)`, so a marker further out moves further."""
+    from mujoco_puzzle_gym.gaze import MarkersSeen
+
+    item = MarkersSeen(None, None, distortion=-0.5)
+    near = np.array([[1.0, 0.1, 0.0, 0.0, 0.0]])
+    far = np.array([[1.0, 0.4, 0.0, 0.0, 0.0]])
+    moved = []
+    for row in (near, far):
+        xy = row[0, 1:3]
+        r2 = float(np.sum(xy ** 2))
+        moved.append(abs(float(xy[0]) * item.distortion * r2))
+    assert moved[1] > moved[0] * 5          # 0.4^3 vs 0.1^3 is 64x before the shared factor
+
+
+def test_distortion_must_be_a_number():
+    from mujoco_puzzle_gym.gaze import MarkersSeen
+    from mujoco_puzzle_gym.obs import ObsItemError
+
+    with pytest.raises(ObsItemError, match="distortion"):
+        MarkersSeen(None, None, distortion="barrel")
