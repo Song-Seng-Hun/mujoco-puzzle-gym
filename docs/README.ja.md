@@ -3,7 +3,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../assets/banner-dark.svg">
-    <img src="../assets/banner-light.svg" width="640" alt="ピクセルアートのバナー。Claudeがターミナルでroom.yamlを一行ずつ書くたびに、右側の部屋の見取り図に、仕切りに開口のある壁、黄色い床スイッチ、茶色のドア、青いゴールの円、スイッチとドアをつなぐ信号線がきらめきながら現れます。緑のチェックが出ると、小さなアヒル型ロボットがスイッチまで歩いて踏み、スイッチが緑に変わってドアがスライドして開きます。アヒルがドアを抜けてゴールに着くときらめきが出て、ターミナルにsuccess 0.99と表示され、Claudeがうなずきます。アヒルを動かしているのはClaudeではなく、学習したポリシーです。">
+    <img src="../assets/banner-light.svg" width="640" alt="ピクセルアートのバナー。Claudeがターミナルでroom.yamlを書くと、右側の見取り図に壁、床スイッチ、ドア、ゴールと信号線が現れ、アヒル型ロボットがスイッチを踏んでドアを開け、ゴールにたどり着くとターミナルにsuccess 0.99と表示されます。アヒルを動かしているのはClaudeではなく、学習したポリシーです。">
   </picture>
 </p>
 
@@ -23,7 +23,7 @@ AIコーディングエージェントがMuJoCoの物理シミュレーション
 
 エージェントはこのリポジトリに含まれていません。お使いのAIコーディングエージェント(Claude Codeなど)にYAMLとPythonのファイルを編集させ、`mpg`コマンドを実行させて使います。人も同じコマンドで直接使えます。
 
-最初の体はPollen Roboticsの[マイクロダック](https://github.com/pollen-robotics/microduck_rl)です。公開されている歩行ポリシーをそのまま使い、その上で「どこへどれくらいの速さで歩くか」だけを新しく学習します。
+標準で使う体はPollen Roboticsの[マイクロダック](https://github.com/pollen-robotics/microduck_rl)で、四足・ヒューマノイド・固定ベースのアームも一緒に入っています。マイクロダックは公開されている歩行ポリシーをそのまま使い、その上で「どこへどれくらいの速さで歩くか」だけを新しく学習します。
 
 ## 主な機能
 
@@ -38,36 +38,6 @@ AIコーディングエージェントがMuJoCoの物理シミュレーション
 内蔵部品**68種**、それらの値まで整えた**プリセット87種**、部屋ひとつがまるごと入った**部屋プリセット44種**があります。スイッチ・ドア・ゴールといった基本の部品から、論理ゲートとカウンター、動く台とコンベヤー、罠、磁石と光(鏡・分光器・光電池)、つかんで扱う物体やレバー・ダイヤルまで入っています。
 
 種類ごとの一覧と項目、値を整えたプリセットは[部品とプリセットの案内](parts-guide.ja.md)にあり、足りない部品はプラグインで足せます。
-
-## 挑戦してみてください
-
-部屋プリセットは**44個**あり、**学習した方策の記録があるのは四つ**です。残り**40マスは空**です。
-
-<table>
-<tr>
-<td width="50%"><img src="../assets/challenge-hammer-lose.gif" width="300" alt=""><br><b>締め切り</b> — 40秒後にプレスがコイン錠を壊す。先に扉を開けられなければその回は永久に終わり</td>
-<td width="50%"><img src="../assets/gallery/tabletop_pick_by_hand.gif" width="300" alt=""><br><b>指でつかむ</b> — 溶接なし、指二本で押さえて持つ。学習した方策の最高は<b>0.52</b></td>
-</tr>
-<tr>
-<td width="50%"><img src="../assets/gallery/light_split_the_beam.gif" width="300" alt=""><br><b>光の分け前</b> — 一本の光を分けて二つの光電池のしきい値を同時に越える</td>
-<td width="50%"><img src="../assets/gallery/ball_bowling.gif" width="300" alt=""><br><b>連鎖</b> — ボールを押してピン三つを倒すと扉が開く</td>
-</tr>
-</table>
-
-台本の解法はすべての部屋を解きます(リポジトリが毎回20シードで確認します)。均一ランダムな方策は
-ほとんどの部屋で0です。**その間があなたのアルゴリズムの場所です。**
-
-> `puzzles/tabletop/pick_and_place` — PPOを**六回、合計で約25 Mステップ、成功率は一度も0を超えませんでした**。
-> 部屋の台本解法を複製すると**1.7 Mステップで1.00**。
-> あなたのアルゴリズムは何ステップでいくらですか?
-
-```bash
-uv run mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
-uv run mpg eval runs/mine --episodes 100                   # held-outシード 1,000,000〜
-uv run mpg eval runs/mine --episodes 100 --policy random    # 同じシードの基準線
-```
-
-残りの挑戦部屋、44部屋のはしご、規約と既知の記録は[挑戦のドキュメント](challenges.ja.md)にあります。
 
 ## インストール
 
@@ -96,6 +66,36 @@ uv run mpg train examples/task_ppo.yaml --minutes 15 --id first
 ```bash
 uv run mpg render runs/first
 ```
+
+## 挑戦してみてください
+
+部屋プリセットは**44個**あり、**学習した方策の記録があるのは四つ**です。残り**40マスは空**です。
+
+<table>
+<tr>
+<td width="50%"><img src="../assets/challenge-hammer-lose.gif" width="300" alt=""><br><b>締め切り</b> — 40秒後にプレスがコイン錠を壊します。先に扉を開けられなければ、その回は永久に終わりです</td>
+<td width="50%"><img src="../assets/gallery/tabletop_pick_by_hand.gif" width="300" alt=""><br><b>指でつかむ</b> — 溶接なし、指二本で押さえて持ちます。学習した方策の最高は<b>0.52</b></td>
+</tr>
+<tr>
+<td width="50%"><img src="../assets/gallery/light_split_the_beam.gif" width="300" alt=""><br><b>光の分け前</b> — 一本の光を分けて、二つの光電池のしきい値を同時に越えます</td>
+<td width="50%"><img src="../assets/gallery/ball_bowling.gif" width="300" alt=""><br><b>連鎖</b> — ボールを押してピン三つを倒すと扉が開きます</td>
+</tr>
+</table>
+
+台本の解法はすべての部屋を解きます(リポジトリが毎回20シードで確認します)。均一ランダムな方策は
+ほとんどの部屋で0です。**その隙間がアルゴリズムの入る場所です。**
+
+> `puzzles/tabletop/pick_and_place` — PPOを**六回、合計で約25 Mステップ、成功率は一度も0を超えませんでした**。
+> 部屋の台本解法を複製すると**1.7 Mステップで1.00**。
+> 自分で作ったアルゴリズムは、何ステップでいくら出るでしょうか。
+
+```bash
+uv run mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
+uv run mpg eval runs/mine --episodes 100                   # held-outシード 1,000,000〜
+uv run mpg eval runs/mine --episodes 100 --policy random    # 同じシードの基準線
+```
+
+残りの挑戦部屋、44部屋のはしご、規約と既知の記録は[挑戦のドキュメント](challenges.ja.md)にあります。
 
 ## 自分のパズル部屋を作る
 
@@ -127,7 +127,7 @@ uv run mpg check my_room.yaml
 
 ## 結果
 
-**完結した状態です。** マイルストーン七つで以下まで来ていて、これ以上育てている途中ではありません。部屋を組み、点検し、学習し、診断するサイクルが回り、四つの体(二足のダック、四足、ヒューマノイド、そして歩かない固定ベースのアーム)が**同じ体アダプターのインターフェース**を使います。部品は自分に必要な能力を宣言し、できない体は `mpg check` が理由を言って断るので、卓上の部屋は脚のない体だけが解き、広い部屋は大きな体だけが解きます。
+**ここまでが完成した範囲です。** マイルストーン七つで以下の結果まで来ていて、いまは機能をこれ以上増やしていません。部屋を組み、点検し、学習し、診断するサイクルが回り、四つの体(二足のダック、四足、ヒューマノイド、そして歩かない固定ベースのアーム)が**同じ体アダプターのインターフェース**を使います。部品は自分に必要な能力を宣言し、できない体は `mpg check` が理由を言って断るので、卓上の部屋は脚のない体だけが解き、広い部屋は大きな体だけが解きます。
 
 数値は二種類を区別して読んでください — **台本の解答**(答えを知っているスクリプト。部屋が解けることを示すためのもの)と、**学習したポリシー**(強化学習、または台本の複製で得たもの)です。
 
@@ -142,9 +142,9 @@ uv run mpg check my_room.yaml
 終えられなかったことは、推測ではなく測って書きました。
 
 - **指二本で押さえて運ぶ部屋**: 完走するポリシーは**あります**(50シードで0.52)。ただしそういうポリシーが出るのは三回に一回で、ばらつきは学習の初期化ではなく、そのシードが引くデータ分布の側でした。
-- **アクチュエーター遅延40 ms**: アームの部屋十のうち五つが解けません。原因は一つではなく**四つ、しかも互いに違います** — ① `fetch_the_steel` は溶接が付いた次のステップで引き剥がされ(3.04 N、上限3.0)、② `conveyor_triage` は付いたあと引きずられて五ステップ後に11.39 Nで剥がれ、③ `pick_by_hand` は接触によるつかみが最後まで成立せず(`_pinched` が一度も真になりません。指が閉じたかどうかとは別の話です)、④ `dead_wedge` と `lever_arm` は最後の `goto goal` で止まります。七回の修正はいずれも別の部屋を壊すか、どの部屋も開けませんでした。どの部屋がどのサブゴールで止まるかは `uv run python tools/latency_stall.py` が出力します。
+- **アクチュエーター遅延40 ms**: アームの部屋十のうち五つが解けません。原因は一つではなく**四つ、しかも互いに違います**。三つはつかむ段階を終えられず(持ったものが力の上限を超えて外れる、あるいは接触だけのつかみが最後まで成立しません)、二つは最後の移動で止まります。七回の修正はいずれも別の部屋を壊すか、どの部屋も開けませんでした。どの部屋がどの段階で止まるか、測った力と再現の方法は[学習の記録](training-log.md)にあります。
 - **観測**: 上位ポリシー(パズルを見てどこへどれだけ速く行くかを決めるポリシー)は、標準ではパズルの状態をそのまま読む特権観測を使います。`obs:` に距離センサーとカメラを入れればセンサー観測で学習でき、`critic_obs:` で価値関数にだけ特権観測を渡せますが、カメラでの学習は約15倍遅いため、センサーだけのポリシーは画像そのものではなく距離・関節エンコーダー・マーカー視線を読みます。
-- **手がかりなしの順序推論**: 手がかりを切った部屋(`order_blind`)の最高記録は**0.29**です。三つの候補プレートから当てずっぽうに選べば1/3なので、0.29は手がかりを読めないポリシーの上限に**近い**値で、それを超えたものはありません。歩く体の基本の部屋は順序が常に同じです(スイッチ → ドア → ゴール)。
+- **手がかりなしの順序推論**: 手がかりを切った部屋(`order_blind`)の最高記録は**0.29**です。三つの候補プレートから当てずっぽうに選べば1/3(≒ 0.33)なので、0.29は手がかりを読めないポリシーの上限に近い値で、それを超えたものはありません。歩く体の基本の部屋は順序が常に同じです(スイッチ → ドア → ゴール)。
 - **歩行ポリシー**は体ごとに公開されたものをそのまま固定して使います。**マイクロダック**のポリシーは後ろに歩けず、前には約0.12〜0.22 m/sなので、その体を使う部屋は大きさと制限時間をこの速さに合わせる必要があります。ほかの体は数値が違います — 四足は測定で1.019 m/sで、コミュニティのチェックポイントを使います([体と部品](bodies.ja.md))。
 - シミュレーションだけを扱います。実機へ移すこと(sim2real)は範囲外です。macOS(Apple Silicon, CPU MuJoCo)で確認し、Linuxの描画とWindowsは未確認です。
 
@@ -159,8 +159,8 @@ uv run mpg check my_room.yaml
 - 歩行ポリシー: [pollen-robotics/microduck-policies](https://huggingface.co/pollen-robotics/microduck-policies)の`velstand.onnx`、Apache-2.0。
 - 二つめの体のモデル: [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)の固定コミット`370c4396`の`unitree_go2/`、BSD-3-Clause。モデルもメッシュも同じです。
 - 固定ベースのアームのモデル: [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)の固定コミット`370c4396`の`robotstudio_so101/`、Apache-2.0。使えるライセンスの事前学習ポリシーが無いため、制御は逆運動学です。
-- ヒューマノイドのモデル: 同じコミットの`unitree_g1/`、BSD-3-Clause。歩行ポリシーは[unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym)の固定コミットの`deploy/pre_train/g1/motion.pt`、BSD-3-Clause — **このポリシーも公式に凍結された配布ではなく**、そのリポジトリが配布例と一緒に置いているチェックポイントです。
-- 二つめの体の歩行ポリシー: [diasAiMaster/unitree-go2-velocity-flat](https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat)の固定リビジョン`9a723b7a`、BSD-3-Clause。**このポリシーはUnitreeの公式な配布ではなく、コミュニティが上げたチェックポイントです。** 平地で学習しており(`gait_phase`なし、action scale 0.5)、学習コードは上流を変更していません。詳しい事実は[体と部品](bodies.ja.md)にあります。
+- ヒューマノイドのモデル: 同じコミットの`unitree_g1/`、BSD-3-Clause。歩行ポリシーは[unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym)の固定コミットの`deploy/pre_train/g1/motion.pt`、BSD-3-Clause。公式に凍結された配布ではなく、そのリポジトリが配布例と一緒に置いているチェックポイントです。
+- 二つめの体の歩行ポリシー: [diasAiMaster/unitree-go2-velocity-flat](https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat)の固定リビジョン`9a723b7a`、BSD-3-Clause。Unitreeの公式な配布ではなく、コミュニティが上げたチェックポイントです。平地で学習しています。学習の設定と測定値は[体と部品](bodies.ja.md)にあります。
 - デモ動画と画像にはCC BY-NC-SA 4.0のメッシュが写っています。
 - これは非公式のプロジェクトで、Pollen Roboticsとは関係ありません。
 
@@ -170,9 +170,9 @@ uv run mpg check my_room.yaml
 - [エージェント向け案内](../AGENTS.md): AIエージェントがこのリポジトリで作業するとき最初に読む文書(英語)
 - [部屋とポリシーを共有する](community.ja.md): 作った部屋をPRで送る、ポリシーをONNXで共有する、他人のpickleを開かない理由
 - [部品とプリセットの案内](parts-guide.ja.md): 部品の種類を一覧で、各項目と値、プリセットで部屋を組む
-- [体と部品](bodies.md): どの部品がどの体で動くか、体ごとに測った値
+- [体と部品](bodies.ja.md): どの部品がどの体で動くか、体ごとに測った値
 - [挑戦のドキュメント](challenges.ja.md): 44部屋の台本・ランダム・学習の記録の表と規約
-- [部品の一覧と属性](parts.ja.md): 最初のマイルストーンの部品三つの属性
+- [部品の一覧と属性](parts.ja.md): 最初のマイルストーンの部品三つだけを扱う古い文書(全体は上の部品とプリセットの案内)
 - [学習の記録](training-log.md): 学習結果と、わざと壊した設定に対する診断
 - [速度の測定](bench.md)
 - [設計文書](specs/)
