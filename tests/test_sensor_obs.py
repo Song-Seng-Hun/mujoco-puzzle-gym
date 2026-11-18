@@ -376,7 +376,10 @@ def test_all_five_hardware_items_compose_in_one_environment(so101_asset_dir, rep
         assert env.parts["_beak"].hold == "contact"
         assert not env.parts["_beak"]._eq, "a contact hold builds no welds"
         obs, _ = env.reset(seed=0)
-        assert np.asarray(obs).shape == (24,), obs
+        # 9 proprioception + 5 per marked part. It was 24 with three marked parts (the
+        # block, the box, the door); R133 marked the goal as well, because the only training
+        # run that has ever finished this room could see it (0.52 over 50 held-out seeds).
+        assert np.asarray(obs).shape == (29,), obs
         res = check_solver(env, seeds=1, need=1)
         assert res["successes"] == 1, res
     finally:

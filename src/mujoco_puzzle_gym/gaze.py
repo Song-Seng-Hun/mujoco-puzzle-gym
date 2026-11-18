@@ -255,6 +255,11 @@ class MarkersSeen:
       - `dropout`: the chance, per marker per step, that a marker in view is **not
         reported** - a blur, a glare, a decode that failed. The slot reads zeros, exactly as
         if it were out of view.
+      - `bias`: calibration error [m]. Drawn **once per episode** and then held, because an
+        extrinsic that is a little wrong is wrong the same way all episode. That is what
+        makes it harder than `noise`: averaging over frames does not remove it.
+      - `distortion`: the radial lens coefficient `k`, reporting a point at radius `r` as
+        `r (1 + k r^2)` - zero error at the optical centre, growing with distance.
 
     Both default to 0, so `markers_seen` written as a bare name is the noise-free geometric
     test it has always been. Measured: a policy trained noise-free holds 0.93 -> 0.90 at
@@ -264,28 +269,51 @@ class MarkersSeen:
 
     sensor = True
 
-    def __init__(self, env, spec, noise: float = 0.0, dropout: float = 0.0):
+    def __init__(self, env, spec, noise: float = 0.0, dropout: float = 0.0,
+                 bias: float = 0.0, distortion: float = 0.0):
         from .obs import ObsItemError
 
-        for name, v in (("noise", noise), ("dropout", dropout)):
+        for name, v in (("noise", noise), ("dropout", dropout), ("bias", bias)):
             if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
                 raise ObsItemError(f"markers_seen {name} must be a number >= 0, got {v!r}")
+        if isinstance(distortion, bool) or not isinstance(distortion, (int, float)):
+            raise ObsItemError(f"markers_seen distortion must be a number, got {distortion!r}")
         if dropout > 1:
             raise ObsItemError(f"markers_seen dropout is a probability, got {dropout!r}")
         self.noise = float(noise)
         self.dropout = float(dropout)
+        self.bias = float(bias)
+        self.distortion = float(distortion)
+        self._bias = np.zeros(2)
 
     def __call__(self, env):
         out = _markers_seen(env).reshape(-1, 5)
-        if len(out) and (self.dropout > 0 or self.noise > 0):
+        if not len(out):
+            return out.ravel()
+        if self.bias > 0 and env.steps == 0:
+            # Calibration error: an extrinsic that is a little wrong is wrong the same way
+            # all episode, so this is drawn once per episode and then held - which is what
+            # makes it different from `noise`, and harder: it cannot be averaged out.
+            self._bias = env.np_random.normal(0.0, self.bias * env.noise_scale, 2)
+        seen = out[:, 0] > 0.5
+        if self.dropout > 0:
+            missed = seen & (env.np_random.random(len(out)) < self.dropout)
+            out[missed] = 0.0
             seen = out[:, 0] > 0.5
-            if self.dropout > 0:
-                missed = seen & (env.np_random.random(len(out)) < self.dropout)
-                out[missed] = 0.0
-                seen = out[:, 0] > 0.5
-            std = self.noise * env.noise_scale
-            if std > 0 and seen.any():
-                out[seen, 1:] += env.np_random.normal(0.0, std, (int(seen.sum()), 4))
+        if not seen.any():
+            return out.ravel()
+        if self.distortion:
+            # Lens distortion, the radial model: a point at radius r is reported at
+            # r * (1 + k r^2), so the error grows with distance from the optical centre and
+            # is zero at it. k < 0 is barrel, k > 0 pincushion.
+            xy = out[seen, 1:3]
+            r2 = np.sum(xy ** 2, axis=1, keepdims=True)
+            out[seen, 1:3] = xy * (1.0 + self.distortion * r2)
+        std = self.noise * env.noise_scale
+        if std > 0:
+            out[seen, 1:] += env.np_random.normal(0.0, std, (int(seen.sum()), 4))
+        if self.bias > 0:
+            out[seen, 1:3] += self._bias
         return out.ravel()
 
 
