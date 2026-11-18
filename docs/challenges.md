@@ -1,6 +1,6 @@
 # 도전 — 방마다 비어 있는 칸 하나
 
-이 저장소에는 방 프리셋 **44개**가 있고, 그중 **학습된 정책의 기록이 있는 방은 세 개**입니다.
+이 저장소에는 방 프리셋 **44개**가 있고, 그중 **학습된 정책의 기록이 있는 방은 네 개**입니다.
 나머지 41개의 "학습된 정책" 칸은 **비어 있습니다.** 아래 표가 그 빈 칸입니다.
 
 대본 해답은 모든 방을 풉니다(저장소가 매번 20시드로 확인합니다). 무작위 정책은 거의 모든 방에서
@@ -27,9 +27,9 @@
 있습니다**(시드만 달랐습니다). 그래서 세 가지를 같이 적습니다.
 
 ```bash
-mpg train examples/task_<방>.yaml --minutes <예산> --id mine
-mpg eval runs/mine --episodes 100            # held-out 시드 1,000,000~1,000,099
-mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 기준선
+uv run mpg train examples/task_<방>.yaml --minutes <예산> --id mine
+uv run mpg eval runs/mine --episodes 100            # held-out 시드 1,000,000~1,000,099
+uv run mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 기준선
 ```
 
 - **숫자 하나**: `mpg eval`의 `success_rate`. 학습 중 성공률이 아닙니다.
@@ -42,7 +42,7 @@ mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 기준선
 
 | | 몸 | 화면에서 벌어지는 일 | 대본 | 무작위 | 학습된 정책 |
 |---|---|---|---:|---:|---|
-| <img src="../assets/challenge-hammer-lose.gif" width="260" alt="coins/beat_the_hammer"> | 네 발 | `coins/beat_the_hammer` — 40초 뒤 프레스가 코인 자물쇠를 부순다 — 그 전에 문을 열어야 한다 | 44.2s | 0/20 | **비어 있음** |
+| <img src="../assets/challenge-hammer-lose.gif" width="260" alt="coins/beat_the_hammer"> | 네 발 | `coins/beat_the_hammer` — 40초 뒤 프레스가 코인 자물쇠를 부순다 — 그 전에 문을 열어야 한다 | 45.6s | 0/20 | **비어 있음** |
 | <img src="../assets/gallery/tabletop_pick_by_hand.gif" width="260" alt="tabletop/pick_by_hand"> | 팔 | `tabletop/pick_by_hand` — 용접 없이 **손가락 둘로 눌러** 블록을 들어 상자에 넣는다 | 11.66s | 0/20 | 0.52 |
 | <img src="../assets/gallery/light_split_the_beam.gif" width="260" alt="light/split_the_beam"> | 오리 | `light/split_the_beam` — 한 줄기 빛을 분광기로 나눠 두 광전지에 **몫**을 맞춘다 | 11.1s | 1/20 | **비어 있음** |
 | <img src="../assets/gallery/ball_bowling.gif" width="260" alt="ball/bowling"> | 오리 | `ball/bowling` — 공을 밀어 핀 세 개를 쓰러뜨리면 문이 열린다 | 23.82s | 0/20 | **비어 있음** |
@@ -63,7 +63,7 @@ mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 기준선
 
 | | 방 | 대본 해답 | 무작위 | 학습된 정책 |
 |---|---|---:|---:|---|
-| ★★★ | `wide/switch_door` | 24.58s | 0/20 | **비어 있음** |
+| ★★★ | `wide/switch_door` | 24.58s | 0/20 | **0.96** (네 발, PPO 30분) |
 | ★★★★ | `wide/pit_detour` | 30.78s | 0/20 | **비어 있음** |
 | ★★★★ | `coins/beat_the_hammer` | 45.6s | 0/20 | **비어 있음** |
 
@@ -123,7 +123,7 @@ mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 기준선
 | 무엇 | 측정된 상태 |
 |---|---|
 | **손가락으로 집어 운반** (`tabletop/pick_by_hand`) | 완주하는 정책이 **있습니다** — 50시드 0.52. 그런데 그 조합이 그런 정책을 내는 건 **세 번에 한 번**이고, 아홉 번 적합을 더 돌려도 바뀌지 않았습니다(분산은 데이터 쪽) |
-| **40 ms 액추에이터 지연** | 팔 방 열 개 중 **다섯**이 여기서 무너집니다. 한 가지 원인이 아니라 **넷**입니다: 셋은 `grab`을 끝내지 못하고(용접이 3.04~11.39 N으로 찢기거나 손가락이 아예 안 닫힘), 둘만 `goto goal`에 도달해 멈춥니다. 일곱 번의 수정 시도가 전부 다른 방을 깨거나 아무 방도 못 열었습니다. 어느 방이 어느 하위 목표에서 멈추는지는 `python tools/latency_stall.py`가 찍습니다 |
+| **40 ms 액추에이터 지연** | 팔 방 열 개 중 **다섯**이 여기서 무너집니다. 한 가지 원인이 아니라 **넷**입니다: 셋은 `grab`을 끝내지 못하고(용접이 3.04~11.39 N으로 찢기거나, `_pinched`가 끝까지 거짓이어서 접촉 집기가 성립하지 않습니다), 둘만 `goto goal`에 도달해 멈춥니다. 일곱 번의 수정 시도가 전부 다른 방을 깨거나 아무 방도 못 열었습니다. 어느 방이 어느 하위 목표에서 멈추는지는 `uv run python tools/latency_stall.py`가 찍습니다 |
 | **단서 없는 순서 추론** (`order_blind`) | 이론적 상한 1/3에 **정확히 붙은 0.29**. 단서를 못 읽는 정책이 낼 수 있는 최선이고, 그 위로 올라간 정책은 없습니다 |
 
 ## 알려진 기록
@@ -133,7 +133,8 @@ mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 기준선
 | `tabletop/reach_the_marker` | 팔 | **센서만** | **0.93** | PPO 15분, 4.08 M 스텝 |
 | `tabletop/pick_and_place` | 팔 | 특권 | **1.00** | 대본 복제(`algo: bc`), 1.70 M 스텝 |
 | `tabletop/pick_by_hand` | 팔 | **센서만** | **0.52** | 대본 복제 + DAgger, 세 번에 한 번 |
-| `examples/rooms/switch_door` | 오리 | 특권 | 0.99 | PPO 15분 (예제 방, 프리셋 아님) |
+| `wide/switch_door` | 네 발 | 특권 | **0.96** | PPO 30분, 2.85 M 스텝 |
+| `examples/switch_door.yaml` | 오리 | 특권 | 0.99 | PPO 15분 (예제 방, 프리셋 아님) |
 
 숫자의 출처와 실패한 시도들은 [학습 기록](training-log.md)에 있습니다. 그 문서에는 측정 함정
 **열 개**도 같이 적혀 있습니다 — 재는 쪽에서 속는 방법이 그만큼 많았습니다.

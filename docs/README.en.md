@@ -41,7 +41,7 @@ Every type, its fields and the presets are in the [parts and presets guide](part
 
 ## Take the challenge
 
-There are **44 room presets**. **Three** have a trained policy's number. The other **41 cells are empty.**
+There are **44 room presets**. **Four** have a trained policy's number. The other **40 cells are empty.**
 
 <table>
 <tr>
@@ -58,7 +58,7 @@ The scripted solution solves every room (the repository checks that over 20 seed
 time). A uniform random policy scores zero in almost all of them. **The gap between the two
 is where your algorithm goes.**
 
-> `puzzles/tabletop/pick_and_place` - PPO: **25 M steps, success 0.00**.
+> `puzzles/tabletop/pick_and_place` - PPO over **six runs, about 25 M steps in all, and the success rate never once rose above 0**.
 > Cloning the room's own scripted solution: **1.00 in 1.7 M steps**.
 > How many steps does yours need, and for how much?
 
@@ -134,7 +134,7 @@ All commands, training settings, adding parts and rewards, and swapping the body
 Read the numbers as two kinds: the **scripted solution** (a script that knows the answer, used to prove a room is solvable) and a **trained policy** (reinforcement learning, or cloning the scripted solution).
 
 - **Trained policy, walking body**: the duck on the example room [`examples/switch_door.yaml`](../examples/switch_door.yaml) solves **99%** of unseen layouts after 15 minutes of training on 12 cores. The quadruped has a trained record of its own: 30 minutes of PPO on the room built to its dimensions (`puzzles/wide/switch_door`) scores **0.96** over 100 unseen layouts, against 0.00 for a random policy on the same seeds. The humanoid solves that room too, but **by the scripted solution**; it has no trained record.
-- **Trained policy, close to hardware**: the arm, from sensors alone (proprioception + joint encoders + wrist-camera gaze), reaches **0.93** on `tabletop/reach_the_marker`. With actuator latency and four detection errors (position noise, dropout, calibration bias, lens distortion) in the model, a policy trained under all of it scores **0.94** on the same room.
+- **Trained policy, close to hardware**: the arm, from sensors alone (proprioception + wrist-camera gaze, `obs: [gravity, ang_vel, lin_vel, markers_seen]`), reaches **0.93** on `tabletop/reach_the_marker` over 100 unseen layouts. Put **four detection errors** (position noise, dropout, calibration bias, lens distortion) in the model and train under them, and the policy scores **0.94** with all four on and 0.96 with them off, losing nothing (the same 50 seeds). Actuator latency is not part of that number - latency is under Limits.
 - **Scripted solution**: the arm picks objects up and moves them into boxes, towers and conveyors, and holds one by finger contact alone with no weld constraint - `mpg check` solves those rooms on **all 20 seeds**. The best a *trained* policy has done on the finger-grasp room is 0.52, and that policy comes out of one fit in three (see Limits).
 
 The milestones in detail, the designs that were reverted and the numbers that sent them back are in the [training log](training-log.md) and the [specs](specs/). All 44 rooms with their scripted, random and trained records are in one table in the [challenge document](challenges.en.md).
@@ -146,7 +146,7 @@ What is unfinished is written as measurements, not guesses.
 - **The room held by two fingers**: a policy that finishes it **does exist** (0.52 over 50 seeds), but that policy comes out of one fit in three. The variance is in the data distribution a seed draws, not in the initialization.
 - **40 ms of actuator latency**: five of the ten arm rooms collapse, and not for one reason but **four different ones** - (1) in `fetch_the_steel` the weld catches and is torn off the next step (3.04 N against a 3.0 N limit), (2) in `conveyor_triage` it catches, is dragged, and tears five steps later at 11.39 N, (3) in `pick_by_hand` the contact grasp never forms (`_pinched` is never once true, which is a separate thing from whether the fingers closed), and (4) `dead_wedge` and `lever_arm` stall on the final `goto goal`. Seven attempted fixes each broke another room or opened none; which room stops at which sub-goal is printed by `uv run python tools/latency_stall.py`.
 - **Observations**: the high-level policy (the one that reads the puzzle and decides where to go and how fast) uses privileged observations that read the puzzle state directly by default. Adding a distance sensor and a camera to `obs:` trains on sensor observations, and `critic_obs:` gives privileged observations to the value function only, but camera training is about 15× slower, so the sensors-only policies read distances, joint encoders and marker gaze rather than the image itself.
-- **Order without a cue**: the best score on `order_blind` is **0.29**. Guessing one of three orders gives 1/3, so that is exactly the ceiling for a policy that cannot read the cue, and nothing has gone above it. The walking bodies' basic rooms still have one fixed order (switch → door → goal).
+- **Order without a cue**: the best score on `order_blind` is **0.29**. Guessing one of the three candidate plates gives 1/3, so that is exactly the ceiling for a policy that cannot read the cue, and nothing has gone above it. The walking bodies' basic rooms still have one fixed order (switch → door → goal).
 - **The walking policy** is the published one, frozen. It cannot walk backwards and moves forward at about 0.12-0.22 m/s, so room sizes and time limits have to match that speed.
 - Simulation only; moving to hardware (sim2real) is out of scope. Verified on macOS (Apple Silicon, CPU MuJoCo); Linux rendering and Windows are unverified.
 
