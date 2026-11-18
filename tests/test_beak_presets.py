@@ -446,6 +446,39 @@ def test_lever_snapshot_and_reset(make):
     assert env.signals.get("lv.angle") == 1.0
 
 
+def test_turn_reports_a_lever_left_on_the_wrong_cell(make):
+    """R141: `turn` used to end wherever the lever happened to be. The postcondition in
+    `ScriptedSolver._unfinished` reads the setting itself, so a wrong cell is a failure."""
+    env = make([{**LEVER, "detents": 5, "pos": [0.5, 0.0]}])
+    sol = ScriptedSolver(env)
+    assert env.parts["lv"].value == -1.0
+    assert sol._unfinished(("turn", "lv", -1.0)) is None
+    assert sol._unfinished(("turn", "lv", 0.0)) == "`turn lv 0` ended at -1"
+
+
+@pytest.mark.slow
+def test_a_push_lever_lands_on_a_middle_cell(asset_dir, tmp_path):
+    """A 5-cell lever asked for the middle cell (R141). The push reached 0.00 and then the
+    walk-off turned at the paddle and dragged it to +0.50, three seeds in five, while the
+    sub-goal read clean. The walk-off now steps clear of the sweep before it turns."""
+    parts = [{**LEVER, "detents": 5, "pos": [0.3, 0.0]}]
+    bad = {}
+    for seed in range(5):
+        path = beak_room(tmp_path, parts, ["turn lv 0"], stand=False, name=f"mid_{seed}")
+        env = PuzzleEnv(task={"actions": ["move", "head", "grab"]}, room=path)
+        sol = ScriptedSolver(env)
+        env.reset(seed=seed)
+        sol.reset()
+        for _ in range(int(40 * env.hz)):
+            env.step(sol.act())
+            if not sol.in_demo or env.body_state.fallen:
+                break
+        if sol.in_demo or sol.demo_unfinished or env.parts["lv"].value != 0.0:
+            bad[seed] = (sol.step_i, sol.demo_unfinished, env.parts["lv"].value)
+        env.close()
+    assert not bad, bad
+
+
 def test_the_beak_holds_a_grab_levers_knob(make):
     env = make([{**LEVER, "mode": "grab", "pos": [0.5, 0.0]}])
     lv = env.parts["lv"]

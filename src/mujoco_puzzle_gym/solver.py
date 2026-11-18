@@ -193,7 +193,17 @@ class ScriptedSolver:
     #: nineteen would be a rule nobody measured, and a wrong one fails honest rooms.
     def _unfinished(self, entry: tuple) -> str | None:
         cmd = entry[0]
-        if cmd == "grab":
+        if cmd == "turn":
+            # R141, the third verb caught lying: a push lever that jumped past its goal cell
+            # ends the sub-goal anyway, because the body arrives at the lever and `steer`
+            # returns None. Measured on a 5-cell lever asked for the middle cell: 3 of 5
+            # seeds ended at +0.50 with the demo reading clean. The setting itself answers it.
+            part = self.env.parts[entry[1]]
+            goal = entry[2]
+            at = part.cell if getattr(part, "object_kind", None) == "dial" else part.value
+            if not bool(np.isclose(float(at), float(goal))):
+                return f"`turn {entry[1]} {goal:g}` ended at {float(at):g}"
+        elif cmd == "grab":
             obj = self._object(entry[1])
             if self.carrier.held() is not obj:
                 return f"`grab {entry[1]}` ended without holding it"
