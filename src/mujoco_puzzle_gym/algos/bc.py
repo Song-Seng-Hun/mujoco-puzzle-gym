@@ -29,6 +29,12 @@ privileged reasoning included - what the policy ends up reading is only the task
 
 `algo_kwargs`: `demo_episodes` (default 200), `noise` (0.15), `noise_share` (0.5),
 `epochs` (40), `batch` (256), `lr` (1e-3), `rollout_share` (0.25 of the time budget),
+`tail_weight` (1, off) and `tail_share` (0.3): repeat the last share of each solved
+episode that many times, so a multi-stage room's final stage is not a tenth of the data.
+Measured on the contact carry room with weight 4: the fit improved (loss 0.0094 -> 0.0008)
+and the policy stopped picking the block up at all (`stage` 2.03 -> 0.0). Whichever stage
+the data emphasises is the stage it does, which is the reward ladder's result again (R127) -
+so what that room is short of is not data or shaping.
 `rounds` (1) and `round_episodes` (100): each round fits, then flies the fitted policy for
 that many episodes with the solver labelling what it visits - which both scores the model
 and feeds the next round's fit. The best-scoring model is what gets saved.
@@ -50,7 +56,8 @@ from ..task import TaskError
 from .base import Deadline, Trainer
 
 DEFAULTS = {"demo_episodes": 200, "noise": 0.15, "noise_share": 0.5, "epochs": 40,
-            "batch": 256, "lr": 1e-3, "rollout_share": 0.25, "rounds": 1, "round_episodes": 100}
+            "batch": 256, "lr": 1e-3, "rollout_share": 0.25, "rounds": 1, "round_episodes": 100,
+            "tail_weight": 1, "tail_share": 0.3}
 
 
 class Mlp(nn.Module):
@@ -139,6 +146,18 @@ class BehaviourCloning(Trainer):
                 if ok or drive:
                     obs_rows += [p[0] for p in pairs]
                     act_rows += [p[1] for p in pairs]
+                    # The end of a demonstration is the smallest part of it, and on a
+                    # multi-stage room it is the part a clone fails in: measured on the
+                    # contact carry room, the policy put the block in the box in half its
+                    # episodes and then never finished, while the last stage was about a
+                    # tenth of the pairs. `tail_weight` repeats the last `tail_share` of each
+                    # episode so the fit does not average it away.
+                    reps = int(self.kw["tail_weight"]) - 1
+                    if ok and reps > 0:
+                        cut = int(len(pairs) * (1.0 - float(self.kw["tail_share"])))
+                        tail = pairs[cut:]
+                        obs_rows += [p[0] for p in tail for _ in range(reps)]
+                        act_rows += [p[1] for p in tail for _ in range(reps)]
         finally:
             env.close()
         info = {f"{tag}episodes": attempted, f"{tag}episodes_solved": solved,
