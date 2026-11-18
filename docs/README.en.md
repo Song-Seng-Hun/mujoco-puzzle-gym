@@ -92,17 +92,23 @@ All commands, training settings, adding parts and rewards, and swapping the body
 ## Progress
 
 - [x] **Milestone 1**: the full loop of building, checking, training, diagnosing and evaluating a switch → door → goal puzzle. The built-in parts are switch, door and goal; other devices can be added as plugins.
-- [ ] **Milestone 2**: a part catalog (in progress)
-  - [x] Buttons, sensors, logic gates, counters, coins, warps, balls and goal nets, several kinds of door, checkpoints and curriculum training, ArUco markers and a gaze sensor, camera and distance-sensor observations. The 35 part presets and the example rooms are in the [parts and presets guide](parts-guide.en.md).
+- [x] **Milestone 2**: a part catalog
+  - [x] Buttons, sensors, logic gates, counters, coins, warps, balls and goal nets, several kinds of door, checkpoints and curriculum training, ArUco markers and a gaze sensor, camera and distance-sensor observations. The part presets and the example rooms are in the [parts and presets guide](parts-guide.en.md).
   - [x] Moving devices (platforms, conveyors, springs), traps, robots that move on their own
-  - [ ] Cubes and beak grabbing (a simulation simplification that does not carry over to the real duck: a constraint attaches the cube to the beak tip), tow ropes, more episode randomization
-- [ ] **Milestone 3**: a second body (a quadruped) and the body capability gate — a part declares what it needs from the body, and `mpg check` refuses a body that lacks it, with the reason
-- [ ] **Milestone 4**: a fixed-base arm and a humanoid, and puzzles whose answer is the difference between bodies
+  - [x] Cubes and beak grabbing, tow ropes (`puzzles/tow/`), more episode randomization (anywhere in a region, one of several candidates, the room's wiring and the room itself)
+- [x] **Milestone 3**: a second body (a quadruped) and the body capability gate — a part declares what it needs from the body, and `mpg check` refuses a body that lacks it, with the reason
+- [x] **Milestone 4**: a fixed-base arm and a humanoid, and puzzles whose answer is the difference between bodies — four bodies (duck, quadruped, arm, humanoid) share one boundary, the tabletop rooms are solvable only by a body with no legs, and the wide rooms only by a large one
+- [x] **Milestone 5**: carrying a load — rooms where the arm picks something up and puts it in a box, on a tower or on a conveyor. What blocked it was the receiver's rim rather than the arm (the grab grid went 7/25 to 22-24/25)
+- [x] **Milestone 6**: parts whose answer is weight or a budget — a lever (mass x distance) and a shared pool two doors draw from
+- [x] **Milestone 7**: magnets and light (emitter, photocell, mirror, splitter, filter), a grasp held by two fingers pressing (20/20 with no weld in the scene), and **how close a policy gets to hardware**:
+  - policies trained **on sensors alone** (proprioception, joint encoders and the wrist camera's gaze): reach 0.93, and 0.52 for carrying a block held by two fingers. With privileged observation a pick-and-place policy scores 1.00 - by cloning the room's own scripted solution rather than by reinforcement learning
+  - actuator latency and detection error (position noise, dropout, calibration, lens distortion) in the model, and 0.94 trained under them
+  - what is left is written as numbers too: the recipe for the finger-grasp carry lands one run in three, and five of ten arm rooms still fail at 40 ms of latency (the [training log](training-log.md))
 
 ## Limits
 
-- By default the high-level policy uses privileged observations that read the puzzle state directly. Add `rangefinder` (head distance sensor) and `camera` (64×64 head camera) to `obs:` in task.yaml to train on real-sensor observations, and use `critic_obs:` to give privileged observations to the value function only. No policy has been trained yet that solves a puzzle from sensors alone (camera training is about 15× slower than with privileged observations).
-- The high-level policy generalises to unseen layouts, but the training room always has the same order (switch → door → goal) and the reward points toward that order. Whether it can work out the order by itself has not been tested yet.
+- By default the high-level policy uses privileged observations that read the puzzle state directly. Add `rangefinder` (head distance sensor) and `camera` (64×64 head camera) to `obs:` in task.yaml to train on real-sensor observations, and use `critic_obs:` to give privileged observations to the value function only. Policies that solve a room from sensors alone **do exist** - on the arm, reach 0.93 and 0.52 for a carry held by two fingers (with privileged observation a pick-and-place policy reaches 1.00). Camera training is still about 15× slower than privileged observation, so those policies read distances, joint encoders and marker gaze rather than the image itself.
+- The high-level policy generalises to unseen layouts, and working the order out by itself has been tested (`order_cue` and `order_blind`: the same room with the cue on and off). The walking body's default rooms still always have the same order (switch → door → goal) with the reward pointing at it.
 - The official walking policy is kept frozen. It cannot walk backward and walks forward at about 0.12–0.22 m/s. Room sizes and time limits have to fit this speed.
 - Simulation only. Transfer to the real robot (sim2real) is out of scope.
 - Tested on macOS (Apple Silicon, CPU MuJoCo). Rendering on Linux has not been checked yet.
