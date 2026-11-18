@@ -129,7 +129,7 @@ All commands, training settings, adding parts and rewards, and swapping the body
 
 ## Results
 
-**This is the finished scope**: seven milestones got it to the results below, and no further features are being added. The loop of building, checking, training and diagnosing a room runs, and four bodies - a two-legged duck, a quadruped, a humanoid and a fixed-base arm that does not walk - share **one body-adapter interface**. A part declares the capability it needs and `mpg check` refuses a body that lacks it, naming the reason, so a tabletop room is solved only by the body with no legs and a wide room only by a large one.
+**This is the finished scope**: seven milestones got it to the results below, and no further features are being added. The loop of building, checking, training and diagnosing a room runs, and four bodies - a two-legged duck, a quadruped, a humanoid and a fixed-base arm that does not walk - share **one body-adapter interface**. A part declares the capability it needs and `mpg check` refuses a body that lacks it, naming the reason. So **four rooms are solved by the fixed-base arm alone** - `mpg check --all-bodies` turns the other three away by name or at the solution - while most rooms are solved by several bodies, and the difference is how fast.
 
 Read the numbers as two kinds: the **scripted solution** (a script that knows the answer, used to prove a room is solvable) and a **trained policy** (reinforcement learning, or cloning the scripted solution).
 
@@ -143,7 +143,7 @@ The milestones in detail, the designs that were reverted and the numbers that se
 
 What is unfinished is written as measurements, not guesses.
 
-- **The room held by two fingers**: a policy that finishes it **does exist** (0.52 over 50 seeds), but that policy comes out of one fit in three. The variance is in the data distribution a seed draws, not in the initialization.
+- **The room held by two fingers**: a policy that finishes it **does exist** (0.52 over 50 seeds), but that policy comes out of one fit in three. What separated a success from a failure was not luck in the initial weights but **the data that seed collected**: refitting nine times with a new initialization alone gave 0.0 every time.
 - **40 ms of actuator latency**: five of the ten arm rooms collapse, and not for one reason but **four different ones**. Three never finish the grasp (what they hold tears off above the force limit, or a contact-only grasp never forms at all), and two stall on the final move. Seven attempted fixes each broke another room or opened none. Which room stops at which sub-goal, the forces measured and how to reproduce it are in the [training log](training-log.md).
 - **Observations**: the high-level policy (the one that reads the puzzle and decides where to go and how fast) uses privileged observations that read the puzzle state directly by default. Adding a distance sensor and a camera to `obs:` trains on sensor observations, and `critic_obs:` gives privileged observations to the value function only, but camera training is about 15× slower, so the sensors-only policies read distances, joint encoders and marker gaze rather than the image itself.
 - **Order without a cue**: the best score on `order_blind` is **0.29**. Guessing one of the three candidate plates gives 1/3 (≈ 0.33), so 0.29 sits near the ceiling for a policy that cannot read the cue, and nothing has gone above it. The walking bodies' basic rooms still have one fixed order (switch → door → goal).
@@ -159,10 +159,10 @@ The planning, design documents, code, tests and training experiments in this rep
 - Code in this repository: [Apache-2.0](../LICENSE).
 - Robot model and meshes: © Pollen Robotics, [microduck_rl](https://github.com/pollen-robotics/microduck_rl) pinned commit `0daab160`. The MJCF is Apache-2.0; the 3D meshes (`*.stl`) are [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) (non-commercial, share-alike). The meshes are not in this repository; `mpg fetch-assets` downloads them unmodified. The MJCF is edited only in memory.
 - Walking policy: `velstand.onnx` from [pollen-robotics/microduck-policies](https://huggingface.co/pollen-robotics/microduck-policies), Apache-2.0.
-- Second body's model: `unitree_go2/` from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) pinned commit `370c4396`, BSD-3-Clause, model and meshes alike.
+- The quadruped's (Unitree Go2) model: `unitree_go2/` from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) pinned commit `370c4396`, BSD-3-Clause, model and meshes alike.
 - The fixed-base arm's model: `robotstudio_so101/` from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) pinned commit `370c4396`, Apache-2.0. No usably licensed pretrained policy exists for it, so it is driven by inverse kinematics.
 - The humanoid's model: `unitree_g1/` from the same commit, BSD-3-Clause. Its walking policy is `deploy/pre_train/g1/motion.pt` from [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) at a pinned commit, BSD-3-Clause. It is not an official frozen release, but the checkpoint that repository ships with its deployment example.
-- Second body's walking policy: [diasAiMaster/unitree-go2-velocity-flat](https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat) pinned revision `9a723b7a`, BSD-3-Clause. It is not an official Unitree release but a community checkpoint, trained on flat ground. The training settings and the measurements are in [bodies and parts](bodies.en.md).
+- The quadruped's (Unitree Go2) walking policy: [diasAiMaster/unitree-go2-velocity-flat](https://huggingface.co/diasAiMaster/unitree-go2-velocity-flat) pinned revision `9a723b7a`, BSD-3-Clause. It is not an official Unitree release but a community checkpoint, trained on flat ground. The training settings and the measurements are in [bodies and parts](bodies.en.md).
 - The demo video and images show the CC BY-NC-SA 4.0 meshes.
 - This is an unofficial project, not affiliated with Pollen Robotics.
 
