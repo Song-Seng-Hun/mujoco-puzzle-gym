@@ -84,9 +84,10 @@ class Destroyer(Part):
     def build(self, spec):
         body = super().build(spec)
         hx, hy = self.half
+        post = max(0.015, self.height * 0.045)  # R135: a tall press needs posts you can see
         for sx in (-1, 1):                      # two posts, so the shape reads as a press
             body.add_geom(name=f"{self.body_name}/post{'+' if sx > 0 else '-'}",
-                          type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.015, 0.015, self.height / 2],
+                          type=mujoco.mjtGeom.mjGEOM_BOX, size=[post, post, self.height / 2],
                           pos=[sx * hx, 0, self.height / 2], rgba=FRAME_RGBA,
                           contype=0, conaffinity=0)
         body.add_geom(name=self.body_name + "/head", type=mujoco.mjtGeom.mjGEOM_BOX,
@@ -100,10 +101,20 @@ class Destroyer(Part):
         self._lit = False
 
     def paint(self, model) -> None:
+        """The head lights up **and drops** while a strike shows (R135).
+
+        The colour flash alone was unreadable: in a 5 x 4 m room the head is a 2 cm plate and
+        a quarter-second of red says nothing to someone watching. Moving it is what reads as a
+        press striking. Visual only - the head's geoms are `contype=0, conaffinity=0`, so the
+        solver never sees it at either height, and the strike itself is decided by the
+        channel, not by this position.
+        """
         lit = self.t - self.last_hit < HIT_SHOW
         if lit != self._lit:
             self._lit = lit
             model.geom_rgba[self._head] = HIT_RGBA if lit else HEAD_RGBA
+            top = self.height - 0.02
+            model.geom_pos[self._head][2] = 0.04 if lit else top
 
     # ---- runtime --------------------------------------------------------------------
     def reset(self, model, data):
