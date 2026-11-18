@@ -8,7 +8,8 @@ switches, NaN/contradiction flags, per-term reward sums), then to the chosen
     task.resolved.yaml   the task with every default filled in, and `room_parts`:
                          the room's parts with preset values and overrides (R3)
     checkpoint.*         what the trainer saved (SB3: checkpoint.zip)
-    episodes.jsonl       one line per training episode
+    episodes.jsonl.gz    one line per training episode, gzipped (R139: 20.6x; a pre-R139
+                         run's plain `episodes.jsonl` is still read)
     curves.png           return, success / fall / switch rates, per-term rewards
     summary.json         budget, steps, speed, first/last-window statistics,
                          `obs_kind` (`sensors_only` or `privileged`, R39)
@@ -24,6 +25,7 @@ up, which training never uses (task seeds must stay below TRAIN_SEED_LIMIT).
 from __future__ import annotations
 
 import functools
+import gzip
 import json
 import os
 import re
@@ -42,7 +44,35 @@ from .registry import get_algo
 from .room import Room
 from .task import TaskError, load_task, write_resolved
 
-EPISODES_NAME = "episodes.jsonl"
+#: The episode log, gzipped (R139). One line per finished episode, 259 bytes each, and
+#: nothing rotates or prunes it: a 15-minute run of this repository's own arm room wrote
+#: 227,663 episodes and **59.0 MB**, so an afternoon of sweeps fills a disk. The content is
+#: load-bearing (`diagnose` reads the first and last fifth, `curves.png` reads all of it),
+#: so it is compressed rather than trimmed: measured 20.6x on that file, 59.0 -> 2.9 MB.
+#:
+#: Runs written before this keep working: `episode_log` prefers the gzip and falls back to
+#: the plain file, and `open_episode_log` opens whichever it finds.
+EPISODES_NAME = "episodes.jsonl.gz"
+EPISODES_PLAIN = "episodes.jsonl"
+
+
+def episode_log(run_dir: str | Path) -> Path | None:
+    """The run's episode log - the gzip if it is there, else a pre-R139 plain file."""
+    d = Path(run_dir)
+    for name in (EPISODES_NAME, EPISODES_PLAIN):
+        if (d / name).exists():
+            return d / name
+    return None
+
+
+def read_episode_log(run_dir: str | Path) -> list[dict[str, Any]]:
+    """Every episode record of a run, from either file layout (empty when there is none)."""
+    path = episode_log(run_dir)
+    if path is None:
+        return []
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt") as fh:
+        return [json.loads(line) for line in fh if line.strip()]
 SUMMARY_NAME = "summary.json"
 CURVES_NAME = "curves.png"
 CHECKPOINT_STEM = "checkpoint"
@@ -71,7 +101,8 @@ class EpisodeLog(VecEnvWrapper):
     def __init__(self, venv, path: Path):
         super().__init__(venv)
         self.path = Path(path)
-        self._file = self.path.open("w")
+        self._file = (gzip.open(self.path, "wt") if self.path.suffix == ".gz"
+                      else self.path.open("w"))
         self.t0 = time.monotonic()
         self.steps = 0
         self.episodes: list[dict[str, Any]] = []
@@ -386,9 +417,7 @@ def load_run(run_dir: str | Path) -> dict[str, Any]:
         raise FileNotFoundError(f"{summary_path} missing: not a finished `mpg train` run")
     summary = json.loads(summary_path.read_text())
     task = load_task(run_dir / "task.resolved.yaml")
-    eps_path = run_dir / EPISODES_NAME
-    eps = [json.loads(line) for line in eps_path.read_text().splitlines() if line.strip()] \
-        if eps_path.exists() else []
+    eps = read_episode_log(run_dir)
     return {"dir": run_dir, "summary": summary, "task": task, "episodes": eps}
 
 

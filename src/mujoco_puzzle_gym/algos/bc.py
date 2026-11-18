@@ -20,7 +20,7 @@ it as the demonstrator a real arm would get from teleoperation:
    states and never comes back.
 2. **fit**: an MLP on those pairs, mean squared error against the demonstrated action.
 3. **roll out** the kept policy on the logged parallel envs for the rest of the budget,
-   which is what writes `episodes.jsonl` (so curves, success rate and the per-term rewards
+   which is what writes the episode log (so curves, success rate and the per-term rewards
    in `summary.json` describe *this* policy, not the demonstrator).
 
 What it is not: it is not reinforcement learning and it never improves on its demonstrator.
