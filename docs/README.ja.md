@@ -51,15 +51,33 @@ AIコーディングエージェントがMuJoCoの物理シミュレーション
 
 ## 挑戦してみてください
 
-部屋プリセット**44個**のうち、学習した方策の記録があるのは**三つ**です。残り41マスは空です。
+部屋プリセットは**44個**あり、**学習した方策の記録があるのは三つ**です。残り**41マスは空**です。
 
-<p align="center"><img src="../assets/challenge-hammer-lose.gif" width="380" alt="プレスが降りて錠を叩き、錠が赤く変わり、四足ロボットは二度と開かない扉の前に残される。"></p>
+<table>
+<tr>
+<td width="50%"><img src="../assets/challenge-hammer-lose.gif" width="300" alt=""><br><b>締め切り</b> — 40秒後にプレスがコイン錠を壊す。先に扉を開けられなければその回は永久に終わり</td>
+<td width="50%"><img src="../assets/gallery/tabletop_pick_by_hand.gif" width="300" alt=""><br><b>指でつかむ</b> — 溶接なし、指二本で押さえて持つ。学習した方策の最高は<b>0.52</b></td>
+</tr>
+<tr>
+<td width="50%"><img src="../assets/gallery/light_split_the_beam.gif" width="300" alt=""><br><b>光の分け前</b> — 一本の光を分けて二つの光電池のしきい値を同時に越える</td>
+<td width="50%"><img src="../assets/gallery/ball_bowling.gif" width="300" alt=""><br><b>連鎖</b> — ボールを押してピン三つを倒すと扉が開く</td>
+</tr>
+</table>
 
-`puzzles/tabletop/pick_and_place`はPPOで**25 Mステップ使っても成功率0.00**、部屋の台本解法を複製すると
-**1.7 Mステップで1.00**です。上の部屋(`coins/beat_the_hammer`)には締め切りがあります — 40秒以内に
-扉を開けられなければ、その回は**永久に終わり**です(台本20/20、ランダム0/20、学習した方策は**記録なし**)。
+台本の解法はすべての部屋を解きます(リポジトリが毎回20シードで確認します)。均一ランダムな方策は
+ほとんどの部屋で0です。**その間があなたのアルゴリズムの場所です。**
 
-はしご・規約(固定シード、宣言した予算、数字ひとつ)・既知の記録は[挑戦のドキュメント](challenges.ja.md)にあります。
+> `puzzles/tabletop/pick_and_place` — PPOで**25 Mステップ、成功率0.00**。
+> 部屋の台本解法を複製すると**1.7 Mステップで1.00**。
+> あなたのアルゴリズムは何ステップでいくらですか?
+
+```bash
+mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
+mpg eval runs/mine --episodes 100                   # held-outシード 1,000,000〜
+mpg eval runs/mine --episodes 100 --policy random    # 同じシードの基準線
+```
+
+残り六つの部屋、44部屋のはしご、規約と既知の記録は[挑戦のドキュメント](challenges.ja.md)にあります。
 
 ## インストール
 
