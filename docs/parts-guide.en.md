@@ -205,7 +205,7 @@ parts:
   hand the aim to the body. The solution planner cannot follow a ray, so an emitter claims
   only that "the light arrives once the controls the room declares are on"; which setting is
   the right one is what the scripted solution measures.
-- Two rooms: `puzzles/light/aim_the_mirror` (20/20, 11.0 s - the first room whose answer is a
+- Two rooms: `puzzles/light/aim_the_mirror` (20/20, 33.4 s - the first room whose answer is a
   **direction**) and `puzzles/light/split_the_beam` (20/20, 11.1 s - one beam shared by two
   doors, and at 0.5 both of them stay shut).
 
@@ -686,7 +686,7 @@ Measured 2026-11-17, 5 seeds, each with the room's own task file:
 | `puzzles/tabletop/build_a_tower` | solver 0/5 | refused `['grab']` | **pass 5/5, 9.8 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/lever_arm` | solver 0/5 | refused `['grab']` | **pass 5/5, 7.4 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/fetch_the_steel` | solver 0/5 | refused `['grab']` | **pass 5/5, 8.1 s** | refused `['grab']` | yes |
-| `puzzles/light/aim_the_mirror` | **pass 5/5, 11.0 s** | solver 0/5 | refused `['walk']` | solver 0/5 | yes |
+| `puzzles/light/aim_the_mirror` | **pass 5/5, 33.4 s** | solver 0/5 | refused `['walk']` | solver 0/5 | yes |
 | `puzzles/light/split_the_beam` | **pass 5/5, 11.1 s** | solver 0/5 | refused `['walk']` | solver 0/5 | yes |
 | `puzzles/tabletop/pick_and_place` | solver 0/5 | refused `['grab']` | **pass 5/5, 16.3 s** | refused `['grab']` | yes |
 | `puzzles/tabletop/reach_target` | pass 5/5, 1.5 s | solver 0/5 | pass 5/5, 0.6 s | solver 0/5 | no |

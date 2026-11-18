@@ -201,7 +201,7 @@ parts:
 - `yaw`·`split`·`transmission`은 실행 중 바꿀 수 있어서, 설정 변경기(`setter`)나 `bind`로 몸이 겨냥을
   고르게 할 수 있습니다. 풀이 순서 판정은 광선을 따라가지 못하므로, 발광기는 "방이 선언한 조절기가
   켜지면 빛이 도착한다"고만 말합니다(어느 값이 정답인지는 해답 스크립트가 측정합니다).
-- 방 둘: `puzzles/light/aim_the_mirror`(20/20, 11.0초 — 답이 **방향**인 첫 방)와
+- 방 둘: `puzzles/light/aim_the_mirror`(20/20, 33.4초 — 답이 **방향**인 첫 방)와
   `puzzles/light/split_the_beam`(20/20, 11.1초 — 빛 하나를 문 둘이 나눠 쓰고, 0.5로 두면 둘 다
   닫혀 있습니다).
 
@@ -672,7 +672,7 @@ randomize: {layout: 1.0, physics: 0.5, body: 1.0}   # task.yaml
 | `puzzles/tabletop/build_a_tower` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 9.8초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/lever_arm` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 7.4초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/fetch_the_steel` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 8.1초** | 이름 거부 `['grab']` | 예 |
-| `puzzles/light/aim_the_mirror` | **통과 5/5, 11.0초** | 해답 0/5 | 이름 거부 `['walk']` | 해답 0/5 | 예 |
+| `puzzles/light/aim_the_mirror` | **통과 5/5, 33.4초** | 해답 0/5 | 이름 거부 `['walk']` | 해답 0/5 | 예 |
 | `puzzles/light/split_the_beam` | **통과 5/5, 11.1초** | 해답 0/5 | 이름 거부 `['walk']` | 해답 0/5 | 예 |
 | `puzzles/tabletop/pick_and_place` | 해답 0/5 | 이름 거부 `['grab']` | **통과 5/5, 16.3초** | 이름 거부 `['grab']` | 예 |
 | `puzzles/tabletop/reach_target` | 통과 5/5, 1.5초 | 해답 0/5 | 통과 5/5, 0.6초 | 해답 0/5 | 아니오 |

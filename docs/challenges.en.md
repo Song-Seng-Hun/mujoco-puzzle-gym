@@ -72,7 +72,7 @@ The stars are measured, not opinions: **a room a random policy solves three time
 
 | | room | scripted | random | trained policy |
 |---|---|---:|---:|---|
-| ★ | `light/aim_the_mirror` | 11.0s | 11/20 | **empty** |
+| ★★★ | `light/aim_the_mirror` | 33.4s | 1/20 | **empty** |
 | ★ | `roller/brake_strip` | 15.82s | 4/20 | **empty** |
 | ★ | `roller/mode_switch_route` | 16.0s | 3/20 | **empty** |
 | ★★ | `roller/speed_gate` | 10.4s | 1/20 | **empty** |
