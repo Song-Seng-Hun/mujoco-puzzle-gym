@@ -3,13 +3,13 @@
 이 저장소에는 방 프리셋 **44개**가 있고, 그중 **학습된 정책의 기록이 있는 방은 네 개**입니다.
 나머지 41개의 "학습된 정책" 칸은 **비어 있습니다.** 아래 표가 그 빈 칸입니다.
 
-대본 해답은 모든 방을 풉니다(저장소가 매번 20시드로 확인합니다). 무작위 정책은 거의 모든 방에서
+정답 스크립트는 모든 방을 풉니다(저장소가 매번 20시드로 확인합니다). 무작위 정책은 거의 모든 방에서
 0입니다. 그 사이가 당신 알고리즘의 자리입니다.
 
 한 줄만 먼저 보고 가셔도 됩니다:
 
 > `puzzles/tabletop/pick_and_place` — PPO로 **25 M 스텝, 성공률 0.00**.
-> 방의 대본 해답을 복제하면 **1.7 M 스텝에 1.00**.
+> 방의 정답 스크립트를 복제하면 **1.7 M 스텝에 1.00**.
 > 당신 알고리즘은 몇 스텝에 얼마입니까?
 
 <p align="center"><img src="../assets/challenge-hammer-lose.gif" width="380" alt="프레스가 내려와 자물쇠를 때리고 자물쇠가 어두운 붉은색으로 바뀐다. 자물쇠에서 문으로 깔린 케이블은 그대로지만, 코인을 더 주워도 문은 열리지 않고 네 발 로봇이 닫힌 문 앞에 머문다."></p>
@@ -38,16 +38,16 @@ uv run mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 �
 
 ## 방 갤러리 — 어떤 조건들이 있나
 
-열 개 방, 네 몸, 열 가지 기구입니다. 숫자는 전부 이 저장소가 잰 것입니다: **대본**은 20시드 검사의 평균 소요, **무작위**는 같은 방에 균일 난수를 20시드 돌린 결과, **학습된 정책**은 기록이 있으면 그 숫자입니다.
+열 개 방, 네 바디, 열 가지 기구입니다. 숫자는 전부 이 저장소가 잰 것입니다: **정답 스크립트**는 20시드 검사의 평균 소요, **무작위**는 같은 방에 균일 난수를 20시드 돌린 결과, **학습된 정책**은 기록이 있으면 그 숫자입니다.
 
-| | 몸 | 화면에서 벌어지는 일 | 대본 | 무작위 | 학습된 정책 |
+| | 바디 | 화면에서 벌어지는 일 | 정답 스크립트 | 무작위 | 학습된 정책 |
 |---|---|---|---:|---:|---|
 | <img src="../assets/challenge-hammer-lose.gif" width="260" alt="coins/beat_the_hammer"> | 네 발 | `coins/beat_the_hammer` — 40초 뒤 프레스가 코인 자물쇠를 부순다 — 그 전에 문을 열어야 한다 | 45.6s | 0/20 | **비어 있음** |
 | <img src="../assets/gallery/tabletop_pick_by_hand.gif" width="260" alt="tabletop/pick_by_hand"> | 팔 | `tabletop/pick_by_hand` — 용접 없이 **손가락 둘로 눌러** 블록을 들어 상자에 넣는다 | 11.66s | 0/20 | 0.52 |
 | <img src="../assets/gallery/light_split_the_beam.gif" width="260" alt="light/split_the_beam"> | 오리 | `light/split_the_beam` — 한 줄기 빛을 분광기로 나눠 두 광전지에 **몫**을 맞춘다 | 11.1s | 1/20 | **비어 있음** |
 | <img src="../assets/gallery/ball_bowling.gif" width="260" alt="ball/bowling"> | 오리 | `ball/bowling` — 공을 밀어 핀 세 개를 쓰러뜨리면 문이 열린다 | 23.82s | 0/20 | **비어 있음** |
 | <img src="../assets/gallery/roller_glide_under.gif" width="260" alt="roller/glide_under"> | 오리(롤러) | `roller/glide_under` — 롤러를 달고 **낮은 바 밑을 미끄러져** 지나간다 | 14.66s | 0/20 | **비어 있음** |
-| <img src="../assets/gallery/wide_pit_detour.gif" width="260" alt="wide/pit_detour"> | 네 발 | `wide/pit_detour` — 5×4 m 방에서 구덩이를 돌아간다 — 큰 몸이 설 수 있는 곳만 길이다 | 30.78s | 0/20 | **비어 있음** |
+| <img src="../assets/gallery/wide_pit_detour.gif" width="260" alt="wide/pit_detour"> | 네 발 | `wide/pit_detour` — 5×4 m 방에서 구덩이를 돌아간다 — 큰 바디가 설 수 있는 곳만 길이다 | 30.78s | 0/20 | **비어 있음** |
 | <img src="../assets/gallery/tabletop_build_a_tower.gif" width="260" alt="tabletop/build_a_tower"> | 팔 | `tabletop/build_a_tower` — 블록 둘을 **쌓는다**(쌓임을 읽는 부품이 판정) | 10.6s | 0/20 | **비어 있음** |
 | <img src="../assets/gallery/tabletop_conveyor_triage.gif" width="260" alt="tabletop/conveyor_triage"> | 팔 | `tabletop/conveyor_triage` — 두 벨트, 두 통 — 색이 다른 블록을 한 번에 하나씩 분류 | 18.8s | 0/20 | **비어 있음** |
 | <img src="../assets/gallery/circuit_fuse_repair.gif" width="260" alt="circuit/fuse_repair"> | 오리 | `circuit/fuse_repair` — 끊긴 회로를 **퓨즈를 물어다 끼워** 되살린다 | 26.73s | 0/20 | **비어 있음** |
@@ -56,12 +56,12 @@ uv run mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 �
 ## 사다리
 
 별은 의견이 아니라 측정에서 나옵니다 — **무작위 정책이 세 번 이상 푸는 방은 ★**, 한두 번 풀거나
-대본이 12초 미만이면 ★★, 25초 미만이면 ★★★, 그 이상이면 ★★★★입니다. 몸은 그 방의 task
-파일이 정한 몸입니다.
+정답 스크립트가 12초 미만이면 ★★, 25초 미만이면 ★★★, 그 이상이면 ★★★★입니다. 바디는 그 방의 task
+파일이 정한 바디입니다.
 
 ### go2
 
-| | 방 | 대본 해답 | 무작위 | 학습된 정책 |
+| | 방 | 정답 스크립트 | 무작위 | 학습된 정책 |
 |---|---|---:|---:|---|
 | ★★★ | `wide/switch_door` | 24.58s | 0/20 | **0.96** (네 발, PPO 30분) |
 | ★★★★ | `wide/pit_detour` | 30.78s | 0/20 | **비어 있음** |
@@ -69,7 +69,7 @@ uv run mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 �
 
 ### microduck
 
-| | 방 | 대본 해답 | 무작위 | 학습된 정책 |
+| | 방 | 정답 스크립트 | 무작위 | 학습된 정책 |
 |---|---|---:|---:|---|
 | ★★★ | `light/aim_the_mirror` | 33.4s | 1/20 | **비어 있음** |
 | ★ | `roller/brake_strip` | 15.82s | 4/20 | **비어 있음** |
@@ -105,16 +105,16 @@ uv run mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 �
 
 ### so101
 
-| | 방 | 대본 해답 | 무작위 | 학습된 정책 |
+| | 방 | 정답 스크립트 | 무작위 | 학습된 정책 |
 |---|---|---:|---:|---|
 | ★ | `tabletop/reach_target` | 0.6s | 5/20 | **비어 있음** |
 | ★★ | `tabletop/reach_the_marker` | 1.44s | 1/20 | 0.93 (PPO 15분, 센서만) |
 | ★★ | `tabletop/weigh_it_down` | 7.6s | 0/20 | **비어 있음** |
 | ★★ | `tabletop/lever_arm` | 7.8s | 0/20 | **비어 있음** |
-| ★★ | `tabletop/pick_and_place` | 8.2s | 0/20 | 1.00 (대본 복제, 특권) |
+| ★★ | `tabletop/pick_and_place` | 8.2s | 0/20 | 1.00 (정답 스크립트 복제, 특권) |
 | ★★ | `tabletop/fetch_the_steel` | 9.6s | 0/20 | **비어 있음** |
 | ★★ | `tabletop/build_a_tower` | 10.6s | 0/20 | **비어 있음** |
-| ★★ | `tabletop/pick_by_hand` | 11.66s | 0/20 | 0.52 (대본 복제, 센서만; 세 번에 한 번) |
+| ★★ | `tabletop/pick_by_hand` | 11.66s | 0/20 | 0.52 (정답 스크립트 복제, 센서만; 세 번에 한 번) |
 | ★★★ | `tabletop/dead_wedge` | 13.1s | 0/20 | **비어 있음** |
 | ★★★ | `tabletop/conveyor_triage` | 18.8s | 0/20 | **비어 있음** |
 
@@ -128,11 +128,11 @@ uv run mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 �
 
 ## 알려진 기록
 
-| 방 | 몸 | 관측 | 기록 | 방법 |
+| 방 | 바디 | 관측 | 기록 | 방법 |
 |---|---|---|---|---|
 | `tabletop/reach_the_marker` | 팔 | **센서만** | **0.93** | PPO 15분, 4.08 M 스텝 |
-| `tabletop/pick_and_place` | 팔 | 특권 | **1.00** | 대본 복제(`algo: bc`), 1.70 M 스텝 |
-| `tabletop/pick_by_hand` | 팔 | **센서만** | **0.52** | 대본 복제 + DAgger, 세 번에 한 번 |
+| `tabletop/pick_and_place` | 팔 | 특권 | **1.00** | 정답 스크립트 복제(`algo: bc`), 1.70 M 스텝 |
+| `tabletop/pick_by_hand` | 팔 | **센서만** | **0.52** | 정답 스크립트 복제 + DAgger, 세 번에 한 번 |
 | `wide/switch_door` | 네 발 | 특권 | **0.96** | PPO 30분, 2.85 M 스텝 |
 | `examples/switch_door.yaml` | 오리 | 특권 | 0.99 | PPO 15분 (예제 방, 프리셋 아님) |
 
@@ -142,5 +142,5 @@ uv run mpg eval runs/mine --episodes 100 --policy random   # 같은 시드의 �
 ## 새 도전 방
 
 **`puzzles/coins/beat_the_hammer`** (위 GIF): 코인 셋을 모으면 문이 열립니다. 그런데 40초 뒤
-망치가 내려와 자물쇠를 한 방에 부수고, 부서진 자물쇠는 그 판 내내 0을 읽습니다. 대본 해답은
-20/20(평균 45.6초), 무작위는 0/20, **퓨즈를 15초로 줄이면 대본도 0/5**입니다.
+망치가 내려와 자물쇠를 한 방에 부수고, 부서진 자물쇠는 그 판 내내 0을 읽습니다. 정답 스크립트는
+20/20(평균 45.6초), 무작위는 0/20, **퓨즈를 15초로 줄이면 정답 스크립트도 0/5**입니다.
