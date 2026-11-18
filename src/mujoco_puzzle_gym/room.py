@@ -952,7 +952,17 @@ def _add_walls(spec: mujoco.MjSpec, segs: list[Segment], height: float, prefix: 
             name=f"{prefix}/{i}", type=mujoco.mjtGeom.mjGEOM_BOX,
             size=[np.linalg.norm(d) / 2 + seg.thickness / 2, seg.thickness / 2, height / 2],
             pos=[mid[0], mid[1], height / 2],
-            quat=[math.cos(ang / 2), 0, 0, math.sin(ang / 2)], rgba=WALL_RGBA)
+            quat=[math.cos(ang / 2), 0, 0, math.sin(ang / 2)], rgba=WALL_RGBA,
+            material=_wall_material(spec))
+
+
+def _wall_material(spec: mujoco.MjSpec) -> str:
+    """The shared wall material (R135), or "" in a spec that was not dressed."""
+    try:
+        spec.material(visuals.WALL_MAT)
+    except (KeyError, ValueError):
+        return ""
+    return visuals.WALL_MAT
 
 
 def render_top(model: mujoco.MjModel, data: mujoco.MjData, room: Room, path: Path,

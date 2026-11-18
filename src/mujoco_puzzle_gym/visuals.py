@@ -45,6 +45,8 @@ SKY_TEX = "mpg/sky"
 FLOOR_TEX = "mpg/floor_check"
 FLOOR_MAT = "mpg/floor"
 TILE_MAT = "mpg/tile"
+WALL_MAT = "mpg/wall"
+WALL_TEX = "mpg/wall_check"
 
 
 def dress(spec: mujoco.MjSpec) -> None:
@@ -61,6 +63,14 @@ def dress(spec: mujoco.MjSpec) -> None:
     # The tiles of a tiled floor (R10) keep their own two greys and gain the same sheen, so a
     # tiled room and a plane room read as the same material.
     spec.add_material(name=TILE_MAT, reflectance=0.05, shininess=0.3, specular=0.3)
+    # Walls: a faint grid so a 0.5 m wall reads as a surface with a size rather than a flat
+    # grey slab, and almost no reflectance - a shiny wall competes with the parts.
+    spec.add_texture(name=WALL_TEX, type=mujoco.mjtTexture.mjTEXTURE_2D,
+                     builtin=mujoco.mjtBuiltin.mjBUILTIN_CHECKER,
+                     rgb1=[0.42, 0.44, 0.48], rgb2=[0.46, 0.48, 0.52], width=200, height=200)
+    wall = spec.add_material(name=WALL_MAT, texrepeat=[2, 2], texuniform=True,
+                             reflectance=0.02, shininess=0.15, specular=0.15)
+    wall.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = WALL_TEX
     spec.add_material(name=SHEEN_MAT, reflectance=0.02, shininess=0.35, specular=0.3)
     spec.add_material(name=METAL_MAT, reflectance=0.14, shininess=0.85, specular=0.75,
                       metallic=0.6, roughness=0.3)
