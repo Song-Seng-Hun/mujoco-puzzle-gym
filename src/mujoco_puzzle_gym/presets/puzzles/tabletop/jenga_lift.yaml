@@ -1,0 +1,41 @@
+# Take the bottom one out (M8 R134): two cubes already stacked, and the box wants the one at
+# the **bottom** - plus a third cube lying alone where it is easiest to reach, which the box
+# refuses. `build_a_tower` is the same parts asking for the opposite, and this room is what
+# makes that interesting: here the obvious grab is the wrong one.
+#
+# The decoy is the point. The nearest, clearest, easiest cube to pick up is the one that does
+# nothing, and the one the box wants is pinned under another. A policy that learns "grab the
+# cube you can see best" scores zero here, and a policy that learns "grab the top of the
+# stack" has to then put it somewhere and come back.
+#
+# Two high and not three: `cube.rest_on` refuses to stack on something already stacked, and
+# `mpg check` says so in those words.
+#
+# Why the shelf is a zone and the box is a box: measured in M5-M7 (docs/bodies.md section 9),
+# the arm's place wrestles a rim, so the flat `object_zone` is where things are set down
+# (`drop`) and the one walled box is the puzzle's own target (`place`). The goal needs
+# **both** - the block in the box and the top cube on the shelf - so the room asks for the
+# whole job rather than letting the top cube be flung anywhere.
+#
+# Every position is inside the measured envelope of an arm that reaches 0.48 m from its base
+# at x = -0.3 over a 220-degree sector, and outside the fold near the base: the tower is
+# 0.30 m out, the shelf 0.45 m, the box 0.43 m, the decoy 0.39 m.
+name: table_jenga
+size: [1.2, 1.0]
+wall: {thickness: 0.02, height: 0.1}
+spawn: {pos: [-0.3, 0.0], yaw: 0.0}
+parts:
+  - {name: base, type: cube, pos: [0.0, 0.0], size: 0.03, mass: 0.02}
+  - {name: top, type: cube, pos: [0.0, 0.0], size: 0.03, mass: 0.02, rest_on: base}
+  - {name: decoy, type: cube, pos: [-0.02, -0.24], size: 0.03, mass: 0.02}
+  - {name: shelf, preset: input/object_zone, pos: [0.0, 0.33], size: [0.22, 0.22]}
+  - {name: box, type: receptacle, pos: [0.14, 0.12], size: [0.14, 0.14], wall_height: 0.05,
+     accept: [base]}
+  - {name: tidy, preset: logic/and, pos: [0.3, 0.3], in: [box.ok, shelf]}
+  - {name: goal, type: goal, pos: [0.14, -0.16], radius: 0.05, enable: tidy}
+demo:
+  - grab top
+  - drop top shelf
+  - grab base
+  - place base box
+  - goto goal

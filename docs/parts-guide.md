@@ -1907,6 +1907,7 @@ def majority(inputs, state, dt):
 - `puzzles/circuit/press_relay`
 - `puzzles/circuit/sabotage_order`
 - `puzzles/circuit/wrong_wire`
+- `puzzles/coins/beat_the_hammer`
 - `puzzles/coins/coin_lock`
 - `puzzles/light/aim_the_mirror`
 - `puzzles/light/split_the_beam`
@@ -1922,6 +1923,7 @@ def majority(inputs, state, dt):
 - `puzzles/tabletop/conveyor_triage`
 - `puzzles/tabletop/dead_wedge`
 - `puzzles/tabletop/fetch_the_steel`
+- `puzzles/tabletop/jenga_lift`
 - `puzzles/tabletop/lever_arm`
 - `puzzles/tabletop/pick_and_place`
 - `puzzles/tabletop/pick_by_hand`
