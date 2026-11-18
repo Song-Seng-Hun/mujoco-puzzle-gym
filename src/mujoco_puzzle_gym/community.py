@@ -23,6 +23,8 @@ from typing import Any
 
 import yaml
 
+from . import yamls
+
 from .registry import get_part
 
 MAX_PARTS = 64
@@ -31,23 +33,11 @@ MAX_MAP = 40             # cells per side
 BUILTIN_PREFIX = "mujoco_puzzle_gym."
 
 
-class _NoAliasLoader(yaml.SafeLoader):
-    """SafeLoader without anchors and aliases: a 64 KB file of nested aliases
-    expands to billions of nodes once something walks it."""
-
-    def compose_node(self, parent, index):
-        if self.check_event(yaml.AliasEvent):
-            raise yaml.composer.ComposerError(
-                None, None, "YAML aliases (*name) are not allowed in shared rooms",
-                self.peek_event().start_mark)
-        return super().compose_node(parent, index)
-
-
 def check_raw(path: str | Path) -> list[str]:
     """Problems visible in the YAML alone, before the room (and its stage files) load."""
     path = Path(path)
     try:
-        raw = yaml.load(path.read_text(), Loader=_NoAliasLoader)
+        raw = yamls.load(path)
     except (OSError, yaml.YAMLError) as exc:
         return [f"cannot read room file {path}: {exc}"]
     if not isinstance(raw, dict):
@@ -70,7 +60,7 @@ def check_raw(path: str | Path) -> list[str]:
                 out.append(f"{where}[{k}] {rel!r} points outside the room's folder")
                 continue
             try:
-                yaml.load(p.read_text(), Loader=_NoAliasLoader)
+                yamls.load(p)
             except (OSError, yaml.YAMLError) as exc:
                 out.append(f"{where}[{k}] {rel!r}: {exc}")
     return out

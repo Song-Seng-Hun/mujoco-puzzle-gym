@@ -260,7 +260,9 @@ def test_train_forward_writes_curriculum_json(asset_dir, tmp_path):
     resolved = load_task(run / "task.resolved.yaml")
     assert resolved["curriculum"]["replay"] == 0.3
     assert resolved["curriculum"]["snapshots"] == str((tmp_path / "snaps").resolve())
-    eps = [json.loads(x) for x in (run / "episodes.jsonl").read_text().splitlines()]
+    from mujoco_puzzle_gym.train import read_episode_log
+
+    eps = read_episode_log(run)
     assert all(e["segment"] == 0 for e in eps)
 
 

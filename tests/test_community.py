@@ -206,3 +206,60 @@ def test_files_names_and_author(tmp_path):
     ok = ["community/rooms/alice/r.yaml"]
     assert tool.problems(ok, root=tmp_path, author="Alice") == []
     assert "author's folder" in " ".join(tool.problems(ok, root=tmp_path, author="mallory"))
+
+
+# ---- where the alias guard belongs, and why not everywhere (R138) --------------------
+def test_the_linter_refuses_alias_bombs_and_the_loaders_must_not(tmp_path, repo_root):
+    """A review finding that shrank when it was measured, kept here so it is not re-opened.
+
+    A short file of nested aliases is a memory bomb *for whatever walks the result*: 229
+    bytes is 16,369 nodes at twelve levels and each further level doubles it. But
+    `yaml.safe_load` itself is cheap - PyYAML hands an alias the node it already composed,
+    so the loaded object is a graph with shared references rather than a copy per alias.
+
+    So the guard belongs on the path that takes a file from someone else and walks it, and
+    that is where it already was (`community.check_raw`, R32). Putting it in `room.py` and
+    `task.py` too was tried and reverted: `yaml.safe_dump` emits an anchor whenever the same
+    object appears twice, so a room dict whose parts share one `pos` list round-trips
+    through an alias - the strict loader broke `tests/test_cube.py` on exactly that.
+    """
+    import yaml
+
+    from mujoco_puzzle_gym import community
+
+    bomb = "\n".join(["a0: &a0 [1, 2]"]
+                      + [f"a{i}: &a{i} [*a{i - 1}, *a{i - 1}]" for i in range(1, 12)])
+    assert len(bomb) < 300
+
+    def nodes(x):
+        if isinstance(x, list):
+            return 1 + sum(nodes(v) for v in x)
+        if isinstance(x, dict):
+            return 1 + sum(nodes(v) for v in x.values())
+        return 1
+
+    assert nodes(yaml.safe_load(bomb)) > 16_000, "the expansion this test is about"
+
+    room = tmp_path / "shared.yaml"
+    room.write_text("name: r\nsize: [4, 4]\n" + bomb)
+    assert any("alias" in p for p in community.check_raw(room))
+
+    shared = [1, 2]
+    doc = yaml.safe_dump({"a": shared, "b": shared})
+    assert "*id" in doc, "safe_dump aliases a shared object - why the loaders accept them"
+    assert yaml.safe_load(doc)["b"] == [1, 2]
+
+
+def test_nothing_shipped_uses_anchors(repo_root):
+    """The cost of the linter's rule, checked rather than assumed: no preset, example room or
+    task file uses an anchor, so nothing a contributor copies from here trips it."""
+    bad = []
+    for folder in ("src/mujoco_puzzle_gym/presets", "examples"):
+        for p in (repo_root / folder).rglob("*.yaml"):
+            for line in p.read_text().splitlines():
+                if line.lstrip().startswith("#"):
+                    continue
+                if line.lstrip().startswith("<<:") or " &" in line:
+                    bad.append(str(p.relative_to(repo_root)))
+                    break
+    assert not bad, bad

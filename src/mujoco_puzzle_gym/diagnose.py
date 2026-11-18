@@ -1,7 +1,8 @@
 """`mpg diagnose runs/<id>` (R9): why does a run fail? Numbers as evidence.
 
 Evidence comes from two places:
-- the training log (`episodes.jsonl`): first vs last 20% of episodes;
+- the training log (`episodes.jsonl.gz`, or a pre-R139 `episodes.jsonl`): first vs last
+  20% of episodes;
 - fresh rollouts of the saved policy on held-out seeds (DIAG_SEED_BASE + k).
 
 Causes (zero or more, most fundamental first; `primary` is the first):

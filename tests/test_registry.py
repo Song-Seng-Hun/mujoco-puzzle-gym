@@ -83,7 +83,9 @@ def test_register_build_check_train(asset_dir, repo_root, plugin_dir, minutes):
     saved = yaml.safe_load((run / RESOLVED_NAME).read_text())
     assert saved["reward"]["alive"] == 0.01 and saved["plugins"] == [PLUGIN]
     assert saved["env"]["hz"] == 10.0 and saved["n_envs"] == 2
-    eps = [json.loads(line) for line in (run / "episodes.jsonl").read_text().splitlines()]
+    from mujoco_puzzle_gym.train import read_episode_log
+
+    eps = read_episode_log(run)
     assert eps, "no finished training episode"
     assert all(e["terms"]["alive"] > 0 for e in eps)            # the worker-side user term ran
     assert "alive" in summary["last_window"]["mean_terms"]
