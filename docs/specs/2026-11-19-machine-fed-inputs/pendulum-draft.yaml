@@ -1,0 +1,12 @@
+# Pendulum hall (M8 R141): three pendulums swing across the only corridor, and the body has
+# to get through them to the goal. `pendulum` is a part that existed with no room of its own
+# in `puzzles/`; this is the room.
+name: pendulum_hall
+size: [5.0, 3.0]
+wall: {thickness: 0.08, height: 0.5}
+spawn: {pos: [-1.8, 0.0], yaw: 0.0}
+parts:
+  - {name: swing_a, preset: trap/pendulum, pos: [-0.6, 0.0], yaw: 90.0, period: 1.9}
+  - {name: swing_b, preset: trap/pendulum, pos: [0.2, 0.0], yaw: 90.0, period: 1.5}
+  - {name: swing_c, preset: trap/pendulum, pos: [1.0, 0.0], yaw: 90.0, period: 2.3}
+  - {name: goal, type: goal, pos: [1.9, 0.0], radius: 0.35}

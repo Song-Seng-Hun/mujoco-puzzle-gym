@@ -1,0 +1,30 @@
+# The turntable ferries what the body cannot carry across (M8 R141): a slot in the dividing
+# wall is too narrow for the body and wide enough for a cube, and a turntable sits in it with
+# half of its disc on each side. Put the cube on the near half, start the disc, and the room
+# carries the cube to a zone the body can never stand in. That zone opens the door the body
+# does use.
+#
+# `turntable` is one of the parts that existed and had no room: nothing in `puzzles/` ever
+# turned one on. What it is good for is exactly this - a machine doing the part of the job the
+# body is the wrong shape for.
+name: turntable_ferry
+size: [3.0, 2.2]
+wall: {thickness: 0.06, height: 0.3}
+walls:                             # divider at x = 0.1 with a 0.24 m slot at y = 0.45
+  - {from: [0.1, -1.1], to: [0.1, 0.33]}
+  - {from: [0.1, 0.57], to: [0.1, 1.1]}
+spawn: {pos: [-1.0, -0.4], yaw: 0.0}
+parts:
+  - {name: cube, type: cube, pos: [-0.7, 0.45], size: 0.05, mass: 0.04}
+  - {name: disc, type: turntable, pos: [0.1, 0.45], radius: 0.3, speed: 60.0, in: [plate]}
+  - {name: pad, preset: input/object_zone, pos: [-0.12, 0.45], size: [0.22, 0.3]}
+  - {name: landed, preset: input/object_zone, pos: [0.34, 0.45], size: [0.22, 0.3]}
+  - {name: plate, preset: input/floor_toggle, pos: [-0.8, -0.5], size: [0.3, 0.3]}
+  - {name: door, preset: device/oneshot_door, pos: [0.1, -0.6], width: 0.5, in: [landed]}
+  - {name: goal, type: goal, pos: [0.9, -0.6], radius: 0.2}
+demo:
+  - grab cube
+  - drop cube pad
+  - press plate
+  - wait 6
+  - goto goal

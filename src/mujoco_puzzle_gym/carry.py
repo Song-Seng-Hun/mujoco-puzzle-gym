@@ -104,6 +104,7 @@ LOOK = 0.25
 STAND = np.array([-1.0, 0.0, 0.0], dtype=np.float32)
 PUSH_START = 0.35    # [m] push lever: start the push this far out (and walk off as far)
 BACK_STEP = -1.0     # action[1] while turning off a pushed lever (step right as it turns right)
+STEP_CLEAR = 3.0     # [s] longest sideways step out of a pushed lever's sweep before turning (R141)
 PULL_STALL = 6.0     # [s] pull: holding this long without drawing 1 cm more: let go, come again
 DIAL_AIM = 0.3       # [m] dial: steer at the pass line this far ahead
 LOOP_PAST = 0.1      # [m] dial: walk back this far past the start of the line before turning in
@@ -636,6 +637,11 @@ class Carrier:
             return self.dial_act(lever, int(goal))
         if self.phase == "away":
             return self._back_off(lever)
+        if self.phase == "retry":          # overshot a detent: walk off, then push from the other side
+            act = self._back_off(lever)
+            if act is not None:
+                return act
+            self.phase = "approach"
         done = bool(np.isclose(lever.value, goal))
         if lever.cells is None and self.phase == "in":         # continuous: once pushed past it
             done |= (lever.value - goal) * self._push_dir >= 0.0
@@ -644,6 +650,10 @@ class Carrier:
                 return None
             self.phase, self._settle = "away", 0
             return self._back_off(lever)
+        if (lever.cells is not None and self.phase == "in"      # R141: a push can jump a detent;
+                and (lever.value - goal) * self._push_dir > 0.0):   # pushing on only goes further
+            self.phase, self._settle = "retry", 0
+            return self._back_off(lever)
         if self.phase == "approach":
             self._push_dir = 1.0 if goal > lever.value else -1.0
             act = self._walk(lever.xy + lever.f * self._push_dir * PUSH_START)
@@ -651,15 +661,30 @@ class Carrier:
                 return act
             self.phase = "in"
         self.head = -1.0
-        return self.steer(lever.xy, SLOW)
+        act = self.steer(lever.xy, SLOW)
+        if act is None:    # R141: arrived, still not the goal cell - walk off and come again
+            self.phase, self._settle = "retry", 0
+            return self._back_off(lever)
+        return act
 
     def _back_off(self, lever) -> np.ndarray | None:
-        """After a push: stand SETTLE / 3 s, turn round in place clockwise (walking on
-        while turning drags the paddle on to the next cell), walk PUSH_START m off."""
+        """After a push: stand SETTLE / 3 s, then step sideways out to PUSH_START m.
+
+        It used to turn round in place first and walk off facing away. Turning at the
+        paddle drags it on to the next cell, which only shows on a goal that is not an
+        end cell: measured on a 5-cell push lever asked for the middle cell, the lever
+        reached 0.00 at 5.3 s and the turn carried it to +0.50 by 6.8 s, three seeds in
+        five (R141). Stepping straight out touches nothing. Where a wall blocks the step
+        the body stalls instead, and the `turn` postcondition in `ScriptedSolver.
+        _unfinished` reports that rather than letting the sub-goal read clean."""
         env = self.env
         self._settle += 1
         if self._settle < SETTLE / 3 * env.hz:
             return self._stand()
+        side = abs(float((env.body_state.pos[:2] - lever.xy) @ np.array([-lever.f[1], lever.f[0]])))
+        clear = env.body.footprint_radius + lever.length
+        if side < clear and self._settle < (SETTLE / 3 + STEP_CLEAR) * env.hz:
+            return np.array([-1.0, BACK_STEP, 0.0], dtype=np.float32)   # out of the sweep first
         back = lever.f * self._push_dir
         if np.linalg.norm(env.body_state.pos[:2] - lever.xy) >= PUSH_START:
             return None
