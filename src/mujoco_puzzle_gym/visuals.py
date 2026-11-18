@@ -14,6 +14,24 @@ coloured by role; what was missing was a scene to put them in.
 Shadows are on (`castshadow` on the main light) because they are what makes a block look
 like it is standing on something. The fill light has them off: a second shadow caster
 doubles the shadow pass and buys nothing but confusion.
+
+Measured, on the same frame of the same episode with this module stubbed out and not
+(`mujoco.Renderer`, 480x360, a free camera at 28 degrees):
+
+                        distinct colours   local gradient   perfectly flat pixels
+    pick_and_place        873 -> 1767        0.83 -> 1.81      97.6 % -> 69.3 %
+    beat_the_hammer      1841 -> 2596        1.21 -> 1.87      96.7 % -> 75.0 %
+
+So the picture carries 1.4-2x the distinct colours and 1.5-2.2x the local shading, and the
+share of pixels identical to their neighbour - a flat fill with no information in it - falls
+by 22 to 28 points. Global standard deviation *drops* about 15 %, and that is the honest
+reading of it: the old frame was flat blocks against a dark void, which is high variance and
+no shading. Variance was never the thing to raise.
+
+One consequence to state plainly: a camera observation now sees a different, richer image, so
+a policy trained on the old picture would not transfer. Nothing in this repository is
+affected - the one camera task has no trained record - but a camera policy trained before
+this commit should be retrained rather than compared.
 """
 
 from __future__ import annotations
