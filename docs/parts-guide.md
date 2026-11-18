@@ -4,6 +4,22 @@
 
 퍼즐 방은 부품을 조립해 만듭니다. 이 문서는 부품이 신호로 이어지는 방식, 프리셋으로 방을 짜는 순서, 점검과 단계별 학습, 그리고 모든 부품의 값 표를 다룹니다. 값 표는 `mpg parts --markdown`이 만든 것이고, 나머지는 사람이 쓴 설명입니다.
 
+## 한눈에 보는 부품 종류
+
+내장 부품 68종을 묶음별로 모은 표입니다(README에서 옮겨 왔습니다). 각 종류가 받는 값은 아래 절들과 값 표에 있습니다.
+
+| 묶음 | 부품 (`type`) |
+|---|---|
+| 목표·발판 | `goal`, `switch` |
+| 입력·감지 | `button`, `pressure`, `laser`, `beam`, `zone`, `target`, `checkpoint`, `receptacle`, `stack`, `emitter`, `photocell` |
+| 논리·배선 | `gate`, `counter`, `relay`, `wire`, `source`, `transmitter`, `receiver`, `budget` |
+| 장치 | `door`, `swing_door`, `trapdoor`, `rope_door`, `platform`, `conveyor`, `spring`, `turntable`, `warp`, `setter`, `pillar`, `low_bar`, `magnet`, `mirror`, `splitter`, `filter`, `goal_net`, `destroyer`, `rope`, `anchor`, `hitch_station`, `addon_station` |
+| 바닥 | `floor_tile`, `coin`, `coin_group`, `coin_lock` |
+| 물체 | `cube`, `ball`, `pin` |
+| 집어 다루는 것 | `key`, `egg`, `stick`, `handle_ball`, `laundry`, `lever`, `dial`, `drawer`, `pull_cord`, `dispenser` |
+| 함정 | `pit`, `pusher`, `spinner`, `pendulum`, `cannon`, `wind`, `brake_strip` |
+| 스스로 움직이는 로봇 | `npc` |
+
 ## 부품, 프리셋, 조립 프리셋
 
 - **부품**은 `room.yaml`의 `parts:` 한 줄입니다. 종류(`type`)와 값들로 이루어집니다. 종류마다 받는 값과 단위, 기본값, 허용 범위가 정해져 있고(값 스키마), 범위 밖 값은 `mpg build`와 `mpg check`가 이유와 범위를 들어 거절합니다.
