@@ -51,17 +51,35 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 
 ## Take the challenge
 
-Of the **44 room presets**, **three** have a trained policy's number. The other 41 cells are empty.
+There are **44 room presets**. **Three** have a trained policy's number. The other **41 cells are empty.**
 
-<p align="center"><img src="../assets/challenge-hammer-lose.gif" width="380" alt="The press comes down on the lock, the lock turns red, and the quadruped is left in front of a door that never opens."></p>
+<table>
+<tr>
+<td width="50%"><img src="../assets/challenge-hammer-lose.gif" width="300" alt=""><br><b>A deadline</b> - at 40 s a press smashes the coin lock. Fail to open the door first and the episode is over for good</td>
+<td width="50%"><img src="../assets/gallery/tabletop_pick_by_hand.gif" width="300" alt=""><br><b>A real grasp</b> - no weld, two fingers pressing. Best trained policy <b>0.52</b></td>
+</tr>
+<tr>
+<td width="50%"><img src="../assets/gallery/light_split_the_beam.gif" width="300" alt=""><br><b>Shares of a beam</b> - split one beam so two photocells each clear their threshold</td>
+<td width="50%"><img src="../assets/gallery/ball_bowling.gif" width="300" alt=""><br><b>A chain</b> - push the ball, knock three pins down, the door opens</td>
+</tr>
+</table>
 
-`puzzles/tabletop/pick_and_place` is **0.00 after 25 M PPO steps**, and **1.00 in 1.7 M** when
-the room's own scripted solution is cloned instead. The room above
-(`coins/beat_the_hammer`) carries a deadline: fail to open the door inside 40 seconds and the
-episode is **over for good** - scripted 20/20, random 0/20, trained policy **no record**.
+The scripted solution solves every room (the repository checks that over 20 seeds, every
+time). A uniform random policy scores zero in almost all of them. **The gap between the two
+is where your algorithm goes.**
 
-The ladder, the protocol (fixed seeds, a declared budget, one number) and the known records
-are in [the challenge document](challenges.en.md).
+> `puzzles/tabletop/pick_and_place` - PPO: **25 M steps, success 0.00**.
+> Cloning the room's own scripted solution: **1.00 in 1.7 M steps**.
+> How many steps does yours need, and for how much?
+
+```bash
+mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
+mpg eval runs/mine --episodes 100                   # held-out seeds from 1,000,000
+mpg eval runs/mine --episodes 100 --policy random    # the baseline on the same seeds
+```
+
+The other six rooms, the ladder over all 44, the protocol and the known records are in
+[the challenge document](challenges.en.md).
 
 ## Install
 

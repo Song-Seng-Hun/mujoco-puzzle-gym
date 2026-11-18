@@ -51,16 +51,33 @@ AI 코딩 에이전트가 MuJoCo 물리 시뮬레이션 안에 퍼즐 방을 직
 
 ## 도전해 보세요
 
-방 프리셋 **44개** 중 **학습된 정책의 기록이 있는 방은 세 개**입니다. 나머지 41칸은 비어 있습니다.
+방 프리셋이 **44개**인데, **학습된 정책의 기록이 있는 방은 세 개**입니다. 나머지 **41칸은 비어 있습니다.**
 
-<p align="center"><img src="assets/challenge-hammer-lose.gif" width="380" alt="프레스가 내려와 자물쇠를 때려 자물쇠가 붉게 변하고, 그 뒤 네 발 로봇이 닫힌 문 앞에 머무는 장면."></p>
+<table>
+<tr>
+<td width="50%"><img src="assets/challenge-hammer-lose.gif" width="300" alt=""><br><b>마감시간</b> — 40초 뒤 프레스가 코인 자물쇠를 부순다. 그 전에 문을 열지 못하면 그 판은 영구히 끝</td>
+<td width="50%"><img src="assets/gallery/tabletop_pick_by_hand.gif" width="300" alt=""><br><b>손가락으로 집기</b> — 용접 없이 두 손가락이 눌러서 든다. 학습된 정책 최고 <b>0.52</b></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/gallery/light_split_the_beam.gif" width="300" alt=""><br><b>빛의 몫</b> — 한 줄기를 분광기로 나눠 두 광전지의 문턱을 동시에 넘겨야 한다</td>
+<td width="50%"><img src="assets/gallery/ball_bowling.gif" width="300" alt=""><br><b>연쇄</b> — 공을 밀어 핀 세 개를 쓰러뜨리면 문이 열린다</td>
+</tr>
+</table>
 
-`puzzles/tabletop/pick_and_place`는 PPO로 **25 M 스텝을 써도 성공률 0.00**이고, 방의 대본 해답을
-복제하면 **1.7 M 스텝에 1.00**입니다. 위 영상의 방(`coins/beat_the_hammer`)은 40초 안에 문을 열지
-못하면 **그 판이 영구히 끝나는** 마감시간이 있습니다 — 대본 해답 20/20, 무작위 0/20, 학습된 정책
-**기록 없음**.
+대본 해답은 모든 방을 풉니다(저장소가 매번 20시드로 확인합니다). 균일 무작위 정책은 거의 모든 방에서
+0입니다. **그 사이가 당신 알고리즘의 자리입니다.**
 
-사다리·규약(고정 시드, 선언된 예산, 숫자 하나)·알려진 기록은 [도전 문서](docs/challenges.md)에 있습니다.
+> `puzzles/tabletop/pick_and_place` — PPO로 **25 M 스텝, 성공률 0.00**.
+> 방의 대본 해답을 복제하면 **1.7 M 스텝에 1.00**.
+> 당신 알고리즘은 몇 스텝에 얼마입니까?
+
+```bash
+mpg train examples/task_pick_and_place.yaml --minutes 15 --id mine
+mpg eval runs/mine --episodes 100                   # held-out 시드 1,000,000~
+mpg eval runs/mine --episodes 100 --policy random    # 같은 시드의 기준선
+```
+
+나머지 여섯 방, 44방 사다리, 규약과 알려진 기록은 [도전 문서](docs/challenges.md)에 있습니다.
 
 ## 설치
 
