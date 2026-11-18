@@ -297,6 +297,7 @@ class So101Adapter(BodyAdapter):
         data.qpos[self._jaw_q] = 0.0
         data.ctrl[self._jaw_ctrl] = 0.0
         self.jaw_target = 0.0
+        self._queue.clear()                # R131: an episode does not inherit targets in flight
         self.work_z = WORK_Z               # `set_head` is held until changed; reset levels it
         mujoco.mj_forward(data.model, data)
         self._aim = self._clamp(self.control_point(data))
@@ -427,7 +428,15 @@ class So101Adapter(BodyAdapter):
             dq = j.T @ np.linalg.solve(j @ j.T + DAMPING ** 2 * np.eye(len(err)),
                                        err * IK_GAIN)
             dq[4] += wz            # the wrist roll spins the jaw about its own axis
-            target = data.qpos[self._qpos] + dq * model.opt.timestep
+            # Integrate from where the arm **will** be, not where it is (R131). The servo
+            # reaches a target within a control step (kp 998 against these inertias), so the
+            # newest queued target is that position; with no queue this is `data.qpos` and
+            # nothing changes. It matters under latency: integrating every step from the
+            # measured pose re-applies the same error while the command is still in flight,
+            # which is why 40 ms failed at every gain scale and with a 4x episode budget
+            # before this line, and solves at 11.2 s after it.
+            base = self._queue[-1][:-1] if self._queue else data.qpos[self._qpos]
+            target = base + dq * model.opt.timestep
             target = np.clip(target, self._range[:, 0], self._range[:, 1])
             if self.latency_steps > 0:
                 # A real servo gets its target late (bus plus its own loop). Hold the last
@@ -435,11 +444,20 @@ class So101Adapter(BodyAdapter):
                 # the home pose rather than inventing a target.
                 depth = int(min(self.latency_steps, LATENCY_MAX)) * max(
                     1, round(self.control_dt / model.opt.timestep))
-                self._queue.append(target.copy())
-                target = self._queue.pop(0) if len(self._queue) > depth else np.asarray(HOME,
-                                                                                       float)
+                # The jaw rides the same queue: one bus carries every servo, so delaying
+                # the arm and not the jaw would close the fingers early *by construction* -
+                # and this room's grasp is a pinch whose timing is the whole trick.
+                self._queue.append(np.append(target, self.jaw_target))
+                # Before the queue fills, hold **where the arm is**, not the home pose: a
+                # servo with no new target holds its position, and commanding HOME for the
+                # first few steps threw the arm across the table at the start of an episode.
+                held = (self._queue.pop(0) if len(self._queue) > depth
+                        else np.append(data.qpos[self._qpos], data.qpos[self._jaw_q]))
+                target, jaw = held[:-1], float(held[-1])
+            else:
+                jaw = self.jaw_target
             data.ctrl[self._ctrl] = target
-            data.ctrl[self._jaw_ctrl] = self.jaw_target
+            data.ctrl[self._jaw_ctrl] = jaw
             mujoco.mj_step(model, data)
             if on_substep is not None:
                 on_substep(model, data)

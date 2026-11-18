@@ -502,37 +502,49 @@ def test_a_servo_gain_spread_of_a_fifth_changes_nothing(so101_asset_dir, repo_ro
         env.close()
 
 
-def test_this_control_has_about_one_control_step_of_latency_margin(so101_asset_dir, repo_root):
-    """The number R118 exists to produce, and it is not comfortable.
+def test_this_control_carries_two_control_steps_of_latency(so101_asset_dir, repo_root):
+    """The number R118 produced, and R131 moved - because it was ours, not the delay's.
 
-    Measured over four rooms, control steps of delay on the joint targets (0.02 s each):
+    R118 measured the margin as about one control step (20 ms), with everything dead at two:
 
-        latency 0:  pick_and_place 3/3 7.7 s, weigh_it_down 3/3 7.1, build_a_tower 3/3 9.8,
-                    fetch_the_steel 3/3 9.2
-        latency 1:  the first three still solve but 2.5-3x slower (20.4, 18.8, 22.9 s);
-                    fetch_the_steel is already 0/3
-        latency 2:  all four 0/3
+        latency 0: pick_and_place 3/3 7.7 s, weigh_it_down 3/3 7.1, build_a_tower 3/3 9.8,
+                   fetch_the_steel 3/3 9.2
+        latency 1: the first three solved 2.5-3x slower (20.4, 18.8, 22.9 s), fetch 0/3
+        latency 2: all four 0/3
 
-    So the shipped control tolerates about 20 ms and nothing at 40 ms, which is the order a
-    real servo bus costs. That is a sim-to-real finding, not a knob. If the control improves,
-    change the numbers here and say so in the spec.
+    The cause was in `So101Adapter.step`: the solve integrated the next joint target from the
+    **measured** pose, so while a command was still in flight it re-applied the same error
+    every step. Integrating from the newest queued target instead (which is where the servo
+    will be) changes nothing at latency 0 and changes everything under delay. Measured again
+    over ten arm rooms, five seeds each:
+
+        latency 0:  10/10 rooms, times unchanged (pick_and_place 8.2 s, conveyor 18.8 s)
+        latency 1:  8/10 rooms, times **unchanged** rather than 3x (pick_and_place 8.3 s);
+                    pick_by_hand 1/5, fetch_the_steel 0/5
+        latency 2:  5/10 rooms (reach_target, reach_the_marker, pick_and_place,
+                    weigh_it_down, build_a_tower; pick_and_place 8.5 s)
+
+    So the delay a real servo bus costs is survivable now, and what is left is room-specific
+    timing (the contact pinch, the magnet's hand-off), not the controller. If any of this
+    regresses, change the numbers here and in the spec rather than deleting the test.
     """
     from mujoco_puzzle_gym.check import check_solver
     from mujoco_puzzle_gym.env import PuzzleEnv
     from mujoco_puzzle_gym.task import load_task
 
     def solves(latency, seeds=2):
-        env = PuzzleEnv(task=load_task(repo_root / "examples/task_pick_and_place.yaml"))
+        task = load_task(repo_root / "examples/task_pick_and_place.yaml")
+        task["env"]["actuator_latency_steps"] = latency        # R131: declared, not poked in
+        env = PuzzleEnv(task=task)
         try:
-            env.body.latency_steps = latency
             return check_solver(env, seeds=seeds, need=seeds)["successes"]
         finally:
             env.close()
 
     assert solves(0) == 2
-    assert solves(1) == 2, "one step used to be survivable; if it is not, say so"
-    assert solves(2) == 0, ("two steps of latency used to kill it; if the control got "
-                            "better, update this and the spec")
+    assert solves(1) == 2, "20 ms was survivable before R131 too; if it is not, say so"
+    assert solves(2) == 2, ("40 ms was fatal before R131 and is not any more; a regression "
+                            "here means the stale-pose integration is back")
 
 
 # ---- R105: it lifts what it holds, so it places over a wall rather than through it ----

@@ -243,8 +243,54 @@ def add_watch(parts: dict[str, Part], cfg: GazeConfig) -> None:
 
 
 @register_obs("markers_seen", replace=True)
-def markers_seen(env):
-    """Markers seen now (R27): per used id (ascending) (seen, x, y, nx, ny), heading frame."""
+class MarkersSeen:
+    """Markers seen now (R27): per used id (ascending) (seen, x, y, nx, ny), heading frame.
+
+    Detection noise (R131), the two errors a real ArUco pipeline makes:
+
+      - `noise`: standard deviation [m] on the reported marker position, and the same number
+        on the face normal's two components (which are unit length, so it is a direction
+        error of about that size in radians). Scaled by `randomize.body`, like every other
+        sensor's noise.
+      - `dropout`: the chance, per marker per step, that a marker in view is **not
+        reported** - a blur, a glare, a decode that failed. The slot reads zeros, exactly as
+        if it were out of view.
+
+    Both default to 0, so `markers_seen` written as a bare name is the noise-free geometric
+    test it has always been. Measured: a policy trained noise-free holds 0.93 -> 0.90 at
+    `noise` 0.01 and falls to 0.29 at 0.03 with `dropout` 0.2; trained **with** that noise it
+    scores 0.93 under it (`docs/training-log.md` R131).
+    """
+
+    sensor = True
+
+    def __init__(self, env, spec, noise: float = 0.0, dropout: float = 0.0):
+        from .obs import ObsItemError
+
+        for name, v in (("noise", noise), ("dropout", dropout)):
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+                raise ObsItemError(f"markers_seen {name} must be a number >= 0, got {v!r}")
+        if dropout > 1:
+            raise ObsItemError(f"markers_seen dropout is a probability, got {dropout!r}")
+        self.noise = float(noise)
+        self.dropout = float(dropout)
+
+    def __call__(self, env):
+        out = _markers_seen(env).reshape(-1, 5)
+        if len(out) and (self.dropout > 0 or self.noise > 0):
+            seen = out[:, 0] > 0.5
+            if self.dropout > 0:
+                missed = seen & (env.np_random.random(len(out)) < self.dropout)
+                out[missed] = 0.0
+                seen = out[:, 0] > 0.5
+            std = self.noise * env.noise_scale
+            if std > 0 and seen.any():
+                out[seen, 1:] += env.np_random.normal(0.0, std, (int(seen.sum()), 4))
+        return out.ravel()
+
+
+def _markers_seen(env):
+    """The geometric test itself, with no detection error (the class above adds that)."""
     by_id: dict[int, list] = {}
     for p in env.parts.values():
         if p.marker is not None:

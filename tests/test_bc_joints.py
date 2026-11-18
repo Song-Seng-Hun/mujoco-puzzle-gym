@@ -133,3 +133,92 @@ def test_bc_clones_the_scripted_solution_of_a_room(so101_asset_dir, repo_root, t
     summary = train(path, minutes=3.0, runs_dir=tmp_path / "runs", run_id="bc")
     assert summary["algo"] == "bc"
     assert evaluate(summary["run_dir"], episodes=5, workers=1)["success_rate"] == 1.0
+
+
+# ---- marker detection noise (R131) ----------------------------------------------------
+def marker_task(repo_root, **item):
+    return {"room": str(repo_root / "src/mujoco_puzzle_gym/presets/puzzles/tabletop/reach_the_marker.yaml"),
+            "body": "so101", "env": {"hz": 10, "episode_seconds": 8},
+            "obs": ["gravity", {"item": "markers_seen", **item}] if item
+                   else ["gravity", "markers_seen"],
+            "reward": {"progress": 10.0, "success": 10.0},
+            "termination": {"success": True, "fall": False},
+            "randomize": {"layout": 1.0}}
+
+
+@pytest.mark.parametrize("item,match", [({"noise": -1.0}, "noise"), ({"noise": "x"}, "noise"),
+                                        ({"dropout": 2.0}, "probability")])
+def test_marker_noise_params_are_checked(item, match):
+    from mujoco_puzzle_gym.gaze import MarkersSeen
+    from mujoco_puzzle_gym.obs import ObsItemError
+
+    with pytest.raises(ObsItemError, match=match):
+        MarkersSeen(None, None, **item)
+
+
+def in_view(envs):
+    """Step both envs with a zero command until the clean one has the marker in view.
+
+    The noise only touches the observation, so the two envs stay in the same state; the
+    first element of each `markers_seen` slot is the seen flag.
+    """
+    obs = [e.reset(seed=1_000_000)[0] for e in envs]
+    for _ in range(20):
+        if obs[0][3] == 1.0:
+            return obs
+        obs = [e.step(np.zeros(e.action_space.shape, dtype=np.float32))[0] for e in envs]
+    raise AssertionError("the marker never came into view for this layout")
+
+
+def test_a_dropped_marker_reads_as_out_of_view(so101_asset_dir, repo_root):
+    """`dropout: 1.0` is the test case: the marker is in view and still never reported."""
+    clean = PuzzleEnv(task=marker_task(repo_root))
+    blind = PuzzleEnv(task=marker_task(repo_root, dropout=1.0))
+    try:
+        seen, lost = in_view([clean, blind])
+        assert seen[3] == 1.0
+        assert np.allclose(lost[3:], 0.0)
+    finally:
+        clean.close()
+        blind.close()
+
+
+def test_position_noise_moves_the_reported_marker_but_not_the_seen_flag(so101_asset_dir, repo_root):
+    clean = PuzzleEnv(task=marker_task(repo_root))
+    noisy = PuzzleEnv(task=marker_task(repo_root, noise=0.05))
+    try:
+        a, b = in_view([clean, noisy])
+        assert a[3] == b[3] == 1.0
+        assert not np.allclose(a[4:6], b[4:6], atol=1e-4)
+    finally:
+        clean.close()
+        noisy.close()
+
+
+# ---- the latency fix (R131) -----------------------------------------------------------
+@pytest.mark.slow
+@pytest.mark.parametrize("latency", [0, 2])
+def test_the_scripted_solution_survives_declared_actuator_latency(so101_asset_dir, repo_root,
+                                                                  latency):
+    """R118 measured 40 ms (2 control steps) as fatal to every arm room. It was the
+    controller, not the delay: the solve integrated from the **measured** pose, so while a
+    command was in flight it kept re-applying the same error. Integrating from the newest
+    queued target instead (`So101Adapter.step`) leaves 0 ms untouched and carries
+    `pick_and_place` at 40 ms - measured 5/5 at 8.5 s against 8.2 s with no delay."""
+    from mujoco_puzzle_gym.solver import ScriptedSolver
+
+    task = load_task(repo_root / "examples/task_pick_and_place.yaml")
+    task["env"]["actuator_latency_steps"] = latency
+    env = PuzzleEnv(task=task)
+    try:
+        for seed in (0, 1):
+            env.reset(seed=seed)
+            solver = ScriptedSolver(env)
+            solver.reset()
+            while True:
+                *_, term, trunc, info = env.step(solver.act())
+                if term or trunc:
+                    assert info.get("success"), f"latency {latency}, seed {seed}"
+                    break
+    finally:
+        env.close()
