@@ -29,9 +29,25 @@ AI 코딩 에이전트가 MuJoCo 물리 시뮬레이션 안에 퍼즐 방을 직
 
 - **부품은 여러 속성의 묶음입니다.** 부품 하나는 종류(`type`)와 속성(위치, 크기, 한 번 밟으면 켜진 채로 남는지, 열리는 방향, 에피소드마다 위치를 무작위로 바꿀 범위 등)으로 이루어집니다. 부품 목록과 각 속성은 [부품 문서](docs/parts.md)에 따로 정리했습니다.
 - **에이전트가 부품을 조립해 퍼즐을 설계합니다.** 부품을 골라 놓고 신호선(`links`)으로 이으면 퍼즐이 됩니다. 발판 → 문 → 골 같은 단순한 방부터 발판 여러 개가 모두 켜져야 열리는 문(`require: all`)처럼 조건을 겹친 방까지 같은 방식으로 짓고, 모자란 부품은 직접 만들어 끼웁니다.
-- **랜덤화를 지원합니다.** 지금은 부품 위치와 출발 위치·방향을 정한 범위 안에서 매 에피소드 조금씩 다르게 배치해, 정책이 배치를 외우지 않고 퍼즐을 풀게 합니다. 구역 안 아무 곳에 놓기, 후보 중 하나 고르기, 방 구조 자체를 바꾸는 랜덤화는 마일스톤 2에서 들어옵니다.
+- **랜덤화를 지원합니다.** 지금은 부품 위치와 출발 위치·방향을 정한 범위 안에서 매 에피소드 조금씩 다르게 배치해, 정책이 배치를 외우지 않고 퍼즐을 풀게 합니다. 구역 안 아무 곳에 놓기, 후보 중 하나 고르기, 방의 배선과 방 자체를 바꾸는 랜덤화도 들어 있습니다.
 - **기준(베이스라인) 환경이 들어 있습니다.** 예제 방, 검증한 PPO 학습 설정, 미리 학습한 정책(`mpg demo`), 같은 시드에서 무작위 정책과 비교(`mpg eval --policy random`), 일부러 망가뜨린 설정 모음([`examples/broken/`](examples/broken/))이 있어서 새 방이나 새 알고리즘을 견줄 출발점이 됩니다.
 - **로봇을 바꿀 수 있습니다.** 퍼즐 쪽 코드는 어떤 로봇인지 모르고, 몸 어댑터가 이동 명령을 받아 로봇을 움직입니다. 몸 어댑터를 새로 만들어 붙이면 다른 로봇도 같은 방에서 학습합니다(방법은 [사용 안내](docs/guide.md#몸-어댑터)). 지금 들어 있는 몸은 넷입니다 — 두 발, 네 발, 휴머노이드, 그리고 **걷지 않는 고정 베이스 팔**. 몸마다 할 수 있는 일이 다르므로, 부품은 필요한 능력을 선언하고 `mpg check`가 못 하는 몸을 **이유를 말하며 거부**합니다 — 어떤 부품이 어떤 몸에서 되는지는 [몸과 부품](docs/bodies.md)에 표로 있습니다.
+
+## 들어 있는 부품
+
+내장 부품 **68종**과, 그 부품들을 바로 쓸 수 있게 값까지 맞춰 둔 **프리셋 87종**, 방 하나가 통째로 들어 있는 **방 프리셋 44종**이 있습니다. 각 부품의 속성과 숫자는 [부품 문서](docs/parts.md)와 [부품과 프리셋 안내](docs/parts-guide.md)에 있고, 모자란 부품은 플러그인으로 직접 끼울 수 있습니다.
+
+| 묶음 | 부품 (`type`) |
+|---|---|
+| 목표·발판 | `goal`, `switch` |
+| 입력·감지 | `button`, `pressure`, `laser`, `beam`, `zone`, `target`, `checkpoint`, `receptacle`, `stack`, `emitter`, `photocell` |
+| 논리·배선 | `gate`, `counter`, `relay`, `wire`, `source`, `transmitter`, `receiver`, `budget` |
+| 장치 | `door`, `swing_door`, `trapdoor`, `rope_door`, `platform`, `conveyor`, `spring`, `turntable`, `warp`, `setter`, `pillar`, `low_bar`, `magnet`, `mirror`, `splitter`, `filter`, `goal_net`, `destroyer`, `rope`, `anchor`, `hitch_station`, `addon_station` |
+| 바닥 | `floor_tile`, `coin`, `coin_group`, `coin_lock` |
+| 물체 | `cube`, `ball`, `pin` |
+| 집어 다루는 것 | `key`, `egg`, `stick`, `handle_ball`, `laundry`, `lever`, `dial`, `drawer`, `pull_cord`, `dispenser` |
+| 함정 | `pit`, `pusher`, `spinner`, `pendulum`, `cannon`, `wind`, `brake_strip` |
+| 스스로 움직이는 로봇 | `npc` |
 
 ## 설치
 

@@ -29,9 +29,25 @@ The first body is [Microduck](https://github.com/pollen-robotics/microduck_rl) b
 
 - **A part is a bundle of attributes.** Each part is a type (`type`) plus attributes: position, size, whether it stays on once stepped on, which way it opens, how much its position varies each episode, and so on. The parts and their attributes are listed in a separate [parts document](parts.en.md).
 - **The agent designs puzzles by assembling parts.** Pick parts, place them and wire them with signal links (`links`), and you have a puzzle. Simple rooms like switch → door → goal and rooms with stacked conditions, such as a door that opens only when several switches are all on (`require: all`), are built the same way. A missing part can be written and plugged in.
-- **Randomization is supported.** Today, part positions and the start position and heading are randomized within set ranges every episode, so a policy solves the puzzle instead of memorising the layout. Placing anywhere inside a region, picking one of several candidates, and changing the room structure itself come in milestone 2.
+- **Randomization is supported.** Today, part positions and the start position and heading are randomized within set ranges every episode, so a policy solves the puzzle instead of memorising the layout. Placing anywhere in a region, choosing one of several candidates, and randomizing the room's wiring and the room itself are in as well.
 - **Baseline environments are included.** The example room, a verified PPO training config, a pretrained policy (`mpg demo`), a random-policy comparison on the same seeds (`mpg eval --policy random`), and a set of deliberately broken configs ([`examples/broken/`](../examples/broken/)) give a starting point to compare new rooms or new algorithms against.
 - **The body can be swapped.** The puzzle code does not know the body; a body adapter takes movement commands and drives the body. Build a new body adapter and another robot trains in the same rooms (how: [guide](guide.en.md#body-adapter)). Four bodies are included today: two legs, four legs, a humanoid, and a **fixed-base arm that does not walk at all**. Because bodies differ in what they can do, a part declares the capabilities it needs and `mpg check` **refuses a body that lacks them, with the reason** — which part works with which body is tabulated in [bodies and parts](bodies.en.md).
+
+## The parts that come with it
+
+**68 built-in part types**, **87 presets** (the same parts with their values already set) and **44 room presets** (a whole room each). Every part's fields and numbers are in the [parts document](parts.md) and the [parts and presets guide](parts-guide.en.md), and a part that is missing can be added as a plugin.
+
+| Group | Parts (`type`) |
+|---|---|
+| Goal and switch | `goal`, `switch` |
+| Inputs and sensing | `button`, `pressure`, `laser`, `beam`, `zone`, `target`, `checkpoint`, `receptacle`, `stack`, `emitter`, `photocell` |
+| Logic and wiring | `gate`, `counter`, `relay`, `wire`, `source`, `transmitter`, `receiver`, `budget` |
+| Devices | `door`, `swing_door`, `trapdoor`, `rope_door`, `platform`, `conveyor`, `spring`, `turntable`, `warp`, `setter`, `pillar`, `low_bar`, `magnet`, `mirror`, `splitter`, `filter`, `goal_net`, `destroyer`, `rope`, `anchor`, `hitch_station`, `addon_station` |
+| Floor | `floor_tile`, `coin`, `coin_group`, `coin_lock` |
+| Objects | `cube`, `ball`, `pin` |
+| Things to pick up and work | `key`, `egg`, `stick`, `handle_ball`, `laundry`, `lever`, `dial`, `drawer`, `pull_cord`, `dispenser` |
+| Traps | `pit`, `pusher`, `spinner`, `pendulum`, `cannon`, `wind`, `brake_strip` |
+| Robots that move on their own | `npc` |
 
 ## Install
 
